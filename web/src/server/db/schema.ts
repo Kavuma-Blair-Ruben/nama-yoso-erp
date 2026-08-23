@@ -730,6 +730,10 @@ export const productionBatches = pgTable(
     expiryDate: date("expiry_date"),
     expiryExtensionCount: integer("expiry_extension_count").notNull().default(0),
     expiryTicketPrintedAt: timestamp("expiry_ticket_printed_at", { withTimezone: true }),
+    // Set once the auto-printed "ticket" (fired the moment a batch is
+    // opened, same pattern as expiryTicketPrintedAt) has actually printed —
+    // prevents it re-firing on every subsequent page load.
+    openTicketPrintedAt: timestamp("open_ticket_printed_at", { withTimezone: true }),
     // 'OPEN' — a ticket exists, staff is actively producing under this
     // lot/batch (e.g. vacuum-sealing many packs), stock not yet moved, can
     // print as many copies of the batch/lot label as needed. 'CLOSED' — the

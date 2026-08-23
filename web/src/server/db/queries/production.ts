@@ -82,6 +82,8 @@ export async function listProductionBatches(filters: { status?: string; q?: stri
       totalCost: productionBatches.totalCost,
       producedDate: productionBatches.producedDate,
       status: productionBatches.status,
+      createdAt: productionBatches.createdAt,
+      postedAt: productionBatches.postedAt,
     })
     .from(productionBatches)
     .innerJoin(subRecipes, eq(productionBatches.subRecipeId, subRecipes.id))
@@ -112,8 +114,10 @@ export async function getProductionBatchDetail(id: string) {
       expiryDate: productionBatches.expiryDate,
       status: productionBatches.status,
       notes: productionBatches.notes,
+      createdAt: productionBatches.createdAt,
       postedAt: productionBatches.postedAt,
       postedByName: profiles.name,
+      openTicketPrintedAt: productionBatches.openTicketPrintedAt,
     })
     .from(productionBatches)
     .innerJoin(subRecipes, eq(productionBatches.subRecipeId, subRecipes.id))

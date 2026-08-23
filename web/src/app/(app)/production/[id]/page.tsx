@@ -5,7 +5,8 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { getProductionBatchDetail } from "@/server/db/queries/production";
 import { CloseProductionButton } from "@/components/production/CloseProductionButton";
 import { DeleteProductionDraftButton } from "@/components/production/DeleteProductionDraftButton";
-import { fmt, money } from "@/lib/format";
+import { ProductionTicketAutoPrint } from "@/components/production/ProductionTicketAutoPrint";
+import { fmt, money, formatDurationMinutes } from "@/lib/format";
 
 export default async function ProductionDetailPage({ params }: PageProps<"/production/[id]">) {
   const session = await requireSection("subrecipes", "view");
@@ -14,9 +15,30 @@ export default async function ProductionDetailPage({ params }: PageProps<"/produ
   if (!data) notFound();
   const { batch, ingredients } = data;
   const canEdit = hasAccess(session, "subrecipes", "edit");
+  const durationMinutes =
+    batch.status === "CLOSED" && batch.postedAt ? Math.round((batch.postedAt.getTime() - batch.createdAt.getTime()) / 60000) : null;
 
   return (
     <>
+      {batch.status === "OPEN" && (
+        <ProductionTicketAutoPrint
+          batch={{
+            id: batch.id,
+            batchNo: batch.batchNo,
+            lotNo: batch.lotNo,
+            name: batch.subRecipeName,
+            legacyCode: batch.subRecipeCode,
+            scaleMultiplier: batch.scaleMultiplier,
+            yieldQty: batch.yieldQty,
+            yieldUnit: batch.yieldUnit,
+            producedDate: batch.producedDate,
+            expiryDate: batch.expiryDate,
+            storageInstructions: batch.storageInstructions,
+            branchName: batch.branchName,
+          }}
+          alreadyPrinted={!!batch.openTicketPrintedAt}
+        />
+      )}
       <PageHeader
         title={batch.batchNo}
         subtitle={`${batch.subRecipeCode} — ${batch.subRecipeName} · ${batch.branchName ?? "-"} · ${batch.producedDate}`}
@@ -34,8 +56,9 @@ export default async function ProductionDetailPage({ params }: PageProps<"/produ
       </div>
       {batch.status === "OPEN" ? (
         <div className="callout" style={{ borderColor: "var(--accent)" }}>
-          Open — stock has not been updated yet. Print as many batch/lot labels as you need while producing, then close this ticket to
-          consume ingredient stock and credit the finished item&apos;s stock.
+          Open — stock has not been updated yet. A ticket auto-printed when this was opened; scan its barcode anytime to close
+          production, or print more copies from Batch/Lot Labels while producing (e.g. one per vacuum-sealed pack), then close this
+          ticket to consume ingredient stock and credit the finished item&apos;s stock.
         </div>
       ) : (
         <div style={{ fontSize: 11, color: "var(--ink-faint)", marginBottom: 12 }}>
@@ -54,7 +77,10 @@ export default async function ProductionDetailPage({ params }: PageProps<"/produ
           {batch.storageInstructions && <div className="field-row"><span className="k">Storage</span><span className="v">{batch.storageInstructions}</span></div>}
           {batch.notes && <div className="field-row"><span className="k">Notes</span><span className="v">{batch.notes}</span></div>}
           {batch.status === "CLOSED" && (
-            <div className="field-row"><span className="k">Closed by</span><span className="v">{batch.postedByName ?? "-"} · {batch.postedAt?.toISOString().slice(0, 10)}</span></div>
+            <>
+              <div className="field-row"><span className="k">Closed by</span><span className="v">{batch.postedByName ?? "-"} · {batch.postedAt?.toISOString().slice(0, 10)}</span></div>
+              <div className="field-row"><span className="k">Turnaround Time</span><span className="v tabular">{formatDurationMinutes(durationMinutes)} (open → close)</span></div>
+            </>
           )}
         </div>
       </div>

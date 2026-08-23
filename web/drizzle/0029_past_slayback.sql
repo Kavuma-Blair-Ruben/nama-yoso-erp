@@ -1,0 +1,1 @@
+ALTER TABLE "production_batches" ADD COLUMN "open_ticket_printed_at" timestamp with time zone;

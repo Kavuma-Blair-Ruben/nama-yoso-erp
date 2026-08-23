@@ -15,6 +15,16 @@ export function todayStr(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+// e.g. 754 -> "12h 34m", 8 -> "8m", 0 -> "0m" — for turnaround-time display
+// (production open -> close), never negative since callers pass elapsed time.
+export function formatDurationMinutes(totalMinutes: number | null | undefined): string {
+  if (totalMinutes === null || totalMinutes === undefined || Number.isNaN(totalMinutes)) return "—";
+  const m = Math.max(0, Math.round(totalMinutes));
+  const h = Math.floor(m / 60);
+  const rem = m % 60;
+  return h > 0 ? `${h}h ${rem}m` : `${rem}m`;
+}
+
 // For number-editing inputs: keep the raw text in state while the user is
 // typing (so "2." can become "2.5" one keystroke at a time) and only parse
 // with this where a number is actually needed — totals, submission, etc.

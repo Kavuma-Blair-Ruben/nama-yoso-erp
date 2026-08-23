@@ -30,6 +30,7 @@ const productionInputSchema = z.object({
 });
 
 export type ProductionActionResult = { error?: string; id?: string };
+export type CloseProductionResult = { error?: string; id?: string; batchNo?: string; durationMinutes?: number };
 
 // Same tx-typing pattern used elsewhere: the callback param drizzle passes
 // into db.transaction() isn't structurally identical to `db` itself.
@@ -142,10 +143,10 @@ export async function openProductionBatch(input: z.infer<typeof productionInputS
 }
 
 // Finalizes an OPEN production ticket: consumes ingredient stock, credits
-// the finished item's stock, locks the record from further edits.
-export async function closeProductionBatch(id: string): Promise<ProductionActionResult> {
-  const session = await assertPermission("subrecipes", "edit");
-
+// the finished item's stock, locks the record from further edits, and
+// reports the open->close turnaround time. Shared by the manual "Close
+// Production" button and the scan-to-close flow below.
+async function closeProductionBatchCore(id: string, actorId: string, closeDetail: string): Promise<CloseProductionResult> {
   const result = await db.transaction(async (tx) => {
     const [batch] = await tx.select().from(productionBatches).where(and(eq(productionBatches.id, id), eq(productionBatches.status, "OPEN")));
     if (!batch) return { error: "Production batch not found or already closed." as const };
@@ -163,10 +164,18 @@ export async function closeProductionBatch(id: string): Promise<ProductionAction
       producedDate: batch.producedDate,
       ingredients: ingredientRows.map((r) => ({ stockItemId: r.stockItemId, qty: r.qty, unitLabel: r.unitLabel ?? undefined, rate: r.rateAtProduction ?? undefined })),
     };
-    await applyProductionSideEffects(tx, id, input, subRecipe.stockItemId, session.profile.id);
-    await tx.update(productionBatches).set({ status: "CLOSED", postedAt: new Date(), postedBy: session.profile.id }).where(eq(productionBatches.id, id));
-    await tx.insert(auditLog).values({ actorId: session.profile.id, action: "Production Closed", entity: "Production Batch", entityLabel: batch.batchNo, detail: "Stock updated" });
-    return { id };
+    await applyProductionSideEffects(tx, id, input, subRecipe.stockItemId, actorId);
+    const postedAt = new Date();
+    await tx.update(productionBatches).set({ status: "CLOSED", postedAt, postedBy: actorId }).where(eq(productionBatches.id, id));
+    const durationMinutes = Math.round((postedAt.getTime() - batch.createdAt.getTime()) / 60000);
+    await tx.insert(auditLog).values({
+      actorId,
+      action: "Production Closed",
+      entity: "Production Batch",
+      entityLabel: batch.batchNo,
+      detail: `${closeDetail} — turnaround ${durationMinutes}m`,
+    });
+    return { id, batchNo: batch.batchNo, durationMinutes };
   });
   if ("error" in result) return result;
 
@@ -175,6 +184,36 @@ export async function closeProductionBatch(id: string): Promise<ProductionAction
   revalidatePath("/products");
   revalidatePath("/dashboard");
   return result;
+}
+
+export async function closeProductionBatch(id: string): Promise<CloseProductionResult> {
+  const session = await assertPermission("subrecipes", "edit");
+  return closeProductionBatchCore(id, session.profile.id, "Stock updated");
+}
+
+// Scan-to-close: staff scans the same barcode printed on the ticket when the
+// batch was opened (encodes the lot number — see ProductionReceipt) to close
+// it, no need to navigate to the batch's page first. Looks the batch up by
+// lot rather than id since that's what's actually printed and scannable.
+export async function closeProductionBatchByLot(lotNo: string): Promise<CloseProductionResult> {
+  const session = await assertPermission("subrecipes", "edit");
+  const trimmed = lotNo.trim();
+  if (!trimmed) return { error: "Scan a production ticket's barcode." };
+
+  const [batch] = await db.select({ id: productionBatches.id, status: productionBatches.status, batchNo: productionBatches.batchNo }).from(productionBatches).where(eq(productionBatches.lotNo, trimmed));
+  if (!batch) return { error: `No production ticket found for lot "${trimmed}".` };
+  if (batch.status !== "OPEN") return { error: `${batch.batchNo} (lot ${trimmed}) is already closed.` };
+
+  return closeProductionBatchCore(batch.id, session.profile.id, "Stock updated (scan-to-close)");
+}
+
+// Fires once, right after the auto-print effect actually shows the browser's
+// print dialog for a freshly opened ticket — mirrors markExpiryTicketsPrinted.
+export async function markProductionTicketPrinted(id: string): Promise<{ error?: string }> {
+  await assertPermission("subrecipes", "edit");
+  await db.update(productionBatches).set({ openTicketPrintedAt: new Date() }).where(eq(productionBatches.id, id));
+  revalidatePath(`/production/${id}`);
+  return {};
 }
 
 export async function updateProductionBatch(id: string, input: z.infer<typeof productionInputSchema>): Promise<ProductionActionResult> {

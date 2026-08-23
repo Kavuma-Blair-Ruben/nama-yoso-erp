@@ -2,7 +2,8 @@ import Link from "next/link";
 import { requireSection, hasAccess } from "@/server/auth/permissions";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { listProductionBatches } from "@/server/db/queries/production";
-import { fmt, money } from "@/lib/format";
+import { ProductionScanClose } from "@/components/production/ProductionScanClose";
+import { fmt, money, formatDurationMinutes } from "@/lib/format";
 
 export default async function ProductionPage({ searchParams }: PageProps<"/production">) {
   const session = await requireSection("subrecipes", "view");
@@ -24,6 +25,7 @@ export default async function ProductionPage({ searchParams }: PageProps<"/produ
           {openCount} ticket(s) still open — stock hasn&apos;t been updated for these yet. Open one to close it.
         </div>
       )}
+      {canEdit && <ProductionScanClose />}
       <div className="panel">
         <div className="table-wrap">
           <table className="data">
@@ -36,6 +38,7 @@ export default async function ProductionPage({ searchParams }: PageProps<"/produ
                 <th className="right">Yield</th>
                 <th className="right">Total Cost</th>
                 <th>Status</th>
+                <th className="right">Turnaround</th>
               </tr>
             </thead>
             <tbody>
@@ -51,10 +54,13 @@ export default async function ProductionPage({ searchParams }: PageProps<"/produ
                     <td className="mono-r">{fmt(b.yieldQty, 2)} {b.yieldUnit ?? ""}</td>
                     <td className="mono-r">{money(b.totalCost, 2)}</td>
                     <td><span className={`status-badge ${b.status === "OPEN" ? "status-draft" : "status-received"}`}>{b.status}</span></td>
+                    <td className="mono-r">
+                      {b.status === "CLOSED" && b.postedAt ? formatDurationMinutes((b.postedAt.getTime() - b.createdAt.getTime()) / 60000) : "—"}
+                    </td>
                   </tr>
                 ))
               ) : (
-                <tr className="empty-row"><td colSpan={7}>No production batches yet.</td></tr>
+                <tr className="empty-row"><td colSpan={8}>No production batches yet.</td></tr>
               )}
             </tbody>
           </table>

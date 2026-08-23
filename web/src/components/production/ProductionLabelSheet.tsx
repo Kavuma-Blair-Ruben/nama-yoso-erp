@@ -5,7 +5,7 @@ import JsBarcode from "jsbarcode";
 import QRCode from "qrcode";
 import { fmt } from "@/lib/format";
 
-type Batch = {
+export type Batch = {
   id: string;
   batchNo: string;
   lotNo: string;
@@ -23,7 +23,7 @@ type Batch = {
 // Matches index.html's "Receipt of Production" ticket format from its old
 // Odoo system: header, item + unit count, a scannable receipt number,
 // batch/lot, expiration, storage instructions, and where it was made.
-function ProductionReceipt({ batch }: { batch: Batch }) {
+export function ProductionReceipt({ batch }: { batch: Batch }) {
   const ref = useRef<SVGSVGElement>(null);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [timeStr, setTimeStr] = useState("");
