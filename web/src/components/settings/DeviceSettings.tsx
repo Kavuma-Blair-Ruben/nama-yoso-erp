@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { createDevice, deleteDevice, testDeviceConnection, setDeviceActive } from "@/server/actions/devices";
+import { createDevice, deleteDevice, testDeviceConnection, setDeviceActive, sendTestPrint, sendExpiryTicketTestPrint } from "@/server/actions/devices";
 
 type Device = {
   id: string;
@@ -14,6 +14,7 @@ type Device = {
   notes: string | null;
   lastTestedAt: Date | null;
   lastTestStatus: string | null;
+  lastTestOk: boolean | null;
   isActive: boolean;
 };
 
@@ -46,7 +47,7 @@ function DeviceActiveToggle({ device }: { device: Device }) {
 }
 
 function ConnectedIndicator({ device }: { device: Device }) {
-  const connected = !!device.lastTestStatus?.startsWith("Reachable");
+  const connected = device.lastTestOk === true;
   if (device.connection !== "network") return null;
   return (
     <span className="switch-row" style={{ cursor: "default" }} title={device.lastTestStatus ?? "Not tested yet"}>
@@ -60,6 +61,8 @@ function ConnectedIndicator({ device }: { device: Device }) {
 
 function DeviceRow({ device }: { device: Device }) {
   const [pending, startTransition] = useTransition();
+  const [printPending, startPrintTransition] = useTransition();
+  const [expiryPrintPending, startExpiryPrintTransition] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
   const [isError, setIsError] = useState(false);
 
@@ -73,6 +76,34 @@ function DeviceRow({ device }: { device: Device }) {
       } else {
         setIsError(false);
         setMessage(result.message ?? "OK");
+      }
+    });
+  }
+
+  function handleTestPrint() {
+    setMessage(null);
+    startPrintTransition(async () => {
+      const result = await sendTestPrint(device.id);
+      if (result.error) {
+        setIsError(true);
+        setMessage(result.error);
+      } else {
+        setIsError(false);
+        setMessage(result.message ?? "Sent");
+      }
+    });
+  }
+
+  function handleExpiryTestPrint() {
+    setMessage(null);
+    startExpiryPrintTransition(async () => {
+      const result = await sendExpiryTicketTestPrint(device.id);
+      if (result.error) {
+        setIsError(true);
+        setMessage(result.error);
+      } else {
+        setIsError(false);
+        setMessage(result.message ?? "Sent");
       }
     });
   }
@@ -91,6 +122,16 @@ function DeviceRow({ device }: { device: Device }) {
           {device.connection === "network" && (
             <button type="button" className="btn ghost" style={{ padding: "3px 8px", fontSize: 11 }} disabled={pending} onClick={handleTest}>
               {pending ? "Testing…" : "Test Connection"}
+            </button>
+          )}
+          {device.connection === "network" && device.type === "receipt_printer" && (
+            <button type="button" className="btn accent" style={{ padding: "3px 8px", fontSize: 11 }} disabled={printPending} onClick={handleTestPrint}>
+              {printPending ? "Printing…" : "Send Test Print"}
+            </button>
+          )}
+          {device.connection === "network" && device.type === "receipt_printer" && (
+            <button type="button" className="btn ghost" style={{ padding: "3px 8px", fontSize: 11, borderColor: "var(--bad)", color: "var(--bad)" }} disabled={expiryPrintPending} onClick={handleExpiryTestPrint}>
+              {expiryPrintPending ? "Printing…" : "Send Test Expiry Ticket"}
             </button>
           )}
           <a

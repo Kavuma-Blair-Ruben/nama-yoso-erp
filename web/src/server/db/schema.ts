@@ -112,6 +112,7 @@ export const devices = pgTable(
     notes: text("notes"),
     lastTestedAt: timestamp("last_tested_at", { withTimezone: true }),
     lastTestStatus: text("last_test_status"),
+    lastTestOk: boolean("last_test_ok"),
     isActive: boolean("is_active").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },

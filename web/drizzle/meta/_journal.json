@@ -183,6 +183,13 @@
       "when": 1787442257163,
       "tag": "0025_curvy_sphinx",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1787497651133,
+      "tag": "0026_smart_makkari",
+      "breakpoints": true
     }
   ]
 }

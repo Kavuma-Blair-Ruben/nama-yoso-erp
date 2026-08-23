@@ -16,6 +16,7 @@ export async function listDevices() {
       notes: devices.notes,
       lastTestedAt: devices.lastTestedAt,
       lastTestStatus: devices.lastTestStatus,
+      lastTestOk: devices.lastTestOk,
       isActive: devices.isActive,
     })
     .from(devices)
