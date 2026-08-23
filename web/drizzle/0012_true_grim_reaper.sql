@@ -1,0 +1,1 @@
+ALTER TABLE "stock_items" ADD COLUMN "par_level" numeric(14, 4);

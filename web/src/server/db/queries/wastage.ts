@@ -1,0 +1,167 @@
+import "server-only";
+import { db } from "@/server/db";
+import { wastageEvents, wastageLines, stockItems, categories, branches, profiles, costCenters, wastageReasons } from "@/server/db/schema";
+import { and, eq, desc } from "drizzle-orm";
+
+export async function listCostCenters() {
+  return db.select({ id: costCenters.id, name: costCenters.name }).from(costCenters);
+}
+
+export async function listWastageReasons() {
+  return db.select({ id: wastageReasons.id, name: wastageReasons.name, isExpense: wastageReasons.isExpense }).from(wastageReasons).orderBy(wastageReasons.name);
+}
+
+export async function listWastageEvents(filters: { status?: string }) {
+  const conditions = [];
+  if (filters.status) conditions.push(eq(wastageEvents.status, filters.status));
+
+  return db
+    .select({
+      id: wastageEvents.id,
+      wastageNo: wastageEvents.wastageNo,
+      eventDate: wastageEvents.eventDate,
+      costCenter: wastageEvents.costCenter,
+      branchName: branches.name,
+      staffName: wastageEvents.staffName,
+      totalCost: wastageEvents.totalCost,
+      status: wastageEvents.status,
+    })
+    .from(wastageEvents)
+    .leftJoin(branches, eq(wastageEvents.branchId, branches.id))
+    .where(conditions.length ? and(...conditions) : undefined)
+    .orderBy(desc(wastageEvents.wastageNo));
+}
+
+export async function getWastageEventDetail(id: string) {
+  const [event] = await db
+    .select({
+      id: wastageEvents.id,
+      wastageNo: wastageEvents.wastageNo,
+      eventDate: wastageEvents.eventDate,
+      costCenter: wastageEvents.costCenter,
+      branchId: wastageEvents.branchId,
+      branchName: branches.name,
+      staffName: wastageEvents.staffName,
+      status: wastageEvents.status,
+      totalCost: wastageEvents.totalCost,
+      postedAt: wastageEvents.postedAt,
+      postedByName: profiles.name,
+    })
+    .from(wastageEvents)
+    .leftJoin(branches, eq(wastageEvents.branchId, branches.id))
+    .leftJoin(profiles, eq(wastageEvents.postedBy, profiles.id))
+    .where(eq(wastageEvents.id, id));
+  if (!event) return null;
+
+  const lines = await db
+    .select({
+      id: wastageLines.id,
+      stockItemId: wastageLines.stockItemId,
+      name: stockItems.name,
+      legacyCode: stockItems.legacyCode,
+      qty: wastageLines.qty,
+      unitLabel: wastageLines.unitLabel,
+      reason: wastageLines.reason,
+      notes: wastageLines.notes,
+      rateAtWaste: wastageLines.rateAtWaste,
+      amountAtWaste: wastageLines.amountAtWaste,
+      photoUrl: wastageLines.photoUrl,
+    })
+    .from(wastageLines)
+    .innerJoin(stockItems, eq(wastageLines.stockItemId, stockItems.id))
+    .where(eq(wastageLines.wastageEventId, id));
+
+  return { event, lines };
+}
+
+export async function getWastageEventForEdit(id: string) {
+  const [event] = await db.select().from(wastageEvents).where(and(eq(wastageEvents.id, id), eq(wastageEvents.status, "DRAFT")));
+  if (!event) return null;
+
+  const lines = await db
+    .select({
+      stockItemId: wastageLines.stockItemId,
+      legacyCode: stockItems.legacyCode,
+      name: stockItems.name,
+      qty: wastageLines.qty,
+      unitLabel: wastageLines.unitLabel,
+      reason: wastageLines.reason,
+      notes: wastageLines.notes,
+      rateAtWaste: wastageLines.rateAtWaste,
+      photoUrl: wastageLines.photoUrl,
+    })
+    .from(wastageLines)
+    .innerJoin(stockItems, eq(wastageLines.stockItemId, stockItems.id))
+    .where(eq(wastageLines.wastageEventId, id));
+
+  return { event, lines };
+}
+
+// Same shape as getWastageEventForEdit but without the DRAFT filter — used
+// to seed a "Repeat" form from any past event (typically POSTED), not just
+// an in-progress draft.
+export async function getWastageEventForClone(id: string) {
+  const [event] = await db.select().from(wastageEvents).where(eq(wastageEvents.id, id));
+  if (!event) return null;
+
+  const lines = await db
+    .select({
+      stockItemId: wastageLines.stockItemId,
+      legacyCode: stockItems.legacyCode,
+      name: stockItems.name,
+      qty: wastageLines.qty,
+      unitLabel: wastageLines.unitLabel,
+      reason: wastageLines.reason,
+      notes: wastageLines.notes,
+      rateAtWaste: wastageLines.rateAtWaste,
+      photoUrl: wastageLines.photoUrl,
+    })
+    .from(wastageLines)
+    .innerJoin(stockItems, eq(wastageLines.stockItemId, stockItems.id))
+    .where(eq(wastageLines.wastageEventId, id));
+
+  return { event, lines };
+}
+
+// Report aggregates for the Wastage Tracking dashboard — reason/section/
+// category breakdowns + top items, mirrors index.html's groupSum() but
+// scoped to POSTED events only (drafts haven't affected stock yet).
+export async function getWastageStats() {
+  const rows = await db
+    .select({
+      amount: wastageLines.amountAtWaste,
+      reason: wastageLines.reason,
+      costCenter: wastageEvents.costCenter,
+      category: categories.name,
+      itemName: stockItems.name,
+      eventDate: wastageEvents.eventDate,
+    })
+    .from(wastageLines)
+    .innerJoin(wastageEvents, eq(wastageLines.wastageEventId, wastageEvents.id))
+    .innerJoin(stockItems, eq(wastageLines.stockItemId, stockItems.id))
+    .leftJoin(categories, eq(stockItems.categoryId, categories.id))
+    .where(eq(wastageEvents.status, "POSTED"));
+
+  function groupSum(key: "reason" | "costCenter" | "category" | "itemName") {
+    const g = new Map<string, number>();
+    for (const r of rows) {
+      const k = r[key] || "Uncategorized";
+      g.set(k, (g.get(k) ?? 0) + (r.amount ?? 0));
+    }
+    return [...g.entries()].sort((a, b) => b[1] - a[1]);
+  }
+
+  const totalWaste = rows.reduce((s, r) => s + (r.amount ?? 0), 0);
+  const days = new Set(rows.map((r) => r.eventDate)).size;
+
+  return {
+    totalWaste,
+    eventCount: rows.length,
+    days,
+    avgPerDay: days ? totalWaste / days : 0,
+    byReason: groupSum("reason"),
+    bySection: groupSum("costCenter"),
+    byCategory: groupSum("category"),
+    topItems: groupSum("itemName").slice(0, 8),
+  };
+}

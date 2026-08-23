@@ -1,0 +1,62 @@
+import { notFound } from "next/navigation";
+import { requireSection } from "@/server/auth/permissions";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { GRNBuilder } from "@/components/grn/GRNBuilder";
+import { getGrnForEdit } from "@/server/db/queries/grn";
+import { listPurchasableProductsForPicker, listAllSuppliers, listBranches } from "@/server/db/queries/purchaseOrders";
+
+export default async function EditGrnPage({ params }: PageProps<"/grn/[id]/edit">) {
+  await requireSection("grn", "edit");
+  const { id } = await params;
+
+  const [data, products, suppliers, branches] = await Promise.all([
+    getGrnForEdit(id),
+    listPurchasableProductsForPicker(),
+    listAllSuppliers(),
+    listBranches(),
+  ]);
+  if (!data) notFound();
+  const { grn, lines } = data;
+  const mode: "po" | "direct" = grn.purchaseOrderId ? "po" : "direct";
+  const supplierName = suppliers.find((s) => s.id === grn.supplierId)?.name;
+
+  const initialLines = lines.map((l) => ({
+    stockItemId: l.stockItemId,
+    purchaseOrderLineId: l.purchaseOrderLineId,
+    name: l.name,
+    unitLabel: l.unitLabel ?? "",
+    orderedQty: l.orderedQty,
+    alreadyReceived: 0,
+    receivedQty: l.receivedQty,
+    rate: l.rate,
+    discountPct: l.discountPct,
+    taxRate: l.taxRate,
+    isFoc: l.isFoc,
+    expiryDate: l.expiryDate ?? "",
+    condition: l.condition as "ACCEPTED" | "DAMAGED" | "REJECTED",
+    currentRate: l.currentRate,
+  }));
+
+  return (
+    <>
+      <PageHeader title={`Edit Draft — ${grn.grnNumber}`} subtitle="Fix any details before posting. Nothing here has updated stock yet." />
+      <GRNBuilder
+        mode={mode}
+        poId={grn.purchaseOrderId}
+        supplierName={supplierName}
+        supplierId={grn.supplierId}
+        branchId={grn.branchId}
+        initialLines={initialLines}
+        suppliers={suppliers}
+        products={products}
+        branches={branches}
+        existingGrnId={grn.id}
+        initialInvoiceNumber={grn.invoiceNumber ?? ""}
+        initialReceivedDate={grn.receivedDate}
+        initialInvoiceDueDate={grn.invoiceDueDate ?? ""}
+        initialAttachmentUrl={grn.attachmentUrl ?? ""}
+        initialDocumentType={grn.documentType === "TAX_INVOICE" || grn.documentType === "DELIVERY_NOTE" ? grn.documentType : ""}
+      />
+    </>
+  );
+}

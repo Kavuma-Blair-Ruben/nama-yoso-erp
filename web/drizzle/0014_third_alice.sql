@@ -1,0 +1,3 @@
+ALTER TABLE "policy_settings" ADD COLUMN "po_approval_threshold" numeric(14, 2);--> statement-breakpoint
+ALTER TABLE "policy_settings" ADD COLUMN "po_approval_role_id" uuid;--> statement-breakpoint
+ALTER TABLE "policy_settings" ADD CONSTRAINT "policy_settings_po_approval_role_id_roles_id_fk" FOREIGN KEY ("po_approval_role_id") REFERENCES "public"."roles"("id") ON DELETE no action ON UPDATE no action;

@@ -1,0 +1,2 @@
+ALTER TABLE "grns" ADD COLUMN "document_type" text;--> statement-breakpoint
+ALTER TABLE "grns" ADD CONSTRAINT "grns_document_type_check" CHECK ("grns"."document_type" is null or "grns"."document_type" in ('TAX_INVOICE','DELIVERY_NOTE'));

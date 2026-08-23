@@ -1,0 +1,4 @@
+ALTER TABLE "recipe_ingredients" ALTER COLUMN "stock_item_id" DROP NOT NULL;--> statement-breakpoint
+ALTER TABLE "recipe_ingredients" ADD COLUMN "ingredient_main_recipe_id" uuid;--> statement-breakpoint
+ALTER TABLE "recipe_ingredients" ADD CONSTRAINT "recipe_ingredients_ingredient_main_recipe_id_main_recipes_id_fk" FOREIGN KEY ("ingredient_main_recipe_id") REFERENCES "public"."main_recipes"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "recipe_ingredients" ADD CONSTRAINT "recipe_ingredients_exactly_one_ingredient" CHECK ((case when "recipe_ingredients"."stock_item_id" is null then 0 else 1 end) + (case when "recipe_ingredients"."ingredient_main_recipe_id" is null then 0 else 1 end) = 1);

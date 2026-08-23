@@ -1,0 +1,9 @@
+stock_items: 673 purchased + 84 produced
+main_recipes: 39
+sub_recipes: 84
+recipe ingredients missing a stock item match: 1 distinct code(s) — see missing-ingredients.csv
+invoices_historical: 535
+purchase_lines_historical: 1559
+daily_sales_historical: 70
+suppliers: 58
+bootstrap admin: kavumablair@gmail.com

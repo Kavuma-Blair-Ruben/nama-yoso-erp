@@ -1,0 +1,1 @@
+ALTER TABLE "wastage_lines" ADD COLUMN "photo_url" text;

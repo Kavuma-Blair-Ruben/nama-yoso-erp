@@ -1,0 +1,170 @@
+import "server-only";
+import { db } from "@/server/db";
+import {
+  stockItems,
+  categories,
+  subcategories,
+  suppliers,
+  productSupplierPackaging,
+  priceHistory,
+  mainRecipes,
+  subRecipes,
+  recipeIngredients,
+  stockBalances,
+  branches,
+} from "@/server/db/schema";
+import { and, eq, ilike, or, sql, desc, count } from "drizzle-orm";
+
+export type ProductFilters = { q?: string; category?: string; subcategory?: string; storage?: string; supplier?: string };
+
+export async function listProducts(filters: ProductFilters) {
+  const conditions = [eq(stockItems.isActive, true)];
+  if (filters.q) {
+    conditions.push(or(ilike(stockItems.name, `%${filters.q}%`), ilike(stockItems.legacyCode, `%${filters.q}%`))!);
+  }
+  if (filters.category) conditions.push(eq(categories.name, filters.category));
+  if (filters.subcategory) conditions.push(eq(subcategories.name, filters.subcategory));
+  if (filters.storage) conditions.push(eq(stockItems.storageType, filters.storage as "DRY" | "CHILLED" | "FROZEN"));
+  if (filters.supplier) conditions.push(eq(suppliers.name, filters.supplier));
+
+  const rows = await db
+    .select({
+      id: stockItems.id,
+      legacyCode: stockItems.legacyCode,
+      name: stockItems.name,
+      sourceType: stockItems.sourceType,
+      category: categories.name,
+      subcategory: subcategories.name,
+      storageType: stockItems.storageType,
+      supplier: suppliers.name,
+      purchaseUnit: stockItems.purchaseUnit,
+      issueUnit: stockItems.issueUnit,
+      purchaseRate: stockItems.purchaseRate,
+      ratePerGMl: stockItems.ratePerGMl,
+      // This query joins categories/subcategories/suppliers, all of which have their own
+      // "id" column — interpolating ${stockItems.id} inside the subquery renders as a bare
+      // "id", which Postgres silently resolves to the LOCAL price_history.id instead of the
+      // outer correlation (wrong data, no error). Must use literal qualified text.
+      priceChangeCount: sql<number>`(select count(*) from price_history where price_history.stock_item_id = stock_items.id)::int`,
+      // Summed across branches — Product Master isn't branch-scoped yet, so a
+      // single total is the right first cut (per-branch appears on the detail page).
+      qtyOnHand: sql<number>`coalesce((select sum(qty_on_hand) from stock_balances where stock_balances.stock_item_id = stock_items.id), 0)::float8`,
+    })
+    .from(stockItems)
+    .leftJoin(categories, eq(stockItems.categoryId, categories.id))
+    .leftJoin(subcategories, eq(stockItems.subcategoryId, subcategories.id))
+    .leftJoin(suppliers, eq(stockItems.supplierId, suppliers.id))
+    .where(and(...conditions))
+    .orderBy(stockItems.legacyCode)
+    .limit(600);
+
+  return rows;
+}
+
+export async function listCategoriesForFilter() {
+  return db.select({ name: categories.name }).from(categories).orderBy(categories.sortOrder);
+}
+export async function listSubcategoriesForFilter() {
+  return db.select({ name: subcategories.name }).from(subcategories).orderBy(subcategories.name);
+}
+export async function listSuppliersForFilter() {
+  return db.select({ name: suppliers.name }).from(suppliers).orderBy(suppliers.name);
+}
+export async function listAccountingCategories() {
+  const rows = await db
+    .selectDistinct({ value: stockItems.accountingCategory })
+    .from(stockItems)
+    .where(sql`${stockItems.accountingCategory} is not null`);
+  return rows.map((r) => r.value!).sort();
+}
+export const STORAGE_TYPES = ["DRY", "CHILLED", "FROZEN"] as const;
+
+export async function getProductByCode(code: string) {
+  const [item] = await db
+    .select({
+      id: stockItems.id,
+      legacyCode: stockItems.legacyCode,
+      name: stockItems.name,
+      sourceType: stockItems.sourceType,
+      categoryId: stockItems.categoryId,
+      category: categories.name,
+      subcategory: subcategories.name,
+      storageType: stockItems.storageType,
+      supplierId: stockItems.supplierId,
+      supplier: suppliers.name,
+      purchaseUnit: stockItems.purchaseUnit,
+      issueUnit: stockItems.issueUnit,
+      unitWeight: stockItems.unitWeight,
+      yieldPct: stockItems.yieldPct,
+      netRecoveredQty: stockItems.netRecoveredQty,
+      purchaseRate: stockItems.purchaseRate,
+      ratePerKgL: stockItems.ratePerKgL,
+      ratePerGMl: stockItems.ratePerGMl,
+      accountingCategory: stockItems.accountingCategory,
+      secondaryName: stockItems.secondaryName,
+      branches: stockItems.branches,
+      minLevel: stockItems.minLevel,
+      parLevel: stockItems.parLevel,
+      preferredCountingUnit: stockItems.preferredCountingUnit,
+      defaultPrepWastagePct: stockItems.defaultPrepWastagePct,
+      itemTaxRate: stockItems.itemTaxRate,
+      nonCogs: stockItems.nonCogs,
+    })
+    .from(stockItems)
+    .leftJoin(categories, eq(stockItems.categoryId, categories.id))
+    .leftJoin(subcategories, eq(stockItems.subcategoryId, subcategories.id))
+    .leftJoin(suppliers, eq(stockItems.supplierId, suppliers.id))
+    .where(eq(stockItems.legacyCode, code))
+    .limit(1);
+  if (!item) return null;
+
+  const variants = await db
+    .select({
+      id: productSupplierPackaging.id,
+      purchaseUnit: productSupplierPackaging.purchaseUnit,
+      unitWeight: productSupplierPackaging.unitWeight,
+      rate: productSupplierPackaging.rate,
+      supplierName: suppliers.name,
+      supplierItemName: productSupplierPackaging.supplierItemName,
+      supplierItemCode: productSupplierPackaging.supplierItemCode,
+      isPriority: productSupplierPackaging.isPriority,
+    })
+    .from(productSupplierPackaging)
+    .innerJoin(suppliers, eq(productSupplierPackaging.supplierId, suppliers.id))
+    .where(eq(productSupplierPackaging.stockItemId, item.id));
+
+  const history = await db
+    .select()
+    .from(priceHistory)
+    .where(eq(priceHistory.stockItemId, item.id))
+    .orderBy(desc(priceHistory.changedAt))
+    .limit(20);
+
+  const usedInMain = await db
+    .select({ code: mainRecipes.legacyCode, name: mainRecipes.name })
+    .from(recipeIngredients)
+    .innerJoin(mainRecipes, eq(recipeIngredients.mainRecipeId, mainRecipes.id))
+    .where(eq(recipeIngredients.stockItemId, item.id));
+  const usedInSub = await db
+    .select({ code: subRecipes.legacyCode, name: subRecipes.name })
+    .from(recipeIngredients)
+    .innerJoin(subRecipes, eq(recipeIngredients.subRecipeId, subRecipes.id))
+    .where(eq(recipeIngredients.stockItemId, item.id));
+
+  const stockByBranch = await db
+    .select({ branchId: stockBalances.branchId, branchName: branches.name, qtyOnHand: stockBalances.qtyOnHand })
+    .from(stockBalances)
+    .innerJoin(branches, eq(stockBalances.branchId, branches.id))
+    .where(eq(stockBalances.stockItemId, item.id));
+
+  return {
+    item,
+    variants,
+    history,
+    stockByBranch,
+    usedIn: [
+      ...usedInMain.map((r) => ({ type: "main" as const, ...r })),
+      ...usedInSub.map((r) => ({ type: "sub" as const, ...r })),
+    ],
+  };
+}

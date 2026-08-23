@@ -1,0 +1,11 @@
+raw_value,count,mapped_to
+"🔵 CHILLED",182,CHILLED
+"🌡️ DRY",373,DRY
+"❄️ FROZEN",50,FROZEN
+"(blank)",1,NULL
+"breakfast-production",8,NULL
+"cold-line-production",1,NULL
+"0",127,NULL
+"hot-line-porduction",7,NULL
+"sushi-production",2,NULL
+"bar-production",6,NULL

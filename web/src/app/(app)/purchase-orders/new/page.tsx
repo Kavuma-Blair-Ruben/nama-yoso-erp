@@ -1,0 +1,21 @@
+import { requireSection } from "@/server/auth/permissions";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { POBuilder } from "@/components/purchase-orders/POBuilder";
+import { listPurchasableProductsForPicker, listBranches, listAllSuppliers } from "@/server/db/queries/purchaseOrders";
+import { listAllStockBalances } from "@/server/db/queries/production";
+
+export default async function NewPurchaseOrderPage() {
+  await requireSection("orders", "edit");
+  const [products, branches, suppliers, stockBalances] = await Promise.all([
+    listPurchasableProductsForPicker(),
+    listBranches(),
+    listAllSuppliers(),
+    listAllStockBalances(),
+  ]);
+  return (
+    <>
+      <PageHeader title="New Purchase Order" subtitle="Pick items from any category, from any supplier — grouped by designated supplier automatically." />
+      <POBuilder products={products} branches={branches} suppliers={suppliers} stockBalances={stockBalances} />
+    </>
+  );
+}
