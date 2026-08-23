@@ -49,7 +49,12 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    // Everything except static assets and image optimization.
-    "/((?!_next/static|_next/image|favicon.ico).*)",
+    // Everything except static assets, image optimization, and files served
+    // straight out of public/ (logo, favicons, etc.) — those need to load on
+    // the login page itself, before any session exists, so the auth gate
+    // must never intercept them. Matching only _next/static/_next/image
+    // missed this: any other public/ asset (e.g. /brand/nama-yoso-logo.png)
+    // was being redirected to /login instead of served, breaking the <img>.
+    "/((?!_next/static|_next/image|.*\\.(?:png|jpg|jpeg|gif|svg|webp|ico|css|js|map)$).*)",
   ],
 };

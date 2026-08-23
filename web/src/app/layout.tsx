@@ -21,7 +21,7 @@ const plexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "NAMA YOSO — Cost Control ERP",
+  title: "NAMA YOSO — Inventory Management",
   description: "Inventory, purchasing, and recipe costing for NAMA YOSO / THG.",
 };
 

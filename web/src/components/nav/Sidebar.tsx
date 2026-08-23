@@ -89,7 +89,7 @@ export async function Sidebar() {
       <div className="brand">
         <div className="brand-text">
           <Logo height={42} />
-          <span>Cost Control ERP</span>
+          <span>Inventory Management</span>
         </div>
       </div>
       <div className="nav">

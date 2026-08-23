@@ -169,8 +169,8 @@ export async function inviteUser(input: z.infer<typeof inviteSchema>): Promise<{
   const link = `${siteUrl}/auth/confirm?token_hash=${encodeURIComponent(data.properties.hashed_token)}&type=invite`;
   const sent = await sendEmail({
     to: email,
-    subject: "You've been invited to NAMA YOSO Cost Control ERP",
-    text: `${parsed.data.name.trim()}, you've been invited to NAMA YOSO Cost Control ERP.\n\nSet your password to get started:\n${link}\n\nThis link is single-use and expires after a while — ask your admin to resend the invite if it's expired.`,
+    subject: "You've been invited to NAMA YOSO Inventory Management",
+    text: `${parsed.data.name.trim()}, you've been invited to NAMA YOSO Inventory Management.\n\nSet your password to get started:\n${link}\n\nThis link is single-use and expires after a while — ask your admin to resend the invite if it's expired.`,
   });
   if (sent.error) {
     // Login + profile were already created — surface the email failure so

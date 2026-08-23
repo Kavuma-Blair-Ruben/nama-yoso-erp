@@ -8,7 +8,7 @@ export default function LoginPage() {
         <div className="login-brand">
           <div className="login-brand-text">
             <Logo height={58} />
-            <span>Cost Control ERP</span>
+            <span>Inventory Management</span>
           </div>
         </div>
         <LoginForm />
