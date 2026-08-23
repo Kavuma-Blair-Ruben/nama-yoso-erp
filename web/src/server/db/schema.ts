@@ -106,8 +106,15 @@ export const devices = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     name: text("name").notNull(),
     type: text("type").notNull(), // 'label_printer' | 'receipt_printer' | 'barcode_scanner' | 'other'
-    connection: text("connection").notNull(), // 'network' | 'bluetooth' | 'wifi_direct' | 'other'
+    connection: text("connection").notNull(), // 'network' | 'bluetooth' | 'wifi_direct' | 'printnode' | 'other'
     address: text("address"), // IP (and optionally :port) for network devices; free text otherwise
+    // Set only when connection = 'printnode' — the printer's id in PrintNode's
+    // API (see src/lib/printnode.ts). PrintNode relays jobs through a free
+    // client app running on any PC on the printer's own network, so this is
+    // how a cloud-hosted server (no path into anyone's private LAN) can still
+    // reach it — unlike 'network', which needs the server itself to be on
+    // the same network as the printer.
+    printnodePrinterId: integer("printnode_printer_id"),
     branchId: uuid("branch_id").references(() => branches.id),
     notes: text("notes"),
     lastTestedAt: timestamp("last_tested_at", { withTimezone: true }),
@@ -118,7 +125,7 @@ export const devices = pgTable(
   },
   (t) => [
     check("devices_type_check", sql`${t.type} in ('label_printer','receipt_printer','barcode_scanner','other')`),
-    check("devices_connection_check", sql`${t.connection} in ('network','bluetooth','wifi_direct','other')`),
+    check("devices_connection_check", sql`${t.connection} in ('network','bluetooth','wifi_direct','printnode','other')`),
   ]
 );
 

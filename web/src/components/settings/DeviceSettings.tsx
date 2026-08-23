@@ -9,6 +9,7 @@ type Device = {
   type: string;
   connection: string;
   address: string | null;
+  printnodePrinterId: number | null;
   branchId: string | null;
   branchName: string | null;
   notes: string | null;
@@ -18,8 +19,11 @@ type Device = {
   isActive: boolean;
 };
 
+type PrintNodePrinter = { id: number; name: string; description: string | null; state: string; computerName: string | null };
+
 const TYPE_LABEL: Record<string, string> = { label_printer: "Label/Sticker Printer", receipt_printer: "Receipt Printer", barcode_scanner: "Barcode/QR Scanner", other: "Other" };
-const CONNECTION_LABEL: Record<string, string> = { network: "Network (IP)", bluetooth: "Bluetooth", wifi_direct: "Wi-Fi Direct", other: "Other" };
+const CONNECTION_LABEL: Record<string, string> = { network: "Network (IP)", bluetooth: "Bluetooth", wifi_direct: "Wi-Fi Direct", printnode: "PrintNode (cloud bridge)", other: "Other" };
+const REACHABLE_CONNECTIONS = new Set(["network", "printnode"]);
 
 function DeviceActiveToggle({ device }: { device: Device }) {
   const [pending, startTransition] = useTransition();
@@ -48,7 +52,7 @@ function DeviceActiveToggle({ device }: { device: Device }) {
 
 function ConnectedIndicator({ device }: { device: Device }) {
   const connected = device.lastTestOk === true;
-  if (device.connection !== "network") return null;
+  if (!REACHABLE_CONNECTIONS.has(device.connection)) return null;
   return (
     <span className="switch-row" style={{ cursor: "default" }} title={device.lastTestStatus ?? "Not tested yet"}>
       <span className={`switch-track ${connected ? "on" : ""}`}>
@@ -119,17 +123,17 @@ function DeviceRow({ device }: { device: Device }) {
         <span className="code" style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <ConnectedIndicator device={device} />
           <DeviceActiveToggle device={device} />
-          {device.connection === "network" && (
+          {REACHABLE_CONNECTIONS.has(device.connection) && (
             <button type="button" className="btn ghost" style={{ padding: "3px 8px", fontSize: 11 }} disabled={pending} onClick={handleTest}>
               {pending ? "Testing…" : "Test Connection"}
             </button>
           )}
-          {device.connection === "network" && device.type === "receipt_printer" && (
+          {REACHABLE_CONNECTIONS.has(device.connection) && device.type === "receipt_printer" && (
             <button type="button" className="btn accent" style={{ padding: "3px 8px", fontSize: 11 }} disabled={printPending} onClick={handleTestPrint}>
               {printPending ? "Printing…" : "Send Test Print"}
             </button>
           )}
-          {device.connection === "network" && device.type === "receipt_printer" && (
+          {REACHABLE_CONNECTIONS.has(device.connection) && device.type === "receipt_printer" && (
             <button type="button" className="btn ghost" style={{ padding: "3px 8px", fontSize: 11, borderColor: "var(--bad)", color: "var(--bad)" }} disabled={expiryPrintPending} onClick={handleExpiryTestPrint}>
               {expiryPrintPending ? "Printing…" : "Send Test Expiry Ticket"}
             </button>
@@ -150,6 +154,7 @@ function DeviceRow({ device }: { device: Device }) {
       </div>
       <div style={{ fontSize: 11, color: "var(--ink-faint)" }}>
         {device.address && <>Address: {device.address} · </>}
+        {device.printnodePrinterId && <>PrintNode Printer #{device.printnodePrinterId} · </>}
         {device.branchName && <>{device.branchName} · </>}
         {device.notes}
       </div>
@@ -162,23 +167,42 @@ function DeviceRow({ device }: { device: Device }) {
   );
 }
 
-export function DeviceSettings({ devices, branches }: { devices: Device[]; branches: { id: string; name: string }[] }) {
+export function DeviceSettings({
+  devices,
+  branches,
+  printNodePrinters,
+  printNodeConfigured,
+}: {
+  devices: Device[];
+  branches: { id: string; name: string }[];
+  printNodePrinters: PrintNodePrinter[];
+  printNodeConfigured: boolean;
+}) {
   const [pending, startTransition] = useTransition();
   const [name, setName] = useState("");
   const [type, setType] = useState("label_printer");
   const [connection, setConnection] = useState("network");
   const [address, setAddress] = useState("");
+  const [printnodePrinterId, setPrintnodePrinterId] = useState("");
   const [branchId, setBranchId] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   function handleAdd() {
     setError(null);
     startTransition(async () => {
-      const result = await createDevice({ name, type, connection, address: address || undefined, branchId: branchId || undefined });
+      const result = await createDevice({
+        name,
+        type,
+        connection,
+        address: connection === "network" ? address || undefined : undefined,
+        printnodePrinterId: connection === "printnode" && printnodePrinterId ? Number(printnodePrinterId) : undefined,
+        branchId: branchId || undefined,
+      });
       if (result.error) setError(result.error);
       else {
         setName("");
         setAddress("");
+        setPrintnodePrinterId("");
       }
     });
   }
@@ -189,9 +213,17 @@ export function DeviceSettings({ devices, branches }: { devices: Device[]; branc
       <div className="panel-body">
         <div className="callout">
           Register printers and scanners that connect wirelessly instead of being plugged into this computer — a network
-          label/receipt printer reachable by IP address, or a Bluetooth/Wi-Fi Direct scanner. Network devices can be tested for
-          reachability directly from here; Bluetooth/Wi-Fi Direct devices pair with whichever phone or tablet is using the app.
+          label/receipt printer reachable by IP address, a printer relayed through PrintNode (works even when this app is
+          hosted in the cloud, since PrintNode&apos;s client app bridges to whatever local network the printer is on), or a
+          Bluetooth/Wi-Fi Direct scanner. Network and PrintNode devices can be tested for reachability directly from here;
+          Bluetooth/Wi-Fi Direct devices pair with whichever phone or tablet is using the app.
         </div>
+        {connection === "printnode" && !printNodeConfigured && (
+          <div className="callout" style={{ borderColor: "var(--bad)", color: "var(--bad)" }}>
+            PrintNode isn&apos;t configured yet — add <code>PRINTNODE_API_KEY</code> to the environment first (sign up free at
+            printnode.com, install their client app on a PC on the printer&apos;s network, then paste the API key here).
+          </div>
+        )}
 
         {devices.length ? devices.map((d) => <DeviceRow key={d.id} device={d} />) : <div style={{ fontSize: 12, color: "var(--ink-faint)", padding: "6px 0" }}>No devices registered yet.</div>}
 
@@ -214,7 +246,19 @@ export function DeviceSettings({ devices, branches }: { devices: Device[]; branc
               <option key={k} value={k}>{v}</option>
             ))}
           </select>
-          <input type="text" placeholder={connection === "network" ? "e.g. 192.168.1.50:9100" : "optional"} value={address} onChange={(e) => setAddress(e.target.value)} />
+          {connection === "printnode" ? (
+            <select value={printnodePrinterId} onChange={(e) => setPrintnodePrinterId(e.target.value)}>
+              <option value="">{printNodePrinters.length ? "Pick a printer…" : "No printers found in PrintNode"}</option>
+              {printNodePrinters.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name} — {p.state}
+                  {p.computerName ? ` (${p.computerName})` : ""}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <input type="text" placeholder={connection === "network" ? "e.g. 192.168.1.50:9100" : "optional"} value={address} onChange={(e) => setAddress(e.target.value)} />
+          )}
           <select value={branchId} onChange={(e) => setBranchId(e.target.value)}>
             <option value="">Any branch</option>
             {branches.map((b) => (

@@ -8,11 +8,12 @@ import { assertPermission } from "@/server/auth/permissions";
 import { parseDeviceAddress, tcpProbe, sendRawData } from "@/lib/printerSocket";
 import { buildTestPrintTicket, buildExpiryTicketEscPos } from "@/lib/escpos";
 import { listExpiringBatches } from "@/server/db/queries/expiry";
+import { listPrintNodePrinters, sendPrintNodeJob, isPrintNodeConfigured } from "@/lib/printnode";
 
 const DEVICE_TYPES = ["label_printer", "receipt_printer", "barcode_scanner", "other"] as const;
-const CONNECTIONS = ["network", "bluetooth", "wifi_direct", "other"] as const;
+const CONNECTIONS = ["network", "bluetooth", "wifi_direct", "printnode", "other"] as const;
 
-export type CreateDeviceInput = { name: string; type: string; connection: string; address?: string; branchId?: string; notes?: string };
+export type CreateDeviceInput = { name: string; type: string; connection: string; address?: string; printnodePrinterId?: number; branchId?: string; notes?: string };
 
 export async function createDevice(input: CreateDeviceInput): Promise<{ error?: string }> {
   const session = await assertPermission("system", "edit");
@@ -21,11 +22,26 @@ export async function createDevice(input: CreateDeviceInput): Promise<{ error?: 
   if (!DEVICE_TYPES.includes(input.type as (typeof DEVICE_TYPES)[number])) return { error: "Invalid device type." };
   if (!CONNECTIONS.includes(input.connection as (typeof CONNECTIONS)[number])) return { error: "Invalid connection type." };
   if (input.connection === "network" && !input.address?.trim()) return { error: "Enter an IP address for a network device." };
+  if (input.connection === "printnode" && !input.printnodePrinterId) return { error: "Pick a PrintNode printer." };
 
-  await db.insert(devices).values({ name, type: input.type, connection: input.connection, address: input.address?.trim() || undefined, branchId: input.branchId || undefined, notes: input.notes?.trim() || undefined });
+  await db.insert(devices).values({
+    name,
+    type: input.type,
+    connection: input.connection,
+    address: input.address?.trim() || undefined,
+    printnodePrinterId: input.printnodePrinterId,
+    branchId: input.branchId || undefined,
+    notes: input.notes?.trim() || undefined,
+  });
   await db.insert(auditLog).values({ actorId: session.profile.id, action: "Created", entity: "Device", entityLabel: name, detail: `${input.type} via ${input.connection}` });
   revalidatePath("/system-settings");
   return {};
+}
+
+export async function listPrintNodePrintersForPicker(): Promise<{ printers?: { id: number; name: string; description: string | null; state: string; computerName: string | null }[]; error?: string }> {
+  await assertPermission("system", "edit");
+  if (!isPrintNodeConfigured()) return { error: "PrintNode isn't configured — add PRINTNODE_API_KEY to .env.local." };
+  return listPrintNodePrinters();
 }
 
 export async function deleteDevice(id: string): Promise<{ error?: string }> {
@@ -61,6 +77,23 @@ export async function testDeviceConnection(id: string): Promise<{ error?: string
   const [device] = await db.select().from(devices).where(eq(devices.id, id));
   if (!device) return { error: "Device not found." };
 
+  if (device.connection === "printnode") {
+    if (!device.printnodePrinterId) return { error: "Pick a PrintNode printer first." };
+    const { printers, error } = await listPrintNodePrinters();
+    if (error) return { error };
+    const p = printers?.find((pr) => pr.id === device.printnodePrinterId);
+    const online = p?.state === "online";
+    const status = !p
+      ? "That printer is no longer registered in PrintNode."
+      : online
+        ? `PrintNode: ${p.name} is online${p.computerName ? ` (on ${p.computerName})` : ""}`
+        : `PrintNode: ${p.name} is offline — check the PrintNode client is running on that computer.`;
+    await db.update(devices).set({ lastTestedAt: new Date(), lastTestStatus: status, lastTestOk: online }).where(eq(devices.id, id));
+    await db.insert(auditLog).values({ actorId: session.profile.id, action: "Tested", entity: "Device", entityLabel: device.name, detail: status });
+    revalidatePath("/system-settings");
+    return online ? { ok: true, message: status } : { error: status };
+  }
+
   if (device.connection !== "network") {
     const label = device.connection === "bluetooth" ? "Bluetooth" : device.connection === "wifi_direct" ? "Wi-Fi Direct" : "This";
     return { message: `${label} devices pair directly with the phone or tablet running the app — there's nothing for this server to test. Try printing or scanning from the device that's paired with it.` };
@@ -78,24 +111,39 @@ export async function testDeviceConnection(id: string): Promise<{ error?: string
   return { ok: true, message: status };
 }
 
+// Sends real print bytes down whichever path the device is registered for —
+// a raw TCP socket to an IP the server itself can reach ('network'), or a
+// PrintNode print job relayed through PrintNode's client app on whatever
+// computer is actually on the printer's network ('printnode'). Bluetooth/
+// Wi-Fi Direct devices have no server-reachable path at all.
+async function sendToDevicePrinter(device: typeof devices.$inferSelect, data: Buffer): Promise<{ ok: boolean; status: string }> {
+  if (device.connection === "printnode") {
+    if (!device.printnodePrinterId) return { ok: false, status: "Pick a PrintNode printer first." };
+    const result = await sendPrintNodeJob(device.printnodePrinterId, data, device.name);
+    return result.ok ? { ok: true, status: `Sent via PrintNode (job #${result.jobId ?? "?"})` } : { ok: false, status: result.error ?? "Failed to send via PrintNode." };
+  }
+  if (device.connection !== "network") return { ok: false, status: "Only network (IP) or PrintNode receipt printers can receive a print from this server." };
+  if (!device.address) return { ok: false, status: "Enter an IP address (and optional :port) first." };
+
+  const { host, port } = parseDeviceAddress(device.address);
+  const result = await sendRawData(host, port, data);
+  return result.ok ? { ok: true, status: `Sent to ${host}:${port}` } : { ok: false, status: result.error ?? "Failed to send." };
+}
+
 export async function sendTestPrint(id: string): Promise<{ error?: string; ok?: boolean; message?: string }> {
   const session = await assertPermission("system", "edit");
   const [device] = await db.select().from(devices).where(eq(devices.id, id));
   if (!device) return { error: "Device not found." };
-  if (device.connection !== "network") return { error: "Only network (IP) receipt printers can receive a test print from this server." };
-  if (!device.address) return { error: "Enter an IP address (and optional :port) first." };
 
-  const { host, port } = parseDeviceAddress(device.address);
   const ticket = buildTestPrintTicket(device.name);
-  const result = await sendRawData(host, port, ticket);
-  const status = result.ok ? `Test print sent to ${host}:${port}` : (result.error ?? "Failed to send");
+  const result = await sendToDevicePrinter(device, ticket);
 
-  await db.update(devices).set({ lastTestedAt: new Date(), lastTestStatus: status, lastTestOk: result.ok }).where(eq(devices.id, id));
-  await db.insert(auditLog).values({ actorId: session.profile.id, action: "Test Printed", entity: "Device", entityLabel: device.name, detail: status });
+  await db.update(devices).set({ lastTestedAt: new Date(), lastTestStatus: result.status, lastTestOk: result.ok }).where(eq(devices.id, id));
+  await db.insert(auditLog).values({ actorId: session.profile.id, action: "Test Printed", entity: "Device", entityLabel: device.name, detail: result.status });
   revalidatePath("/system-settings");
 
-  if (!result.ok) return { error: result.error };
-  return { ok: true, message: `${status} — check the printer for output.` };
+  if (!result.ok) return { error: result.status };
+  return { ok: true, message: `${result.status} — check the printer for output.` };
 }
 
 // Demonstrates the exact content the auto-print expiry ticket
@@ -106,8 +154,6 @@ export async function sendExpiryTicketTestPrint(id: string): Promise<{ error?: s
   const session = await assertPermission("system", "edit");
   const [device] = await db.select().from(devices).where(eq(devices.id, id));
   if (!device) return { error: "Device not found." };
-  if (device.connection !== "network") return { error: "Only network (IP) receipt printers can receive a test print from this server." };
-  if (!device.address) return { error: "Enter an IP address (and optional :port) first." };
 
   const expiring = await listExpiringBatches();
   const overdue = expiring.find((b) => b.bucket === "EXPIRED");
@@ -115,15 +161,13 @@ export async function sendExpiryTicketTestPrint(id: string): Promise<{ error?: s
     ? { name: overdue.name, code: overdue.code, batchNo: overdue.batchNo, lotNo: overdue.lotNo, expiryDate: overdue.expiryDate, daysLeft: overdue.daysLeft, reference: overdue.reference }
     : { name: "Demo Product (No Real Expired Items)", code: "DEMO-001", batchNo: "DEMO-BATCH", lotNo: "DEMO-LOT", expiryDate: "2026-01-01", daysLeft: -1, reference: "DEMO" };
 
-  const { host, port } = parseDeviceAddress(device.address);
   const ticket = buildExpiryTicketEscPos(ticketData);
-  const result = await sendRawData(host, port, ticket);
-  const status = result.ok ? `Expiry ticket sent to ${host}:${port}` : (result.error ?? "Failed to send");
+  const result = await sendToDevicePrinter(device, ticket);
 
-  await db.update(devices).set({ lastTestedAt: new Date(), lastTestStatus: status, lastTestOk: result.ok }).where(eq(devices.id, id));
-  await db.insert(auditLog).values({ actorId: session.profile.id, action: "Test Printed", entity: "Device", entityLabel: device.name, detail: status });
+  await db.update(devices).set({ lastTestedAt: new Date(), lastTestStatus: result.status, lastTestOk: result.ok }).where(eq(devices.id, id));
+  await db.insert(auditLog).values({ actorId: session.profile.id, action: "Test Printed", entity: "Device", entityLabel: device.name, detail: result.status });
   revalidatePath("/system-settings");
 
-  if (!result.ok) return { error: result.error };
-  return { ok: true, message: `${status} (${overdue ? overdue.name : "demo data — no real expired item found"}) — check the printer for output.` };
+  if (!result.ok) return { error: result.status };
+  return { ok: true, message: `${result.status} (${overdue ? overdue.name : "demo data — no real expired item found"}) — check the printer for output.` };
 }

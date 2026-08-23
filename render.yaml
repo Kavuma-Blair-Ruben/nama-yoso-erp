@@ -25,3 +25,5 @@ services:
         sync: false
       - key: NEXT_PUBLIC_SITE_URL
         sync: false
+      - key: PRINTNODE_API_KEY
+        sync: false

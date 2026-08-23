@@ -17,6 +17,7 @@ export async function listDevices() {
       lastTestedAt: devices.lastTestedAt,
       lastTestStatus: devices.lastTestStatus,
       lastTestOk: devices.lastTestOk,
+      printnodePrinterId: devices.printnodePrinterId,
       isActive: devices.isActive,
     })
     .from(devices)
