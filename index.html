@@ -75,6 +75,8 @@ body{
 .nav button .ico{width:16px;text-align:center;opacity:.85;font-size:13px;}
 .nav button.disabled{opacity:.4;cursor:default;}
 .nav button.disabled:hover{background:transparent;}
+.nav button.locked{opacity:.55;}
+.nav button .viewonly-badge{margin-left:auto;font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--sidebar-muted);border:1px solid var(--line-dark);border-radius:8px;padding:1px 5px;}
 
 .sidebar-foot{margin-top:auto;padding-top:14px;border-top:1px solid var(--line-dark);font-size:11px;color:var(--sidebar-muted);}
 .sidebar-foot b{color:var(--sidebar-ink);}
@@ -602,6 +604,53 @@ function apAgingBuckets(){
   return { buckets, list: list.sort((a,b)=>b.age-a.age) };
 }
 
+/* ============================================================
+   USER PERMISSIONS — section map, role helpers, access checks
+   ============================================================ */
+const PERMISSION_SECTIONS = [
+  { key:'branchsettings', label:'Branch Settings', ids:['branchsettings'] },
+  { key:'items', label:'Items', ids:['products','units','expiry'] },
+  { key:'suppliers', label:'Suppliers', ids:['suppliers'] },
+  { key:'orders', label:'Orders', ids:['mr','pos'] },
+  { key:'grn', label:'GRN / Purchase Invoices', ids:['grn','purchasing','pricechange','consolidated'] },
+  { key:'ckwarehouse', label:'Central Kitchen & Warehouse', ids:['ckwarehouse','cksales','customers'] },
+  { key:'recipes', label:'Recipes', ids:['recipes','costadjustments'] },
+  { key:'subrecipes', label:'Sub-recipes / Batch Production', ids:['production'] },
+  { key:'wastage', label:'Wastage', ids:['wastage'] },
+  { key:'transfers', label:'Transfers', ids:['transfers'] },
+  { key:'stockcount', label:'Stock Count', ids:['stockcount'] },
+  { key:'reports', label:'Reports and Dashboards', ids:['sections','stockpage','slowmoving','suppliersreport'] },
+  { key:'system', label:'System (Audit Trail, Settings)', ids:['audit','settings'] },
+  { key:'policies', label:'Policies & Approvals', ids:['policies'] },
+  { key:'permissions', label:'User Permission', ids:['permissions'] },
+];
+function permMatrixAll(level){
+  const m = {};
+  PERMISSION_SECTIONS.forEach(s=> m[s.key] = level);
+  return m;
+}
+function permMatrixOverride(baseLevel, overrides){
+  return { ...permMatrixAll(baseLevel), ...overrides };
+}
+function sectionForView(viewId){
+  return PERMISSION_SECTIONS.find(s=> s.ids.includes(viewId));
+}
+function currentUser(){
+  return state.users.find(u=> u.id === state.currentUserId) || null;
+}
+function currentRole(){
+  const u = currentUser();
+  return u ? state.roles.find(r=> r.id === u.role) || null : null;
+}
+function accessLevel(viewId){
+  if (viewId === 'dashboard') return 'edit';
+  const sec = sectionForView(viewId);
+  if (!sec) return 'edit'; // not a gated section (e.g. still-unbuilt Platform placeholders)
+  const role = currentRole();
+  if (!role) return 'edit'; // no simulated user selected — don't lock anyone out
+  return role.permissions[sec.key] || 'none';
+}
+
 /* ---------------- persistence ---------------- */
 const state = {
   view: 'dashboard',
@@ -640,6 +689,24 @@ const state = {
     mandatoryReceivingAttachment: false,
     preventBackdatedBeforeLastCount: false,
   },
+  roles: [
+    { id:'role_owner', name:'Owner / Admin', isSystem:true, permissions: permMatrixAll('edit') },
+    { id:'role_manager', name:'Branch Manager', isSystem:true, permissions: permMatrixOverride('edit', { system:'view', permissions:'none' }) },
+    { id:'role_purchasing', name:'Purchasing', isSystem:true, permissions: permMatrixOverride('none', { suppliers:'edit', orders:'edit', grn:'edit', items:'view', reports:'view', branchsettings:'view' }) },
+    { id:'role_kitchen', name:'Kitchen Staff', isSystem:true, permissions: permMatrixOverride('none', { wastage:'edit', stockcount:'edit', subrecipes:'edit', items:'view', recipes:'view', orders:'view' }) },
+    { id:'role_readonly', name:'Read Only', isSystem:true, permissions: permMatrixOverride('view', { permissions:'none' }) },
+  ],
+  users: [
+    { id:'usr_1', name:'Amara Osei', email:'amara@namayoso.com', role:'role_owner', branches:['NAMAYOSO','THG'], active:true },
+    { id:'usr_2', name:'Rashid Al Mazrouei', email:'rashid@namayoso.com', role:'role_manager', branches:['NAMAYOSO'], active:true },
+    { id:'usr_3', name:'Priya Nair', email:'priya@namayoso.com', role:'role_purchasing', branches:['NAMAYOSO','THG'], active:true },
+    { id:'usr_4', name:'Kofi Mensah', email:'kofi@namayoso.com', role:'role_kitchen', branches:['THG'], active:true },
+    { id:'usr_5', name:'Layla Hassan', email:'layla@namayoso.com', role:'role_readonly', branches:['NAMAYOSO','THG'], active:false },
+  ],
+  currentUserId: 'usr_1',
+  userForm: null,
+  roleForm: null,
+  permFilter: { q:'' },
   stockPageFilter: { q:'', flag:'' },
   taxRateForm: null,
   bulkReplaceForm: null,   // productCode currently showing the "Replace in Recipes" panel
@@ -818,6 +885,14 @@ async function loadStorage(){
     if(ss && ss.value) state.systemSettings = { ...state.systemSettings, ...JSON.parse(ss.value) };
   }catch(e){}
   try{
+    const ur = await window.storage.get('users');
+    if(ur && ur.value) state.users = JSON.parse(ur.value);
+    const rl = await window.storage.get('roles');
+    if(rl && rl.value) state.roles = JSON.parse(rl.value);
+    const cui = await window.storage.get('currentUserId');
+    if(cui && cui.value) state.currentUserId = JSON.parse(cui.value);
+  }catch(e){}
+  try{
     const cu = await window.storage.get('customers');
     if(cu && cu.value) state.customers = JSON.parse(cu.value);
     const cg = await window.storage.get('customerGroups');
@@ -965,6 +1040,11 @@ async function saveSystemConfig(){
   try{ await window.storage.set('wastageTypes', JSON.stringify(state.wastageTypes)); }catch(e){}
   try{ await window.storage.set('expenseWastageTypes', JSON.stringify(state.expenseWastageTypes)); }catch(e){}
   try{ await window.storage.set('systemSettings', JSON.stringify(state.systemSettings)); }catch(e){}
+}
+async function saveUserPermissions(){
+  try{ await window.storage.set('users', JSON.stringify(state.users)); }catch(e){}
+  try{ await window.storage.set('roles', JSON.stringify(state.roles)); }catch(e){}
+  try{ await window.storage.set('currentUserId', JSON.stringify(state.currentUserId)); }catch(e){}
 }
 async function saveCustomers(){
   try{ await window.storage.set('customers', JSON.stringify(state.customers)); }catch(e){}
@@ -1225,7 +1305,7 @@ const NAV = [
     {id:'settings', label:'Settings', ico:'⚙'},
   ]},
   {sec:'Platform (needs real deployment)', items:[
-    {id:'permissions', label:'User Permission', ico:'⚿', disabled:true},
+    {id:'permissions', label:'User Permission', ico:'⚿'},
     {id:'policies', label:'Policies & Approvals', ico:'⚖'},
     {id:'exports', label:'System Exports & Updates', ico:'⭳', disabled:true},
     {id:'support', label:'Support', ico:'☏', disabled:true},
@@ -1248,13 +1328,24 @@ function renderShell(){
         <button data-branch="NAMAYOSO" class="${state.branch==='NAMAYOSO'?'active':''}">NAMAYOSO</button>
         <button data-branch="THG" class="${state.branch==='THG'?'active':''}">THG</button>
       </div>
+      <select id="user-switch" style="width:100%;margin-bottom:14px;font:600 11.5px var(--sans);padding:7px 8px;border-radius:8px;border:1px solid var(--line-dark);background:var(--bg-app-2);color:var(--sidebar-ink);cursor:pointer">
+        <option value="">Viewing as: Full Access (no user selected)</option>
+        ${state.users.filter(u=>u.active).map(u=>{
+          const r = state.roles.find(r=>r.id===u.role);
+          return `<option value="${esc(u.id)}" ${state.currentUserId===u.id?'selected':''}>${esc(u.name)} — ${esc(r?r.name:'No role')}</option>`;
+        }).join('')}
+      </select>
       <div class="nav">
         ${NAV.map(group=>`
           <div class="nav-label">${group.sec}</div>
-          ${group.items.map(it=>`
-            <button data-view="${it.id}" class="${state.view===it.id?'active':''} ${it.disabled?'disabled':''}" ${it.disabled?'title="Planned — next build phase"':''}>
-              <span class="ico">${it.ico}</span>${esc(it.label)}
-            </button>`).join('')}
+          ${group.items.map(it=>{
+            const lvl = it.disabled ? null : accessLevel(it.id);
+            const locked = lvl === 'none';
+            return `
+            <button data-view="${it.id}" class="${state.view===it.id?'active':''} ${it.disabled?'disabled':''} ${locked?'locked':''}" ${it.disabled?'title="Planned — next build phase"':locked?'title="No access for your current role"':''}>
+              <span class="ico">${locked?'🔒':it.ico}</span>${esc(it.label)}${lvl==='view'?'<span class="viewonly-badge">view</span>':''}
+            </button>`;
+          }).join('')}
         `).join('')}
       </div>
       <div class="sidebar-foot">
@@ -1268,13 +1359,23 @@ function renderShell(){
     </div>
   `;
   app.querySelectorAll('[data-view]:not(.disabled)').forEach(b=>{
-    b.addEventListener('click', ()=>{ state.view = b.dataset.view; renderShell(); });
+    b.addEventListener('click', ()=>{
+      if (accessLevel(b.dataset.view) === 'none'){ toast('No access — your current role does not have permission to view this section.'); return; }
+      state.view = b.dataset.view; renderShell();
+    });
   });
   app.querySelectorAll('[data-view].disabled').forEach(b=>{
     b.addEventListener('click', ()=> toast('Planned for the next build phase — not wired up yet.'));
   });
   app.querySelectorAll('[data-branch]').forEach(b=>{
     b.addEventListener('click', ()=>{ state.branch = b.dataset.branch; renderShell(); });
+  });
+  const userSwitch = document.getElementById('user-switch');
+  if (userSwitch) userSwitch.addEventListener('change', async ()=>{
+    state.currentUserId = userSwitch.value || null;
+    await saveUserPermissions();
+    if (accessLevel(state.view) === 'none') state.view = 'dashboard';
+    renderShell();
   });
   renderTopbar();
   renderView();
@@ -1291,6 +1392,7 @@ function renderTopbar(){
     cksales:['CK Sales & Delivery Notes','Sell from Central Kitchen or Warehouse — cost-based or margin-based — to branches or external customers.'],
     customers:['Customers','Internal branches and external customers you invoice or deliver to from Central Kitchen.'],
     policies:['Policies & Approvals','Real spending and receiving limits, checked live when you create a Purchase Order or GRN.'],
+    permissions:['User Permission','Users, roles, and which sections of the system each role can view or edit.'],
     slowmoving:['Slow Moving Items','Items with the least purchase or usage activity — capital tied up in stock that is not turning over.'],
     suppliersreport:['Suppliers Report','Purchase value, invoice count, and quality per supplier, in one place.'],
     pricechange:['Item Price Change','Every time a GRN was received at a different price than the LPO ordered — across every supplier.'],
@@ -1320,6 +1422,12 @@ function renderTopbar(){
 
 function renderView(){
   const c = document.getElementById('content');
+  const lvl = accessLevel(state.view);
+  if (lvl === 'none'){
+    c.innerHTML = viewAccessRestricted();
+    wireView();
+    return;
+  }
   if (state.view === 'dashboard') c.innerHTML = viewDashboard();
   else if (state.view === 'products') c.innerHTML = viewProducts();
   else if (state.view === 'expiry') c.innerHTML = viewExpiry();
@@ -1348,7 +1456,28 @@ function renderView(){
   else if (state.view === 'sections') c.innerHTML = viewSections();
   else if (state.view === 'audit') c.innerHTML = viewAuditLog();
   else if (state.view === 'transfers') c.innerHTML = viewTransfers();
+  else if (state.view === 'permissions') c.innerHTML = viewPermissions();
+  if (lvl === 'view'){
+    c.innerHTML = `<div class="callout" style="border-color:var(--accent)"><b>View only.</b> Your current role (${esc(currentRole()?currentRole().name:'')}) has view access to this section. This build enforces access at the page level — individual edit controls below are not yet locked one-by-one.</div>` + c.innerHTML;
+  }
   wireView();
+}
+
+function viewAccessRestricted(){
+  const role = currentRole();
+  return `
+    <div class="panel" style="max-width:520px;margin:40px auto;text-align:center">
+      <div class="panel-body" style="padding:36px 24px">
+        <div style="font-size:32px;margin-bottom:10px">🔒</div>
+        <h3 style="margin:0 0 8px;font-family:var(--display);font-size:19px">No access to this section</h3>
+        <div style="color:var(--ink-soft);font-size:13px;margin-bottom:18px">
+          ${role ? `Your role, <b>${esc(role.name)}</b>, does not include access to this part of the system.` : 'This user has no role assigned.'}
+          Ask an Owner/Admin to update permissions in <b>User Permission</b>.
+        </div>
+        <button class="btn accent" data-open-view="dashboard">Back to Dashboard</button>
+      </div>
+    </div>
+  `;
 }
 
 loadStorage().then(renderShell);
@@ -2395,7 +2524,9 @@ function wireView(){
   });
   document.querySelectorAll('[data-open-view]').forEach(el=>{
     el.addEventListener('click', ()=>{
-      state.view = el.dataset.openView;
+      const target = el.dataset.openView;
+      if (accessLevel(target) === 'none'){ toast('No access — your current role does not have permission to view this section.'); return; }
+      state.view = target;
       if (el.dataset.setCat !== undefined){ state.pFilter.cat = el.dataset.setCat; state.pFilter.q = ''; }
       if (el.dataset.setRtab !== undefined){ state.rFilter.tab = el.dataset.setRtab; }
       renderShell();
@@ -2779,6 +2910,109 @@ function wireView(){
         renderView();
       });
     });
+  }
+
+  if (state.view === 'permissions'){
+    const addUserBtn = document.getElementById('add-user');
+    if (addUserBtn) addUserBtn.addEventListener('click', ()=>{
+      state.userForm = { name:'', email:'', role: state.roles[0]?state.roles[0].id:'', branches:['NAMAYOSO','THG'], active:true };
+      renderView();
+    });
+    document.querySelectorAll('[data-edit-user]').forEach(link=>{
+      link.addEventListener('click', (e)=>{
+        e.preventDefault();
+        const u = state.users.find(u=>u.id===link.dataset.editUser);
+        if (u) state.userForm = { ...u, branches:(u.branches||[]).slice() };
+        renderView();
+      });
+    });
+    document.querySelectorAll('[data-delete-user]').forEach(link=>{
+      link.addEventListener('click', async (e)=>{
+        e.preventDefault();
+        const u = state.users.find(u=>u.id===link.dataset.deleteUser);
+        if (!u) return;
+        state.users = state.users.filter(x=>x.id!==u.id);
+        if (state.currentUserId===u.id) state.currentUserId = null;
+        await saveUserPermissions();
+        await logAudit('Deleted', 'User', u.name, 'Removed');
+        renderView();
+      });
+    });
+    const saveUserBtn = document.getElementById('save-user');
+    if (saveUserBtn) saveUserBtn.addEventListener('click', async ()=>{
+      const name = document.getElementById('uf-name').value.trim();
+      const email = document.getElementById('uf-email').value.trim();
+      const role = document.getElementById('uf-role').value;
+      if (!name || !role){ toast('Enter a name and choose a role.'); return; }
+      const branches = [];
+      if (document.getElementById('uf-branch-namayoso').checked) branches.push('NAMAYOSO');
+      if (document.getElementById('uf-branch-thg').checked) branches.push('THG');
+      const active = document.getElementById('uf-active').checked;
+      const f = state.userForm;
+      if (f.id){
+        const u = state.users.find(u=>u.id===f.id);
+        Object.assign(u, { name, email, role, branches, active });
+        await logAudit('Updated', 'User', name, 'Details changed');
+      } else {
+        state.users.push({ id:'usr_'+Date.now(), name, email, role, branches, active });
+        await logAudit('Created', 'User', name, 'Added');
+      }
+      await saveUserPermissions();
+      state.userForm = null;
+      renderView();
+    });
+    const cancelUserBtn = document.getElementById('cancel-user');
+    if (cancelUserBtn) cancelUserBtn.addEventListener('click', ()=>{ state.userForm = null; renderView(); });
+
+    const addRoleBtn = document.getElementById('add-role');
+    if (addRoleBtn) addRoleBtn.addEventListener('click', ()=>{
+      state.roleForm = { name:'', permissions: permMatrixAll('none') };
+      renderView();
+    });
+    document.querySelectorAll('[data-edit-role]').forEach(link=>{
+      link.addEventListener('click', (e)=>{
+        e.preventDefault();
+        const r = state.roles.find(r=>r.id===link.dataset.editRole);
+        if (r) state.roleForm = { id:r.id, name:r.name, isSystem:r.isSystem, permissions:{...r.permissions} };
+        renderView();
+      });
+    });
+    document.querySelectorAll('[data-delete-role]').forEach(link=>{
+      link.addEventListener('click', async (e)=>{
+        e.preventDefault();
+        const r = state.roles.find(r=>r.id===link.dataset.deleteRole);
+        if (!r) return;
+        state.roles = state.roles.filter(x=>x.id!==r.id);
+        await saveUserPermissions();
+        await logAudit('Deleted', 'Role', r.name, 'Removed');
+        renderView();
+      });
+    });
+    document.querySelectorAll('[data-perm-key]').forEach(radio=>{
+      radio.addEventListener('change', ()=>{
+        state.roleForm.permissions[radio.dataset.permKey] = radio.value;
+      });
+    });
+    const saveRoleBtn = document.getElementById('save-role');
+    if (saveRoleBtn) saveRoleBtn.addEventListener('click', async ()=>{
+      const name = document.getElementById('rf-name').value.trim();
+      if (!name){ toast('Enter a role name.'); return; }
+      const f = state.roleForm;
+      if (f.id){
+        const r = state.roles.find(r=>r.id===f.id);
+        r.name = name;
+        r.permissions = f.permissions;
+        await logAudit('Updated', 'Role', name, 'Permissions changed');
+      } else {
+        state.roles.push({ id:'role_'+Date.now(), name, isSystem:false, permissions: f.permissions });
+        await logAudit('Created', 'Role', name, 'Added');
+      }
+      await saveUserPermissions();
+      state.roleForm = null;
+      renderView();
+    });
+    const cancelRoleBtn = document.getElementById('cancel-role');
+    if (cancelRoleBtn) cancelRoleBtn.addEventListener('click', ()=>{ state.roleForm = null; renderView(); });
   }
 
   if (state.view === 'settings'){
@@ -7668,6 +7902,119 @@ function viewBranchSettings(){
       <div class="panel-body">
         ${MR_LOCATIONS.filter(l=>l==='NAMAYOSO'||l==='THG').map(b=>`<div class="usedin-item"><span class="name">${esc(b)}</span><span class="code">Branch</span></div>`).join('')}
         <div style="font-size:11px;color:var(--ink-faint);margin-top:8px">Branches are fixed to your two brands (NAMAYOSO, THG) for this build — adding new branches is a deployment-time change, not something to self-serve from here.</div>
+      </div>
+    </div>
+  `;
+}
+
+/* ============================================================
+   USER PERMISSION — users, roles, section-level access matrix
+   ============================================================ */
+function userFormHTML(){
+  const f = state.userForm;
+  return `
+    <div class="panel" style="border:2px solid var(--accent);margin-bottom:16px;max-width:600px">
+      <div class="panel-head"><h3>${f.id?'Edit User':'New User'}</h3></div>
+      <div class="panel-body">
+        <div class="line-builder-row head" style="grid-template-columns:1fr 1fr"><div>Name</div><div>Email</div></div>
+        <div class="line-builder-row" style="grid-template-columns:1fr 1fr;margin-bottom:10px">
+          <input type="text" id="uf-name" value="${esc(f.name||'')}" placeholder="e.g. Amara Osei">
+          <input type="text" id="uf-email" value="${esc(f.email||'')}" placeholder="name@namayoso.com">
+        </div>
+        <div class="form-row"><label>Role</label>
+          <select id="uf-role">${state.roles.map(r=>`<option value="${esc(r.id)}" ${f.role===r.id?'selected':''}>${esc(r.name)}</option>`).join('')}</select>
+        </div>
+        <div class="form-row"><label>Branch Access</label>
+          <div style="display:flex;gap:14px;align-items:center;padding-top:6px">
+            <label style="font-size:12px;font-weight:500;display:flex;align-items:center;gap:4px"><input type="checkbox" id="uf-branch-namayoso" ${(f.branches||[]).includes('NAMAYOSO')?'checked':''}> NAMAYOSO</label>
+            <label style="font-size:12px;font-weight:500;display:flex;align-items:center;gap:4px"><input type="checkbox" id="uf-branch-thg" ${(f.branches||[]).includes('THG')?'checked':''}> THG</label>
+          </div>
+        </div>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;margin:10px 0 12px">
+          <input type="checkbox" id="uf-active" ${f.active!==false?'checked':''}> Active
+        </label>
+        <div class="btn-row">
+          <button class="btn accent" id="save-user">Save User</button>
+          <button class="btn ghost" id="cancel-user">Cancel</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+function roleFormHTML(){
+  const f = state.roleForm;
+  return `
+    <div class="panel" style="border:2px solid var(--accent);margin-bottom:16px;max-width:720px">
+      <div class="panel-head"><h3>${f.id?'Edit Role':'New Role'}</h3></div>
+      <div class="panel-body">
+        <div class="form-row"><label>Role name</label><input type="text" id="rf-name" value="${esc(f.name||'')}" placeholder="e.g. Front of House"></div>
+        <table class="data" style="margin-top:6px">
+          <thead><tr><th>Section</th><th style="text-align:center">No Access</th><th style="text-align:center">View Only</th><th style="text-align:center">Full Access</th></tr></thead>
+          <tbody>
+            ${PERMISSION_SECTIONS.map(s=>`
+              <tr>
+                <td>${esc(s.label)}</td>
+                <td style="text-align:center"><input type="radio" name="perm-${s.key}" value="none" data-perm-key="${s.key}" ${f.permissions[s.key]==='none'?'checked':''}></td>
+                <td style="text-align:center"><input type="radio" name="perm-${s.key}" value="view" data-perm-key="${s.key}" ${f.permissions[s.key]==='view'?'checked':''}></td>
+                <td style="text-align:center"><input type="radio" name="perm-${s.key}" value="edit" data-perm-key="${s.key}" ${f.permissions[s.key]==='edit'?'checked':''}></td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+        <div class="btn-row" style="margin-top:14px">
+          <button class="btn accent" id="save-role">Save Role</button>
+          <button class="btn ghost" id="cancel-role">Cancel</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+function viewPermissions(){
+  const me = currentUser();
+  return `
+    <div class="callout">Users and roles for this system. Each role sets a <b>No Access / View Only / Full Access</b> level per section — pick "Viewing as" in the sidebar to see the app the way that user would see it. Access is enforced at the page level in this build; individual buttons inside a "View Only" page are not yet locked one-by-one.</div>
+    ${state.userForm ? userFormHTML() : ''}
+    ${state.roleForm ? roleFormHTML() : ''}
+    <div class="panel" style="margin-bottom:16px">
+      <div class="panel-head"><h3>Users</h3>${!state.userForm?'<button class="btn accent" id="add-user">+ New User</button>':''}</div>
+      <div class="table-wrap">
+        <table class="data">
+          <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Branches</th><th>Status</th><th></th></tr></thead>
+          <tbody>
+            ${state.users.length ? state.users.map(u=>{
+              const r = state.roles.find(r=>r.id===u.role);
+              return `
+              <tr>
+                <td>${esc(u.name)}${u.id===state.currentUserId?' <span class="tag neutral">viewing as</span>':''}</td>
+                <td>${esc(u.email||'-')}</td>
+                <td>${esc(r?r.name:'No role')}</td>
+                <td>${(u.branches||[]).join(', ')||'-'}</td>
+                <td><span class="tag ${u.active?'good':'neutral'}">${u.active?'Active':'Inactive'}</span></td>
+                <td class="right"><a href="#" data-edit-user="${esc(u.id)}" style="margin-right:8px">edit</a><a href="#" data-delete-user="${esc(u.id)}" style="color:var(--bad)">delete</a></td>
+              </tr>`;
+            }).join('') : `<tr class="empty-row"><td colspan="6">No users yet.</td></tr>`}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h3>Roles</h3>${!state.roleForm?'<button class="btn accent" id="add-role">+ New Role</button>':''}</div>
+      <div class="table-wrap">
+        <table class="data">
+          <thead><tr><th>Role</th><th>Users</th><th></th></tr></thead>
+          <tbody>
+            ${state.roles.map(r=>{
+              const userCount = state.users.filter(u=>u.role===r.id).length;
+              const canDelete = !r.isSystem && userCount===0;
+              return `
+              <tr>
+                <td>${esc(r.name)}${r.isSystem?' <span class="tag neutral">system</span>':''}</td>
+                <td>${userCount}</td>
+                <td class="right"><a href="#" data-edit-role="${esc(r.id)}" style="margin-right:8px">edit</a>${canDelete?`<a href="#" data-delete-role="${esc(r.id)}" style="color:var(--bad)">delete</a>`:''}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
       </div>
     </div>
   `;
