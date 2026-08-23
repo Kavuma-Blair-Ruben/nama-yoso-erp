@@ -238,7 +238,7 @@ table.data tbody tr:hover{background:var(--bg-panel-alt);}
 .login-page{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg-app);}
 .login-card{width:100%;max-width:360px;background:var(--bg-card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:32px 28px;}
 .login-brand{margin-bottom:22px;}
-.login-brand-text{display:flex;flex-direction:column;}
+.login-brand-text{display:flex;flex-direction:column;align-items:center;text-align:center;}
 .login-brand-text b{font-family:var(--display);font-size:22px;font-weight:600;}
 .login-brand-text span{font-size:11px;color:var(--ink-soft);letter-spacing:.1em;text-transform:uppercase;margin-top:2px;}
 .login-form .btn{width:100%;margin-top:6px;padding:10px 16px;}
