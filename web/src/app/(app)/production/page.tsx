@@ -10,18 +10,18 @@ export default async function ProductionPage({ searchParams }: PageProps<"/produ
   const status = typeof sp.status === "string" ? sp.status : undefined;
   const rows = await listProductionBatches({ status });
   const canEdit = hasAccess(session, "subrecipes", "edit");
-  const draftCount = rows.filter((b) => b.status === "DRAFT").length;
+  const openCount = rows.filter((b) => b.status === "OPEN").length;
 
   return (
     <>
       <PageHeader
         title="Production"
         subtitle="Batch-produce stockable sub-recipes — consumes ingredient stock, credits the finished item's stock."
-        action={canEdit ? <Link href="/production/new" className="btn accent">+ New Production Batch</Link> : undefined}
+        action={canEdit ? <Link href="/production/new" className="btn accent">+ New Production Ticket</Link> : undefined}
       />
-      {draftCount > 0 && (
+      {openCount > 0 && (
         <div className="callout" style={{ borderColor: "var(--accent)" }}>
-          {draftCount} batch(es) saved as draft — stock hasn&apos;t been updated for these yet. Open one to post it.
+          {openCount} ticket(s) still open — stock hasn&apos;t been updated for these yet. Open one to close it.
         </div>
       )}
       <div className="panel">
@@ -50,7 +50,7 @@ export default async function ProductionPage({ searchParams }: PageProps<"/produ
                     <td>{b.producedDate}</td>
                     <td className="mono-r">{fmt(b.yieldQty, 2)} {b.yieldUnit ?? ""}</td>
                     <td className="mono-r">{money(b.totalCost, 2)}</td>
-                    <td><span className={`status-badge ${b.status === "DRAFT" ? "status-draft" : "status-received"}`}>{b.status}</span></td>
+                    <td><span className={`status-badge ${b.status === "OPEN" ? "status-draft" : "status-received"}`}>{b.status}</span></td>
                   </tr>
                 ))
               ) : (

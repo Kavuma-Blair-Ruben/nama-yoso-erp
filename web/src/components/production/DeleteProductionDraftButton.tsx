@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { deleteProductionDraft } from "@/server/actions/production";
+import { deleteProductionBatch } from "@/server/actions/production";
 
 export function DeleteProductionDraftButton({ id }: { id: string }) {
   const router = useRouter();
@@ -16,15 +16,15 @@ export function DeleteProductionDraftButton({ id }: { id: string }) {
         className="btn ghost"
         disabled={pending}
         onClick={() => {
-          if (!confirm("Delete this draft production batch? This can't be undone.")) return;
+          if (!confirm("Discard this open production ticket? This can't be undone.")) return;
           startTransition(async () => {
-            const result = await deleteProductionDraft(id);
+            const result = await deleteProductionBatch(id);
             if (result.error) setError(result.error);
             else router.push("/production");
           });
         }}
       >
-        {pending ? "Deleting…" : "🗑 Delete Draft"}
+        {pending ? "Discarding…" : "🗑 Discard Ticket"}
       </button>
     </div>
   );

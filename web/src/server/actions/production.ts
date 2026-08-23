@@ -35,7 +35,7 @@ export type ProductionActionResult = { error?: string; id?: string };
 // into db.transaction() isn't structurally identical to `db` itself.
 type Db = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
-async function insertProductionBatch(tx: Db, input: z.infer<typeof productionInputSchema>, status: "DRAFT" | "POSTED", actorId: string) {
+async function insertProductionBatch(tx: Db, input: z.infer<typeof productionInputSchema>, actorId: string) {
   const [subRecipe] = await tx.select().from(subRecipes).where(eq(subRecipes.id, input.subRecipeId));
   if (!subRecipe) throw new Error("Sub-recipe not found.");
 
@@ -67,10 +67,8 @@ async function insertProductionBatch(tx: Db, input: z.infer<typeof productionInp
       costPerUnit,
       producedDate: input.producedDate,
       expiryDate: input.expiryDate || undefined,
-      status,
+      status: "OPEN",
       notes: input.notes,
-      postedAt: status === "POSTED" ? new Date() : undefined,
-      postedBy: status === "POSTED" ? actorId : undefined,
       createdBy: actorId,
     })
     .returning({ id: productionBatches.id });
@@ -124,38 +122,18 @@ async function applyProductionSideEffects(
   }
 }
 
-export async function postProductionBatch(input: z.infer<typeof productionInputSchema>): Promise<ProductionActionResult> {
+// Opens a new production ticket — mints its batch/lot number, stock is NOT
+// touched yet. Staff keeps this OPEN while actively producing under this
+// lot (e.g. vacuum-sealing many packs), printing as many copies of the
+// batch/lot label as needed, then closes it via closeProductionBatch once done.
+export async function openProductionBatch(input: z.infer<typeof productionInputSchema>): Promise<ProductionActionResult> {
   const session = await assertPermission("subrecipes", "edit");
   const parsed = productionInputSchema.safeParse(input);
   if (!parsed.success) return { error: "Add a valid yield and at least one ingredient line." };
 
   const { batchId } = await db.transaction(async (tx) => {
-    const created = await insertProductionBatch(tx, parsed.data, "POSTED", session.profile.id);
-    await applyProductionSideEffects(tx, created.batchId, parsed.data, created.subRecipe.stockItemId, session.profile.id);
-    await tx.insert(auditLog).values({
-      actorId: session.profile.id,
-      action: "Production Posted",
-      entity: "Production Batch",
-      entityLabel: created.batchNo,
-      detail: `${created.subRecipe.name} — yield ${parsed.data.yieldQty} ${parsed.data.yieldUnit ?? ""}`.trim(),
-    });
-    return created;
-  });
-
-  revalidatePath("/production");
-  revalidatePath("/products");
-  revalidatePath("/dashboard");
-  return { id: batchId };
-}
-
-export async function saveProductionDraft(input: z.infer<typeof productionInputSchema>): Promise<ProductionActionResult> {
-  const session = await assertPermission("subrecipes", "edit");
-  const parsed = productionInputSchema.safeParse(input);
-  if (!parsed.success) return { error: "Add a valid yield and at least one ingredient line." };
-
-  const { batchId } = await db.transaction(async (tx) => {
-    const created = await insertProductionBatch(tx, parsed.data, "DRAFT", session.profile.id);
-    await tx.insert(auditLog).values({ actorId: session.profile.id, action: "Draft Saved", entity: "Production Batch", entityLabel: created.batchNo, detail: "Stock not yet updated" });
+    const created = await insertProductionBatch(tx, parsed.data, session.profile.id);
+    await tx.insert(auditLog).values({ actorId: session.profile.id, action: "Production Opened", entity: "Production Batch", entityLabel: created.batchNo, detail: "Stock not yet updated" });
     return created;
   });
 
@@ -163,12 +141,14 @@ export async function saveProductionDraft(input: z.infer<typeof productionInputS
   return { id: batchId };
 }
 
-export async function postProductionDraft(id: string): Promise<ProductionActionResult> {
+// Finalizes an OPEN production ticket: consumes ingredient stock, credits
+// the finished item's stock, locks the record from further edits.
+export async function closeProductionBatch(id: string): Promise<ProductionActionResult> {
   const session = await assertPermission("subrecipes", "edit");
 
   const result = await db.transaction(async (tx) => {
-    const [batch] = await tx.select().from(productionBatches).where(and(eq(productionBatches.id, id), eq(productionBatches.status, "DRAFT")));
-    if (!batch) return { error: "Production batch not found or already posted." as const };
+    const [batch] = await tx.select().from(productionBatches).where(and(eq(productionBatches.id, id), eq(productionBatches.status, "OPEN")));
+    if (!batch) return { error: "Production batch not found or already closed." as const };
 
     const [subRecipe] = await tx.select().from(subRecipes).where(eq(subRecipes.id, batch.subRecipeId));
     if (!subRecipe) return { error: "Sub-recipe not found." as const };
@@ -184,8 +164,8 @@ export async function postProductionDraft(id: string): Promise<ProductionActionR
       ingredients: ingredientRows.map((r) => ({ stockItemId: r.stockItemId, qty: r.qty, unitLabel: r.unitLabel ?? undefined, rate: r.rateAtProduction ?? undefined })),
     };
     await applyProductionSideEffects(tx, id, input, subRecipe.stockItemId, session.profile.id);
-    await tx.update(productionBatches).set({ status: "POSTED", postedAt: new Date(), postedBy: session.profile.id }).where(eq(productionBatches.id, id));
-    await tx.insert(auditLog).values({ actorId: session.profile.id, action: "Production Posted", entity: "Production Batch", entityLabel: batch.batchNo, detail: "Stock updated" });
+    await tx.update(productionBatches).set({ status: "CLOSED", postedAt: new Date(), postedBy: session.profile.id }).where(eq(productionBatches.id, id));
+    await tx.insert(auditLog).values({ actorId: session.profile.id, action: "Production Closed", entity: "Production Batch", entityLabel: batch.batchNo, detail: "Stock updated" });
     return { id };
   });
   if ("error" in result) return result;
@@ -197,13 +177,13 @@ export async function postProductionDraft(id: string): Promise<ProductionActionR
   return result;
 }
 
-export async function updateProductionDraft(id: string, input: z.infer<typeof productionInputSchema>): Promise<ProductionActionResult> {
+export async function updateProductionBatch(id: string, input: z.infer<typeof productionInputSchema>): Promise<ProductionActionResult> {
   const session = await assertPermission("subrecipes", "edit");
   const parsed = productionInputSchema.safeParse(input);
   if (!parsed.success) return { error: "Add a valid yield and at least one ingredient line." };
 
-  const [existing] = await db.select().from(productionBatches).where(and(eq(productionBatches.id, id), eq(productionBatches.status, "DRAFT")));
-  if (!existing) return { error: "Production batch not found or already posted — it can no longer be edited." };
+  const [existing] = await db.select().from(productionBatches).where(and(eq(productionBatches.id, id), eq(productionBatches.status, "OPEN")));
+  if (!existing) return { error: "Production batch not found or already closed — it can no longer be edited." };
 
   await db.transaction(async (tx) => {
     let totalCost = 0;
@@ -233,14 +213,14 @@ export async function updateProductionDraft(id: string, input: z.infer<typeof pr
       })
       .where(eq(productionBatches.id, id));
 
-    // Draft ingredients haven't affected stock/cost yet, so it's safe to
+    // OPEN ingredients haven't affected stock/cost yet, so it's safe to
     // replace them wholesale rather than diffing — same pattern as GRN drafts.
     await tx.delete(productionBatchIngredients).where(eq(productionBatchIngredients.productionBatchId, id));
     for (const row of ingredientRows) {
       await tx.insert(productionBatchIngredients).values({ productionBatchId: id, ...row });
     }
 
-    await tx.insert(auditLog).values({ actorId: session.profile.id, action: "Draft Edited", entity: "Production Batch", entityLabel: existing.batchNo, detail: `${parsed.data.ingredients.length} ingredient(s)` });
+    await tx.insert(auditLog).values({ actorId: session.profile.id, action: "Production Edited", entity: "Production Batch", entityLabel: existing.batchNo, detail: `${parsed.data.ingredients.length} ingredient(s)` });
   });
 
   revalidatePath(`/production/${id}`);
@@ -248,16 +228,16 @@ export async function updateProductionDraft(id: string, input: z.infer<typeof pr
   return { id };
 }
 
-export async function deleteProductionDraft(id: string): Promise<ProductionActionResult> {
+export async function deleteProductionBatch(id: string): Promise<ProductionActionResult> {
   const session = await assertPermission("subrecipes", "edit");
 
-  const [existing] = await db.select().from(productionBatches).where(and(eq(productionBatches.id, id), eq(productionBatches.status, "DRAFT")));
-  if (!existing) return { error: "Production batch not found or already posted — it can no longer be deleted." };
+  const [existing] = await db.select().from(productionBatches).where(and(eq(productionBatches.id, id), eq(productionBatches.status, "OPEN")));
+  if (!existing) return { error: "Production batch not found or already closed — it can no longer be deleted." };
 
   await db.transaction(async (tx) => {
     await tx.delete(productionBatchIngredients).where(eq(productionBatchIngredients.productionBatchId, id));
     await tx.delete(productionBatches).where(eq(productionBatches.id, id));
-    await tx.insert(auditLog).values({ actorId: session.profile.id, action: "Draft Deleted", entity: "Production Batch", entityLabel: existing.batchNo, detail: "Removed" });
+    await tx.insert(auditLog).values({ actorId: session.profile.id, action: "Production Discarded", entity: "Production Batch", entityLabel: existing.batchNo, detail: "Removed" });
   });
 
   revalidatePath("/production");

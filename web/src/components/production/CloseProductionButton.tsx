@@ -2,9 +2,9 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { postProductionDraft } from "@/server/actions/production";
+import { closeProductionBatch } from "@/server/actions/production";
 
-export function PostProductionDraftButton({ id }: { id: string }) {
+export function CloseProductionButton({ id }: { id: string }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -17,13 +17,13 @@ export function PostProductionDraftButton({ id }: { id: string }) {
         disabled={pending}
         onClick={() =>
           startTransition(async () => {
-            const result = await postProductionDraft(id);
+            const result = await closeProductionBatch(id);
             if (result.error) setError(result.error);
             else router.refresh();
           })
         }
       >
-        {pending ? "Posting…" : "Post & Update Stock"}
+        {pending ? "Closing…" : "Close Production & Update Stock"}
       </button>
     </div>
   );

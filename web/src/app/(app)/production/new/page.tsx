@@ -14,7 +14,7 @@ export default async function NewProductionPage() {
 
   return (
     <>
-      <PageHeader title="New Production Batch" subtitle="Produce a stockable sub-recipe — consumes ingredient stock, credits the finished item's stock." />
+      <PageHeader title="New Production Ticket" subtitle="Opens a production run for a stockable sub-recipe — stock only moves once you close it." />
       {subRecipes.length === 0 ? (
         <div className="callout">
           No stockable sub-recipes are available to produce yet. Mark a sub-recipe as Stockable in Recipe Costing first.

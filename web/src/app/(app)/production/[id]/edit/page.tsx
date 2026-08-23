@@ -19,7 +19,7 @@ export default async function EditProductionDraftPage({ params }: PageProps<"/pr
 
   return (
     <>
-      <PageHeader title={`Edit Draft — ${batch.batchNo}`} subtitle="Stock hasn't been updated yet — safe to adjust." />
+      <PageHeader title={`Edit Ticket — ${batch.batchNo}`} subtitle="Stock hasn't been updated yet — safe to adjust." />
       <ProductionBuilder
         subRecipes={subRecipes}
         branches={branches}

@@ -3,7 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/server/db";
 import { stockMovements, stockBalances } from "@/server/db/schema";
 
-// Same tx-typing pattern used by postGRN/postProductionBatch — the callback
+// Same tx-typing pattern used by postGRN/closeProductionBatch — the callback
 // param drizzle passes into db.transaction() isn't structurally identical to
 // `db` itself (it lacks `$client`).
 type Db = Parameters<Parameters<typeof db.transaction>[0]>[0];

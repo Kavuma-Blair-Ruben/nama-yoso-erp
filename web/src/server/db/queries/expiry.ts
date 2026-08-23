@@ -97,7 +97,7 @@ export async function listExpiringBatches(): Promise<ExpiryRow[]> {
     })
     .from(productionBatches)
     .innerJoin(subRecipes, eq(productionBatches.subRecipeId, subRecipes.id))
-    .where(and(eq(productionBatches.status, "POSTED"), isNotNull(productionBatches.expiryDate)));
+    .where(and(eq(productionBatches.status, "CLOSED"), isNotNull(productionBatches.expiryDate)));
 
   const rows: ExpiryRow[] = [
     ...purchased.map((b): ExpiryRow => {

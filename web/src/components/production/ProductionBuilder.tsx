@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { postProductionBatch, saveProductionDraft, updateProductionDraft } from "@/server/actions/production";
+import { openProductionBatch, updateProductionBatch } from "@/server/actions/production";
 import { fmt, money, todayStr, num } from "@/lib/format";
 import { canonicalUnitLabel } from "@/lib/unitMath";
 
@@ -142,7 +142,7 @@ export function ProductionBuilder({
     };
   }
 
-  function handleSubmit(status: "draft" | "posted") {
+  function handleSubmit() {
     setError(null);
     if (!subRecipeId) {
       setError("Choose a sub-recipe to produce.");
@@ -162,11 +162,7 @@ export function ProductionBuilder({
       return;
     }
     startTransition(async () => {
-      const result = existingBatchId
-        ? await updateProductionDraft(existingBatchId, input)
-        : status === "posted"
-          ? await postProductionBatch(input)
-          : await saveProductionDraft(input);
+      const result = existingBatchId ? await updateProductionBatch(existingBatchId, input) : await openProductionBatch(input);
       if (result.error) setError(result.error);
       else router.push(`/production/${result.id}`);
     });
@@ -175,7 +171,7 @@ export function ProductionBuilder({
   return (
     <div className="panel" style={{ maxWidth: 1000 }}>
       <div className="panel-head">
-        <h3>{existingBatchId ? "Edit Draft Production Batch" : "New Production Batch"}</h3>
+        <h3>{existingBatchId ? "Edit Open Production Ticket" : "New Production Ticket"}</h3>
       </div>
       <div className="panel-body">
         <div className="line-builder-row head" style={{ gridTemplateColumns: "2fr 1fr" }}>
@@ -272,21 +268,16 @@ export function ProductionBuilder({
 
         {error && <div className="login-error">{error}</div>}
         <div className="btn-row">
-          {existingBatchId ? (
-            <button className="btn accent" disabled={pending} onClick={() => handleSubmit("draft")}>
-              {pending ? "Saving…" : "Save Changes"}
-            </button>
-          ) : (
-            <>
-              <button className="btn accent" disabled={pending} onClick={() => handleSubmit("posted")}>
-                {pending ? "Posting…" : "Post & Update Stock"}
-              </button>
-              <button className="btn ghost" disabled={pending} onClick={() => handleSubmit("draft")}>
-                Save as Draft
-              </button>
-            </>
-          )}
+          <button className="btn accent" disabled={pending} onClick={handleSubmit}>
+            {pending ? "Saving…" : existingBatchId ? "Save Changes" : "Open Production"}
+          </button>
         </div>
+        {!existingBatchId && (
+          <div style={{ fontSize: 11, color: "var(--ink-faint)", marginTop: 8 }}>
+            This opens the ticket — stock isn&apos;t touched yet. Print as many batch/lot labels as you need while producing, then close
+            it from the ticket page once done to update stock.
+          </div>
+        )}
       </div>
     </div>
   );

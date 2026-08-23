@@ -730,7 +730,14 @@ export const productionBatches = pgTable(
     expiryDate: date("expiry_date"),
     expiryExtensionCount: integer("expiry_extension_count").notNull().default(0),
     expiryTicketPrintedAt: timestamp("expiry_ticket_printed_at", { withTimezone: true }),
-    status: text("status").notNull().default("DRAFT"),
+    // 'OPEN' — a ticket exists, staff is actively producing under this
+    // lot/batch (e.g. vacuum-sealing many packs), stock not yet moved, can
+    // print as many copies of the batch/lot label as needed. 'CLOSED' — the
+    // run is finished: ingredient stock consumed, finished-item stock
+    // credited, locked from further edits. Renamed from DRAFT/POSTED to
+    // match the real physical workflow (was previously named after the
+    // record's edit-lock state, not what the staff is actually doing).
+    status: text("status").notNull().default("OPEN"),
     notes: text("notes"),
     postedAt: timestamp("posted_at", { withTimezone: true }),
     postedBy: uuid("posted_by").references(() => profiles.id),
@@ -738,7 +745,7 @@ export const productionBatches = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
-    check("production_batches_status_check", sql`${t.status} in ('DRAFT','POSTED')`),
+    check("production_batches_status_check", sql`${t.status} in ('OPEN','CLOSED')`),
     check("production_batches_expiry_extension_count_check", sql`${t.expiryExtensionCount} >= 0 and ${t.expiryExtensionCount} <= 2`),
   ]
 );

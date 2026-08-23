@@ -141,7 +141,7 @@ export async function getProductionBatchDetail(id: string) {
 }
 
 export async function getProductionBatchForEdit(id: string) {
-  const [batch] = await db.select().from(productionBatches).where(and(eq(productionBatches.id, id), eq(productionBatches.status, "DRAFT")));
+  const [batch] = await db.select().from(productionBatches).where(and(eq(productionBatches.id, id), eq(productionBatches.status, "OPEN")));
   if (!batch) return null;
 
   const ingredients = await db

@@ -75,15 +75,35 @@ function ProductionReceipt({ batch }: { batch: Batch }) {
   );
 }
 
+// Copies default to 1 (most batches need just one receipt), but a batch/lot
+// that stays OPEN through an ongoing vacuum-sealing run needs to reprint
+// this same lot's ticket for every pack sealed — same lot/batch number on
+// every copy, since it's still one production run, not a new batch each time.
 export function ProductionLabelSheet({ batch }: { batch: Batch }) {
+  const [copies, setCopies] = useState(1);
+
   return (
     <>
-      <div className="no-print" style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 16 }}>
-        <button className="btn accent" onClick={() => window.print()}>Print Receipt</button>
-        <span style={{ fontSize: 11.5, color: "var(--ink-faint)" }}>Barcode/QR encode the lot number — scan to open its traceability page.</span>
+      <div className="no-print" style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 16, flexWrap: "wrap" }}>
+        <label style={{ fontSize: 12.5, fontWeight: 600 }}>Copies</label>
+        <input
+          type="number"
+          min={1}
+          max={200}
+          value={copies}
+          onChange={(e) => setCopies(Math.max(1, Math.min(200, Number(e.target.value) || 1)))}
+          style={{ width: 80 }}
+        />
+        <button className="btn accent" onClick={() => window.print()}>Print Receipt{copies > 1 ? `s (${copies})` : ""}</button>
+        <span style={{ fontSize: 11.5, color: "var(--ink-faint)" }}>
+          Barcode/QR encode the lot number — scan to open its traceability page. Print more copies anytime while this ticket is still
+          open, e.g. one per vacuum-sealed pack under the same lot.
+        </span>
       </div>
       <div className="receipt-sheet">
-        <ProductionReceipt batch={batch} />
+        {Array.from({ length: copies }).map((_, i) => (
+          <ProductionReceipt key={i} batch={batch} />
+        ))}
       </div>
     </>
   );

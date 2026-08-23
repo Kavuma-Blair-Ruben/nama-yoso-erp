@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { requireSection, hasAccess } from "@/server/auth/permissions";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { getProductionBatchDetail } from "@/server/db/queries/production";
-import { PostProductionDraftButton } from "@/components/production/PostProductionDraftButton";
+import { CloseProductionButton } from "@/components/production/CloseProductionButton";
 import { DeleteProductionDraftButton } from "@/components/production/DeleteProductionDraftButton";
 import { fmt, money } from "@/lib/format";
 
@@ -22,23 +22,24 @@ export default async function ProductionDetailPage({ params }: PageProps<"/produ
         subtitle={`${batch.subRecipeCode} — ${batch.subRecipeName} · ${batch.branchName ?? "-"} · ${batch.producedDate}`}
         action={
           <div style={{ display: "flex", gap: 8 }}>
-            <Link href={`/production/${batch.id}/labels`} className="btn ghost">Print Receipt of Production</Link>
+            <Link href={`/production/${batch.id}/labels`} className="btn ghost">Print Batch/Lot Labels</Link>
             {canEdit && <Link href={`/production/${batch.id}/clone`} className="btn ghost">Repeat</Link>}
-            {canEdit && batch.status === "DRAFT" && <Link href={`/production/${batch.id}/edit`} className="btn accent">Edit Draft</Link>}
+            {canEdit && batch.status === "OPEN" && <Link href={`/production/${batch.id}/edit`} className="btn accent">Edit Ticket</Link>}
           </div>
         }
       />
 
       <div style={{ marginBottom: 14 }}>
-        <span className={`status-badge ${batch.status === "DRAFT" ? "status-draft" : "status-received"}`}>{batch.status}</span>
+        <span className={`status-badge ${batch.status === "OPEN" ? "status-draft" : "status-received"}`}>{batch.status}</span>
       </div>
-      {batch.status === "DRAFT" ? (
+      {batch.status === "OPEN" ? (
         <div className="callout" style={{ borderColor: "var(--accent)" }}>
-          Stock has not been updated yet — post this batch to consume ingredient stock and credit the finished item&apos;s stock.
+          Open — stock has not been updated yet. Print as many batch/lot labels as you need while producing, then close this ticket to
+          consume ingredient stock and credit the finished item&apos;s stock.
         </div>
       ) : (
         <div style={{ fontSize: 11, color: "var(--ink-faint)", marginBottom: 12 }}>
-          Posted batches are locked — ingredient and finished-item stock have already been updated and this record can&apos;t be edited.
+          Closed batches are locked — ingredient and finished-item stock have already been updated and this record can&apos;t be edited.
         </div>
       )}
 
@@ -52,8 +53,8 @@ export default async function ProductionDetailPage({ params }: PageProps<"/produ
           <div className="field-row"><span className="k">Expiry Date</span><span className="v">{batch.expiryDate ?? "Not recorded"}</span></div>
           {batch.storageInstructions && <div className="field-row"><span className="k">Storage</span><span className="v">{batch.storageInstructions}</span></div>}
           {batch.notes && <div className="field-row"><span className="k">Notes</span><span className="v">{batch.notes}</span></div>}
-          {batch.status === "POSTED" && (
-            <div className="field-row"><span className="k">Posted by</span><span className="v">{batch.postedByName ?? "-"} · {batch.postedAt?.toISOString().slice(0, 10)}</span></div>
+          {batch.status === "CLOSED" && (
+            <div className="field-row"><span className="k">Closed by</span><span className="v">{batch.postedByName ?? "-"} · {batch.postedAt?.toISOString().slice(0, 10)}</span></div>
           )}
         </div>
       </div>
@@ -70,9 +71,9 @@ export default async function ProductionDetailPage({ params }: PageProps<"/produ
       <div className="field-row"><span className="k">Total Cost</span><span className="v tabular">{money(batch.totalCost, 2)}</span></div>
       <div className="field-row" style={{ fontSize: 14 }}><span className="k"><b>Cost per {batch.yieldUnit || "unit"}</b></span><span className="v">{money(batch.costPerUnit, 4)}</span></div>
 
-      {canEdit && batch.status === "DRAFT" && (
+      {canEdit && batch.status === "OPEN" && (
         <>
-          <PostProductionDraftButton id={batch.id} />
+          <CloseProductionButton id={batch.id} />
           <DeleteProductionDraftButton id={batch.id} />
         </>
       )}
