@@ -79,6 +79,19 @@ export function canonicalUnitLabel(issueUnit: string | null | undefined): string
   return cat === "volume" ? "L" : "KG";
 }
 
+/**
+ * Converts an already-canonical (KG/L/piece) qty+unit pair — e.g. straight
+ * out of ledgerDisplayUnit — into a grams/millilitres basis for the printed
+ * Cook Book, where a chef reading "40 g" off a card is far more usable than
+ * "0.040 KG". Count-based ingredients (pieces) are left untouched.
+ */
+export function gramsDisplay(qty: number, unit: string): { qty: number; unit: string } {
+  const u = unit.trim().toUpperCase();
+  if (u === "KG") return { qty: qty * 1000, unit: "G" };
+  if (u === "L") return { qty: qty * 1000, unit: "ML" };
+  return { qty, unit };
+}
+
 export function ledgerDisplayUnit(args: {
   isSub: boolean;
   ingredientUnitLabel: string | null | undefined;

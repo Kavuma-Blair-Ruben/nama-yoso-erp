@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { requireSection } from "@/server/auth/permissions";
 import { getRecipeDetail, type RecipeType } from "@/server/db/queries/recipes";
-import { displayYield, ledgerDisplayUnit } from "@/lib/unitMath";
+import { displayYield, ledgerDisplayUnit, gramsDisplay } from "@/lib/unitMath";
 import { fmt, money } from "@/lib/format";
 import { Logo } from "@/components/ui/Logo";
 import { PrintButton } from "@/components/ui/PrintButton";
@@ -54,16 +54,18 @@ export default async function RecipePrintPage({ params }: PageProps<"/recipes/[t
             </tr>
           </thead>
           <tbody>
-            {cur.lines.map((l, i) => (
-              <tr key={i} style={{ borderBottom: "1px solid #e5e5e5" }}>
-                <td style={{ padding: "6px 4px" }}>{l.ing.name}</td>
-                <td style={{ textAlign: "right", padding: "6px 4px" }}>{fmt(l.ing.qty, 3)}</td>
-                <td style={{ padding: "6px 4px" }}>
-                  {ledgerDisplayUnit({ isSub: !!l.result.sub, ingredientUnitLabel: l.ing.unitLabel, productIssueUnit: l.ing.productIssueUnit, subYieldUnit: l.result.sub?.yieldUnit })}
-                </td>
-                <td style={{ textAlign: "right", padding: "6px 4px" }}>{money(l.result.cost, 2)}</td>
-              </tr>
-            ))}
+            {cur.lines.map((l, i) => {
+              const canonicalUnit = ledgerDisplayUnit({ isSub: !!l.result.sub, ingredientUnitLabel: l.ing.unitLabel, productIssueUnit: l.ing.productIssueUnit, subYieldUnit: l.result.sub?.yieldUnit });
+              const display = gramsDisplay(l.ing.qty, canonicalUnit);
+              return (
+                <tr key={i} style={{ borderBottom: "1px solid #e5e5e5" }}>
+                  <td style={{ padding: "6px 4px" }}>{l.ing.name}</td>
+                  <td style={{ textAlign: "right", padding: "6px 4px" }}>{fmt(display.qty, display.unit === "G" || display.unit === "ML" ? 0 : 3)}</td>
+                  <td style={{ padding: "6px 4px" }}>{display.unit}</td>
+                  <td style={{ textAlign: "right", padding: "6px 4px" }}>{money(l.result.cost, 2)}</td>
+                </tr>
+              );
+            })}
           </tbody>
           <tfoot>
             <tr style={{ borderTop: "1.5px solid #111", fontWeight: 700 }}>
