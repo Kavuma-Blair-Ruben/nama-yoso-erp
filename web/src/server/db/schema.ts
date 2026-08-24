@@ -389,6 +389,20 @@ export const mainRecipes = pgTable("main_recipes", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+// Per-branch selling-price override for a main recipe — a branch not listed
+// here just uses mainRecipes.sellingPrice (the default/all-branches price).
+// Only main recipes are sold to customers, so sub-recipes never get one.
+export const recipeBranchPrices = pgTable(
+  "recipe_branch_prices",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    mainRecipeId: uuid("main_recipe_id").notNull().references(() => mainRecipes.id, { onDelete: "cascade" }),
+    branchId: uuid("branch_id").notNull().references(() => branches.id, { onDelete: "cascade" }),
+    sellingPrice: money("selling_price").notNull(),
+  },
+  (t) => [unique("recipe_branch_prices_recipe_branch_unique").on(t.mainRecipeId, t.branchId)]
+);
+
 export const subRecipes = pgTable("sub_recipes", {
   id: uuid("id").primaryKey().defaultRandom(),
   legacyCode: text("legacy_code").notNull().unique(),

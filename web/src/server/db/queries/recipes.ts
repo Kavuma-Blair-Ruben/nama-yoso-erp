@@ -1,6 +1,6 @@
 import "server-only";
 import { db } from "@/server/db";
-import { mainRecipes, subRecipes, recipeIngredients, stockItems } from "@/server/db/schema";
+import { mainRecipes, subRecipes, recipeIngredients, stockItems, recipeBranchPrices, branches } from "@/server/db/schema";
 import { eq, asc, and, ilike, or } from "drizzle-orm";
 import { loadCostingGraph, recipeCurrentCost, recipeOriginalCost, getSubRecipeCost } from "@/server/costing/recipeCost";
 import { normalizeToKgLtr } from "@/lib/unitMath";
@@ -106,7 +106,13 @@ export async function getRecipeDetail(type: RecipeType, code: string) {
       })
       .from(mainRecipes)
       .where(eq(mainRecipes.legacyCode, code));
-    return { recipe: { ...recipe, ...extra }, type, cur, orig, variancePct };
+    const branchPrices = await db
+      .select({ branchId: recipeBranchPrices.branchId, branchCode: branches.code, branchName: branches.name, sellingPrice: recipeBranchPrices.sellingPrice })
+      .from(recipeBranchPrices)
+      .innerJoin(branches, eq(recipeBranchPrices.branchId, branches.id))
+      .where(eq(recipeBranchPrices.mainRecipeId, recipe.id))
+      .orderBy(branches.name);
+    return { recipe: { ...recipe, ...extra }, type, cur, orig, variancePct, branchPrices };
   }
   const recipe = [...graph.subRecipesById.values()].find((r) => r.legacyCode === code);
   if (!recipe) return null;
@@ -124,7 +130,7 @@ export async function getRecipeDetail(type: RecipeType, code: string) {
     })
     .from(subRecipes)
     .where(eq(subRecipes.legacyCode, code));
-  return { recipe: { ...recipe, ...extra }, type, cur, orig, variancePct };
+  return { recipe: { ...recipe, ...extra }, type, cur, orig, variancePct, branchPrices: [] as { branchId: string; branchCode: string; branchName: string; sellingPrice: number }[] };
 }
 
 export async function listIngredientPickerItems() {
@@ -195,7 +201,11 @@ export async function getRecipeForEdit(type: RecipeType, code: string) {
       .from(recipeIngredients)
       .where(eq(recipeIngredients.mainRecipeId, recipe.id))
       .orderBy(asc(recipeIngredients.lineNo));
-    return { recipe, ingredients };
+    const branchPrices = await db
+      .select({ branchId: recipeBranchPrices.branchId, sellingPrice: recipeBranchPrices.sellingPrice })
+      .from(recipeBranchPrices)
+      .where(eq(recipeBranchPrices.mainRecipeId, recipe.id));
+    return { recipe, ingredients, branchPrices };
   }
   const [recipe] = await db.select().from(subRecipes).where(eq(subRecipes.legacyCode, code));
   if (!recipe) return null;
@@ -211,5 +221,5 @@ export async function getRecipeForEdit(type: RecipeType, code: string) {
     .from(recipeIngredients)
     .where(eq(recipeIngredients.subRecipeId, recipe.id))
     .orderBy(asc(recipeIngredients.lineNo));
-  return { recipe, ingredients };
+  return { recipe, ingredients, branchPrices: [] as { branchId: string; sellingPrice: number }[] };
 }

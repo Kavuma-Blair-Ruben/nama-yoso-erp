@@ -13,7 +13,7 @@ export default async function RecipeDetailPage({ params }: PageProps<"/recipes/[
   const type: RecipeType = typeParam === "sub" ? "sub" : "main";
   const data = await getRecipeDetail(type, code);
   if (!data) notFound();
-  const { recipe, cur, orig, variancePct } = data;
+  const { recipe, cur, orig, variancePct, branchPrices } = data;
   const canEdit = hasAccess(session, type === "main" ? "recipes" : "subrecipes", "edit");
   const unreliableYield = "unreliableYield" in cur ? cur.unreliableYield : false;
   const uniqueMissing = [...new Map(cur.missing.map((m) => [m.code + m.name, m])).values()];
@@ -154,6 +154,24 @@ export default async function RecipeDetailPage({ params }: PageProps<"/recipes/[
               <div style={{ fontSize: 11.5, color: "var(--ink-faint)", marginTop: 4 }}>
                 No selling price set yet — <Link href={`/recipes/${type}/${code}/edit`}>add one</Link> to see food cost analysis.
               </div>
+            )}
+            {branchPrices.length > 0 && (
+              <>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-soft)", margin: "10px 0 4px" }}>Selling price by branch</div>
+                {branchPrices.map((bp) => {
+                  const branchFoodCostPct = bp.sellingPrice ? (cur.perUnit / bp.sellingPrice) * 100 : null;
+                  return (
+                    <div className="field-row" key={bp.branchId}>
+                      <span className="k">{bp.branchName}</span>
+                      <span className="v tabular">
+                        {money(bp.sellingPrice, 2)}
+                        {branchFoodCostPct != null && <span style={{ color: "var(--ink-faint)", marginLeft: 6, fontSize: 11 }}>({fmt(branchFoodCostPct, 1)}% food cost)</span>}
+                      </span>
+                    </div>
+                  );
+                })}
+                <div style={{ fontSize: 11, color: "var(--ink-faint)", marginTop: 2 }}>Every other branch charges the default price above.</div>
+              </>
             )}
           </div>
         </div>

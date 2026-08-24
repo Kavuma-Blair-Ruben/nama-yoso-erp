@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { eq, inArray } from "drizzle-orm";
 import { db } from "@/server/db";
-import { mainRecipes, subRecipes, recipeIngredients, stockItems, auditLog } from "@/server/db/schema";
+import { mainRecipes, subRecipes, recipeIngredients, stockItems, auditLog, recipeBranchPrices } from "@/server/db/schema";
 import { assertPermission } from "@/server/auth/permissions";
 import { nextRecipeCode, nextProductCode } from "@/server/db/sequences";
 import { uploadPhoto } from "@/lib/supabaseAdmin";
@@ -29,6 +29,9 @@ export type RecipeInput = {
   shelfLifeDays?: number | null;
   storageInstructions?: string | null;
   branches: string[];
+  // Main recipe only — per-branch selling-price overrides; a branch not
+  // listed here falls back to sellingPrice.
+  branchPrices?: { branchId: string; sellingPrice: number }[];
   lines: RecipeLineInput[];
 };
 
@@ -105,6 +108,9 @@ export async function createRecipe(input: RecipeInput): Promise<RecipeActionResu
         })
         .returning({ id: mainRecipes.id });
       recipeId = created.id;
+      if (input.branchPrices?.length) {
+        await tx.insert(recipeBranchPrices).values(input.branchPrices.map((bp) => ({ mainRecipeId: recipeId, branchId: bp.branchId, sellingPrice: bp.sellingPrice })));
+      }
     } else {
       // A sub-recipe is the "recipe view" of a produced stock item — it shares
       // the same code as its underlying stock_items row (mirrors the original
@@ -180,6 +186,10 @@ export async function updateRecipe(code: string, input: RecipeInput): Promise<Re
         })
         .where(eq(mainRecipes.id, existing.id));
       await tx.delete(recipeIngredients).where(eq(recipeIngredients.mainRecipeId, existing.id));
+      await tx.delete(recipeBranchPrices).where(eq(recipeBranchPrices.mainRecipeId, existing.id));
+      if (input.branchPrices?.length) {
+        await tx.insert(recipeBranchPrices).values(input.branchPrices.map((bp) => ({ mainRecipeId: existing.id, branchId: bp.branchId, sellingPrice: bp.sellingPrice })));
+      }
     } else {
       await tx
         .update(subRecipes)

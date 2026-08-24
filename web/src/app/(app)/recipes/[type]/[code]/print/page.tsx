@@ -12,7 +12,7 @@ export default async function RecipePrintPage({ params }: PageProps<"/recipes/[t
   const type: RecipeType = typeParam === "sub" ? "sub" : "main";
   const data = await getRecipeDetail(type, code);
   if (!data) notFound();
-  const { recipe, cur } = data;
+  const { recipe, cur, branchPrices } = data;
   const dy = displayYield(recipe.yieldQty, recipe.yieldUnit);
   const cookBookText = "cookBookText" in recipe ? recipe.cookBookText : null;
   const photoUrl = "photoUrl" in recipe ? recipe.photoUrl : null;
@@ -72,10 +72,16 @@ export default async function RecipePrintPage({ params }: PageProps<"/recipes/[t
             </tr>
             {sellingPrice != null && (
               <tr>
-                <td style={{ padding: "6px 4px" }} colSpan={3}>Selling Price</td>
+                <td style={{ padding: "6px 4px" }} colSpan={3}>Selling Price{branchPrices.length > 0 ? " (Default)" : ""}</td>
                 <td style={{ textAlign: "right", padding: "6px 4px" }}>{money(sellingPrice, 2)}</td>
               </tr>
             )}
+            {branchPrices.map((bp) => (
+              <tr key={bp.branchId}>
+                <td style={{ padding: "6px 4px" }} colSpan={3}>Selling Price — {bp.branchName}</td>
+                <td style={{ textAlign: "right", padding: "6px 4px" }}>{money(bp.sellingPrice, 2)}</td>
+              </tr>
+            ))}
           </tfoot>
         </table>
 

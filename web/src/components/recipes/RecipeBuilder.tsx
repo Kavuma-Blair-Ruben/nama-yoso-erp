@@ -34,15 +34,19 @@ function qtyToBuy(l: Line): number {
   return qtyNeeded / (1 - loss);
 }
 
+type BranchOption = { id: string; code: string; name: string };
+
 export function RecipeBuilder({
   type,
   code,
   items,
+  branchOptions,
   initial,
 }: {
   type: RecipeType;
   code?: string; // present in edit mode
   items: PickerItem[];
+  branchOptions: BranchOption[];
   initial?: {
     name: string;
     section: string;
@@ -56,6 +60,7 @@ export function RecipeBuilder({
     shelfLifeDays: number | null;
     storageInstructions: string | null;
     branches: string[];
+    branchPrices: { branchId: string; sellingPrice: number }[];
     lines: { stockItemId: string | null; ingredientMainRecipeId: string | null; unitLabel: string; qty: number; wastagePct: number }[];
   };
 }) {
@@ -75,6 +80,11 @@ export function RecipeBuilder({
   function toggleBranch(b: string) {
     setBranches((bs) => (bs.includes(b) ? bs.filter((x) => x !== b) : [...bs, b]));
   }
+  // Per-branch selling-price override, main recipes only — a branch left
+  // blank here just uses the default sellingPrice above.
+  const [branchPrices, setBranchPrices] = useState<Record<string, string>>(
+    Object.fromEntries((initial?.branchPrices ?? []).map((bp) => [bp.branchId, String(bp.sellingPrice)]))
+  );
   // The server stores Qty to Buy (wastage-inflated); back out Qty Needed from
   // the stored wastagePct so re-editing shows the same numbers that were
   // originally typed in, not the inflated total.
@@ -163,6 +173,12 @@ export function RecipeBuilder({
       shelfLifeDays: type === "sub" && stockable && shelfLifeDays ? Number(shelfLifeDays) : null,
       storageInstructions: type === "sub" && stockable ? storageInstructions.trim() || null : null,
       branches,
+      branchPrices:
+        type === "main"
+          ? Object.entries(branchPrices)
+              .filter(([, v]) => v.trim() !== "")
+              .map(([branchId, v]) => ({ branchId, sellingPrice: Number(v) }))
+          : undefined,
       lines: lines.map((l) => ({ stockItemId: l.stockItemId, ingredientMainRecipeId: l.ingredientMainRecipeId, unitLabel: l.unitLabel, qty: qtyToBuy(l), wastagePct: num(l.wastagePct) })),
     };
 
@@ -199,14 +215,13 @@ export function RecipeBuilder({
 
         <div className="section-title">Branches</div>
         <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 4 }}>
-          <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12.5, fontWeight: 500 }}>
-            <input type="checkbox" checked={branches.includes("NAMAYOSO")} onChange={() => toggleBranch("NAMAYOSO")} /> NAMAYOSO
-          </label>
-          <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12.5, fontWeight: 500 }}>
-            <input type="checkbox" checked={branches.includes("THG")} onChange={() => toggleBranch("THG")} /> THG
-          </label>
+          {branchOptions.map((b) => (
+            <label key={b.id} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12.5, fontWeight: 500 }}>
+              <input type="checkbox" checked={branches.includes(b.code)} onChange={() => toggleBranch(b.code)} /> {b.name}
+            </label>
+          ))}
         </div>
-        <div style={{ fontSize: 11, color: "var(--ink-faint)", marginBottom: 16 }}>Leave both unchecked to make this recipe available to all branches.</div>
+        <div style={{ fontSize: 11, color: "var(--ink-faint)", marginBottom: 16 }}>Leave all unchecked to make this recipe available to every branch.</div>
 
         {type === "sub" && (
           <>
@@ -280,7 +295,7 @@ export function RecipeBuilder({
           <>
             <div className="section-title" style={{ marginTop: 16 }}>Pricing &amp; Food Cost</div>
             <div className="line-builder-row head" style={{ gridTemplateColumns: "1fr 1fr" }}>
-              <div>Selling price</div>
+              <div>Default selling price</div>
               <div>Target food cost %</div>
             </div>
             <div className="line-builder-row" style={{ gridTemplateColumns: "1fr 1fr", marginBottom: 6 }}>
@@ -296,6 +311,32 @@ export function RecipeBuilder({
                   </span>
                 )}
               </div>
+            )}
+
+            {branchOptions.length > 0 && (
+              <>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-soft)", margin: "4px 0 6px" }}>Selling price by branch</div>
+                <div className="callout" style={{ fontSize: 11.5, marginBottom: 8 }}>
+                  Leave a branch blank to charge the default price above there — only fill one in if this branch actually
+                  sells this dish for a different price.
+                </div>
+                <div className="line-builder-row head" style={{ gridTemplateColumns: "1fr 1fr" }}>
+                  <div>Branch</div>
+                  <div>Selling price override</div>
+                </div>
+                {branchOptions.map((b) => (
+                  <div key={b.id} className="line-builder-row" style={{ gridTemplateColumns: "1fr 1fr", marginBottom: 4 }}>
+                    <div style={{ alignSelf: "center", fontSize: 13 }}>{b.name}</div>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={branchPrices[b.id] ?? ""}
+                      onChange={(e) => setBranchPrices((bp) => ({ ...bp, [b.id]: e.target.value }))}
+                      placeholder={sellingPrice ? `Same as default (${sellingPrice})` : "Same as default"}
+                    />
+                  </div>
+                ))}
+              </>
             )}
           </>
         )}

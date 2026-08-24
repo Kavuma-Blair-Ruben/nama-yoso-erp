@@ -3,15 +3,16 @@ import { requireSection } from "@/server/auth/permissions";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { RecipeBuilder } from "@/components/recipes/RecipeBuilder";
 import { getRecipeForEdit, listRecipeIngredientPickerItems, type RecipeType } from "@/server/db/queries/recipes";
+import { listActiveBranches } from "@/server/db/queries/branches";
 
 export default async function EditRecipePage({ params }: PageProps<"/recipes/[type]/[code]/edit">) {
   const { type: typeParam, code } = await params;
   const type: RecipeType = typeParam === "sub" ? "sub" : "main";
   await requireSection(type === "main" ? "recipes" : "subrecipes", "edit");
 
-  const [data, items] = await Promise.all([getRecipeForEdit(type, code), listRecipeIngredientPickerItems(type, code)]);
+  const [data, items, branchOptions] = await Promise.all([getRecipeForEdit(type, code), listRecipeIngredientPickerItems(type, code), listActiveBranches()]);
   if (!data) notFound();
-  const { recipe, ingredients } = data;
+  const { recipe, ingredients, branchPrices } = data;
 
   return (
     <>
@@ -20,6 +21,7 @@ export default async function EditRecipePage({ params }: PageProps<"/recipes/[ty
         type={type}
         code={code}
         items={items}
+        branchOptions={branchOptions}
         initial={{
           name: recipe.name,
           section: recipe.section ?? "",
@@ -33,6 +35,7 @@ export default async function EditRecipePage({ params }: PageProps<"/recipes/[ty
           shelfLifeDays: "shelfLifeDays" in recipe ? recipe.shelfLifeDays : null,
           storageInstructions: "storageInstructions" in recipe ? recipe.storageInstructions : null,
           branches: recipe.branches,
+          branchPrices,
           lines: ingredients.map((i) => ({ stockItemId: i.stockItemId, ingredientMainRecipeId: i.ingredientMainRecipeId, unitLabel: i.unitLabel ?? "", qty: i.qty, wastagePct: i.wastagePct })),
         }}
       />
