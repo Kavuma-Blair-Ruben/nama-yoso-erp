@@ -14,6 +14,10 @@ import {
   mainRecipes,
   subRecipes,
   recipeIngredients,
+  costCenters,
+  branches,
+  wastageEvents,
+  wastageLines,
 } from "@/server/db/schema";
 import { and, eq, isNotNull, ne, sql } from "drizzle-orm";
 import { loadCostingGraph, recipeCurrentCost, getSubRecipeCost } from "@/server/costing/recipeCost";
@@ -192,6 +196,56 @@ export async function getSectionStats() {
     items: [...s.items.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10),
     byDate: [...s.byDate.entries()],
   }));
+}
+
+// Live spend and wastage per sector (Kitchen/Bar/...), sourced from the real
+// GRN/wastage tables now that they carry a cost_center_id — deliberately kept
+// separate from getSectionStats() above, which is built entirely from frozen
+// historical import data and a different, unrelated "section" field. This is
+// the report that answers "Kitchen's food cost vs Bar's beverage cost", live.
+export async function getCostCenterStats() {
+  const allCenters = await db
+    .select({ id: costCenters.id, name: costCenters.name, branchId: costCenters.branchId, branchName: branches.name })
+    .from(costCenters)
+    .innerJoin(branches, eq(costCenters.branchId, branches.id))
+    .orderBy(branches.name, costCenters.name);
+
+  const grnRows = await db
+    .select({ costCenterId: grns.costCenterId, amount: grnLines.lineAmount, taxRate: grnLines.taxRate })
+    .from(grnLines)
+    .innerJoin(grns, eq(grnLines.grnId, grns.id))
+    .where(eq(grns.status, "POSTED"));
+
+  const wastageRows = await db
+    .select({ costCenterId: wastageEvents.costCenterId, amount: wastageLines.amountAtWaste })
+    .from(wastageLines)
+    .innerJoin(wastageEvents, eq(wastageLines.wastageEventId, wastageEvents.id))
+    .where(eq(wastageEvents.status, "POSTED"));
+
+  const grnSpendById = new Map<string, number>();
+  for (const r of grnRows) {
+    if (!r.costCenterId) continue;
+    const taxed = r.amount * (1 + r.taxRate / 100);
+    grnSpendById.set(r.costCenterId, (grnSpendById.get(r.costCenterId) ?? 0) + taxed);
+  }
+  const wastageCostById = new Map<string, number>();
+  for (const r of wastageRows) {
+    if (!r.costCenterId) continue;
+    wastageCostById.set(r.costCenterId, (wastageCostById.get(r.costCenterId) ?? 0) + (r.amount ?? 0));
+  }
+
+  return allCenters.map((c) => {
+    const grnSpend = grnSpendById.get(c.id) ?? 0;
+    const wastageCost = wastageCostById.get(c.id) ?? 0;
+    return {
+      id: c.id,
+      name: c.name,
+      branchName: c.branchName,
+      grnSpend,
+      wastageCost,
+      wastagePct: grnSpend > 0 ? (wastageCost / grnSpend) * 100 : 0,
+    };
+  });
 }
 
 function weekStart(dateStr: string): string {

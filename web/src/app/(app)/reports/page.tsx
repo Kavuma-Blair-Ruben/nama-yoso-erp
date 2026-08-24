@@ -6,6 +6,7 @@ import {
   listPriceChangeEvents,
   listCostAdjustmentEvents,
   getSectionStats,
+  getCostCenterStats,
   getPurchasingStats,
   getStockPageRows,
 } from "@/server/db/queries/reports";
@@ -22,7 +23,7 @@ import { MenuEngineeringScatter } from "@/components/charts/MenuEngineeringScatt
 import { PosIntegrationPanel } from "@/components/reports/PosIntegrationPanel";
 import { RecipeSalesImport } from "@/components/reports/RecipeSalesImport";
 
-type Tab = "purchasing" | "suppliers" | "cost" | "sales" | "menuengineering" | "slowmoving" | "pricechange" | "costadjustments" | "sections" | "stock";
+type Tab = "purchasing" | "suppliers" | "cost" | "sales" | "menuengineering" | "slowmoving" | "pricechange" | "costadjustments" | "sections" | "costcenter" | "stock";
 const TABS: { id: Tab; label: string }[] = [
   { id: "purchasing", label: "Purchasing Dashboard" },
   { id: "suppliers", label: "Supplier Dashboard" },
@@ -34,6 +35,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "pricechange", label: "Item Price Change" },
   { id: "costadjustments", label: "Cost Adjustments" },
   { id: "sections", label: "Cost by Brand & Section" },
+  { id: "costcenter", label: "Cost by Sector (Live)" },
 ];
 
 export default async function ReportsPage({ searchParams }: PageProps<"/reports">) {
@@ -62,6 +64,7 @@ export default async function ReportsPage({ searchParams }: PageProps<"/reports"
       {tab === "pricechange" && <PriceChangeTab />}
       {tab === "costadjustments" && <CostAdjustmentsTab q={typeof sp.q === "string" ? sp.q : undefined} />}
       {tab === "sections" && <SectionsTab sector={typeof sp.sector === "string" ? sp.sector : undefined} />}
+      {tab === "costcenter" && <CostCenterTab />}
     </>
   );
 }
@@ -587,6 +590,51 @@ async function SectionsTab({ sector }: { sector?: string }) {
           </div>
         </>
       )}
+    </>
+  );
+}
+
+async function CostCenterTab() {
+  const rows = await getCostCenterStats();
+  const totalGrnSpend = rows.reduce((s, r) => s + r.grnSpend, 0);
+  const totalWastage = rows.reduce((s, r) => s + r.wastageCost, 0);
+  const byBranch = new Map<string, typeof rows>();
+  for (const r of rows) byBranch.set(r.branchName, [...(byBranch.get(r.branchName) ?? []), r]);
+
+  return (
+    <>
+      <div className="callout">
+        <b>What this shows:</b> real GRN receipts and wastage posted against each branch&apos;s sectors — a Kitchen sector&apos;s
+        spend reads as your food cost, a Bar sector&apos;s as your beverage cost. Unlike &quot;Cost by Brand &amp; Section&quot;,
+        this is live and grows as you post GRNs/wastage with a sector selected, not a snapshot of historical import data.
+      </div>
+      <div className="kpi-grid">
+        <div className="kpi"><div className="n">{money(totalGrnSpend, 0)}</div><div className="l">Total Received (all sectors)</div></div>
+        <div className="kpi"><div className="n" style={{ color: totalWastage > 0 ? "var(--bad)" : "inherit" }}>{money(totalWastage, 0)}</div><div className="l">Total Wastage (all sectors)</div></div>
+        <div className="kpi"><div className="n">{totalGrnSpend ? fmt((totalWastage / totalGrnSpend) * 100, 1) : "0.0"}%</div><div className="l">Wastage as % of Spend</div></div>
+      </div>
+      {[...byBranch.entries()].map(([branchName, sectors]) => (
+        <div className="panel" key={branchName} style={{ marginBottom: 16 }}>
+          <div className="panel-head"><h3>{branchName}</h3></div>
+          <div className="table-wrap">
+            <table className="data">
+              <thead><tr><th>Sector</th><th className="right">Received (GRN)</th><th className="right">Wastage</th><th className="right">Wastage %</th></tr></thead>
+              <tbody>
+                {sectors.map((s) => (
+                  <tr key={s.id}>
+                    <td>{s.name}</td>
+                    <td className="mono-r">{money(s.grnSpend, 2)}</td>
+                    <td className="mono-r" style={{ color: s.wastageCost > 0 ? "var(--bad)" : "inherit" }}>{money(s.wastageCost, 2)}</td>
+                    <td className="right">
+                      {s.grnSpend > 0 ? <span className={`tag ${s.wastagePct > 5 ? "bad" : "good"}`}>{fmt(s.wastagePct, 1)}%</span> : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ))}
     </>
   );
 }
