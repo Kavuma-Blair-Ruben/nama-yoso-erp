@@ -1,0 +1,1 @@
+ALTER TABLE "production_batches" ADD COLUMN "staff_name" text;

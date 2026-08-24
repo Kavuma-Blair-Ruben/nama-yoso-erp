@@ -35,6 +35,7 @@ export default async function ProductionDetailPage({ params }: PageProps<"/produ
             expiryDate: batch.expiryDate,
             storageInstructions: batch.storageInstructions,
             branchName: batch.branchName,
+            staffName: batch.staffName,
           }}
           alreadyPrinted={!!batch.openTicketPrintedAt}
         />
@@ -74,6 +75,7 @@ export default async function ProductionDetailPage({ params }: PageProps<"/produ
           <div className="field-row"><span className="k">Scale multiplier</span><span className="v tabular">×{fmt(batch.scaleMultiplier, 2)}</span></div>
           <div className="field-row"><span className="k">Yield</span><span className="v tabular">{fmt(batch.yieldQty, 2)} {batch.yieldUnit ?? ""}</span></div>
           <div className="field-row"><span className="k">Expiry Date</span><span className="v">{batch.expiryDate ?? "Not recorded"}</span></div>
+          <div className="field-row"><span className="k">Staff</span><span className="v">{batch.staffName || "Not recorded"}</span></div>
           {batch.storageInstructions && <div className="field-row"><span className="k">Storage</span><span className="v">{batch.storageInstructions}</span></div>}
           {batch.notes && <div className="field-row"><span className="k">Notes</span><span className="v">{batch.notes}</span></div>}
           {batch.status === "CLOSED" && (

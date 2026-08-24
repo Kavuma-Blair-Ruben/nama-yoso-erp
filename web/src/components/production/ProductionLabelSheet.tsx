@@ -18,6 +18,7 @@ export type Batch = {
   expiryDate: string | null;
   storageInstructions: string | null;
   branchName: string | null;
+  staffName?: string | null;
 };
 
 // Matches index.html's "Receipt of Production" ticket format from its old
@@ -68,6 +69,7 @@ export function ProductionReceipt({ batch }: { batch: Batch }) {
       <div style={{ height: 6 }} />
       <div className="lrow"><span>LOT #</span><span>{batch.lotNo || "-"}</span></div>
       <div className="lrow"><span>EXPIRATION DATE</span><span>{batch.expiryDate || "-"}</span></div>
+      <div className="lrow"><span>STAFF</span><span>{batch.staffName || "-"}</span></div>
       <div style={{ height: 6 }} />
       <div className="lrow"><span>STORAGE</span><span>{batch.storageInstructions || "-"}</span></div>
       <div className="rfoot">MADE IN {(batch.branchName || "NAMAYOSO").toUpperCase()}</div>

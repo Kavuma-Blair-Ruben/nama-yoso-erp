@@ -51,6 +51,7 @@ export function ProductionBuilder({
   initialProducedDate,
   initialExpiryDate,
   initialNotes,
+  initialStaffName,
   initialIngredients,
 }: {
   subRecipes: SubRecipeOption[];
@@ -65,6 +66,7 @@ export function ProductionBuilder({
   initialProducedDate?: string;
   initialExpiryDate?: string;
   initialNotes?: string;
+  initialStaffName?: string;
   initialIngredients?: IngredientLine[];
 }) {
   const router = useRouter();
@@ -75,6 +77,7 @@ export function ProductionBuilder({
   const [expiryDate, setExpiryDate] = useState(initialExpiryDate ?? "");
   const [expiryTouched, setExpiryTouched] = useState(!!existingBatchId);
   const [notes, setNotes] = useState(initialNotes ?? "");
+  const [staffName, setStaffName] = useState(initialStaffName ?? "");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -138,6 +141,7 @@ export function ProductionBuilder({
       producedDate,
       expiryDate: expiryDate || undefined,
       notes: notes || undefined,
+      staffName: staffName || undefined,
       ingredients: scaledLines.map((l) => ({ stockItemId: l.stockItemId, qty: num(l.qty), unitLabel: l.unitLabel || undefined, rate: num(l.rate) })),
     };
   }
@@ -191,12 +195,13 @@ export function ProductionBuilder({
           </select>
         </div>
 
-        <div className="line-builder-row head" style={{ gridTemplateColumns: "1fr 1fr 1fr" }}>
+        <div className="line-builder-row head" style={{ gridTemplateColumns: "1fr 1fr 1fr 1fr" }}>
           <div>Scale multiplier</div>
           <div>Produced date</div>
           <div>Expiry date</div>
+          <div>Staff</div>
         </div>
-        <div className="line-builder-row" style={{ gridTemplateColumns: "1fr 1fr 1fr", marginBottom: 10 }}>
+        <div className="line-builder-row" style={{ gridTemplateColumns: "1fr 1fr 1fr 1fr", marginBottom: 10 }}>
           <input
             type="text"
             inputMode="decimal"
@@ -206,6 +211,7 @@ export function ProductionBuilder({
           />
           <input type="date" value={producedDate} onChange={(e) => setProducedDate(e.target.value)} />
           <input type="date" value={expiryDate} onChange={(e) => { setExpiryDate(e.target.value); setExpiryTouched(true); }} />
+          <input type="text" value={staffName} placeholder="Staff name" onChange={(e) => setStaffName(e.target.value)} />
         </div>
         <div style={{ fontSize: 11, color: "var(--ink-faint)", marginTop: -6, marginBottom: 10 }}>
           Ingredient quantities scale automatically with the multiplier. Edit a line below to fine-tune it directly (this stops it from

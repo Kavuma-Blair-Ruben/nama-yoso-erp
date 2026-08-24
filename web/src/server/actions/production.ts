@@ -26,6 +26,7 @@ const productionInputSchema = z.object({
   producedDate: z.string().min(1),
   expiryDate: z.string().optional(),
   notes: z.string().optional(),
+  staffName: z.string().optional(),
   ingredients: z.array(ingredientSchema).min(1),
 });
 
@@ -70,6 +71,7 @@ async function insertProductionBatch(tx: Db, input: z.infer<typeof productionInp
       expiryDate: input.expiryDate || undefined,
       status: "OPEN",
       notes: input.notes,
+      staffName: input.staffName || undefined,
       createdBy: actorId,
     })
     .returning({ id: productionBatches.id });
@@ -249,6 +251,7 @@ export async function updateProductionBatch(id: string, input: z.infer<typeof pr
         producedDate: parsed.data.producedDate,
         expiryDate: parsed.data.expiryDate || undefined,
         notes: parsed.data.notes,
+        staffName: parsed.data.staffName || undefined,
       })
       .where(eq(productionBatches.id, id));
 

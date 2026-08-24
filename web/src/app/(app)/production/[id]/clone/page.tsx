@@ -27,6 +27,7 @@ export default async function CloneProductionPage({ params }: PageProps<"/produc
         initialBranchId={batch.branchId}
         initialScaleMultiplier={batch.scaleMultiplier}
         initialNotes={batch.notes ?? undefined}
+        initialStaffName={batch.staffName ?? undefined}
       />
     </>
   );

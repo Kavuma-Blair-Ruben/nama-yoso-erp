@@ -28,6 +28,7 @@ export default async function ProductionLabelsPage({ params }: PageProps<"/produ
           expiryDate: batch.expiryDate,
           storageInstructions: batch.storageInstructions,
           branchName: batch.branchName,
+          staffName: batch.staffName,
         }}
       />
     </>

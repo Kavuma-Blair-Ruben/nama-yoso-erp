@@ -726,6 +726,10 @@ export const productionBatches = pgTable(
     yieldUnit: text("yield_unit"),
     totalCost: money("total_cost").notNull(),
     costPerUnit: money("cost_per_unit"),
+    // The kitchen staff who physically did the production — free text, not
+    // a profiles.id FK, since not every cook has an app login (same
+    // convention as index.html's wastage/transfer/stock-count staff fields).
+    staffName: text("staff_name"),
     producedDate: date("produced_date").notNull(),
     expiryDate: date("expiry_date"),
     expiryExtensionCount: integer("expiry_extension_count").notNull().default(0),

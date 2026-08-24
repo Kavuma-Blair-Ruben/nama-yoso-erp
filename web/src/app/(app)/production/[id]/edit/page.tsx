@@ -33,6 +33,7 @@ export default async function EditProductionDraftPage({ params }: PageProps<"/pr
         initialProducedDate={batch.producedDate}
         initialExpiryDate={batch.expiryDate ?? undefined}
         initialNotes={batch.notes ?? undefined}
+        initialStaffName={batch.staffName ?? undefined}
         initialIngredients={ingredients.map((i) => ({
           stockItemId: i.stockItemId,
           name: `${i.legacyCode} — ${i.name}`,

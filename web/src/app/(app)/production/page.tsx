@@ -34,6 +34,7 @@ export default async function ProductionPage({ searchParams }: PageProps<"/produ
                 <th>Batch No.</th>
                 <th>Sub-Recipe</th>
                 <th>Branch</th>
+                <th>Staff</th>
                 <th>Produced Date</th>
                 <th className="right">Yield</th>
                 <th className="right">Total Cost</th>
@@ -50,6 +51,7 @@ export default async function ProductionPage({ searchParams }: PageProps<"/produ
                     </td>
                     <td>{b.subRecipeCode} — {b.subRecipeName}</td>
                     <td>{b.branchName ?? "-"}</td>
+                    <td>{b.staffName || "-"}</td>
                     <td>{b.producedDate}</td>
                     <td className="mono-r">{fmt(b.yieldQty, 2)} {b.yieldUnit ?? ""}</td>
                     <td className="mono-r">{money(b.totalCost, 2)}</td>
@@ -60,7 +62,7 @@ export default async function ProductionPage({ searchParams }: PageProps<"/produ
                   </tr>
                 ))
               ) : (
-                <tr className="empty-row"><td colSpan={8}>No production batches yet.</td></tr>
+                <tr className="empty-row"><td colSpan={9}>No production batches yet.</td></tr>
               )}
             </tbody>
           </table>
