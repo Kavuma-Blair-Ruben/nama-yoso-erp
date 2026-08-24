@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { eq, and } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/server/db";
-import { wastageEvents, wastageLines, stockItems, auditLog } from "@/server/db/schema";
+import { wastageEvents, wastageLines, stockItems, auditLog, costCenters } from "@/server/db/schema";
 import { assertPermission } from "@/server/auth/permissions";
 import { nextWastageNo } from "@/server/db/sequences";
 import { recordStockMovement } from "@/server/db/stockLedger";
@@ -23,7 +23,7 @@ const lineSchema = z.object({
 
 const wastageInputSchema = z.object({
   eventDate: z.string().min(1),
-  costCenter: z.string().min(1),
+  costCenterId: z.string().min(1),
   branchId: z.string().min(1),
   staffName: z.string().optional(),
   lines: z.array(lineSchema).min(1),
@@ -35,6 +35,8 @@ type Db = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 async function insertWastageEvent(tx: Db, input: z.infer<typeof wastageInputSchema>, status: "DRAFT" | "POSTED", actorId: string) {
   const wastageNo = await nextWastageNo();
+
+  const [costCenter] = await tx.select({ name: costCenters.name }).from(costCenters).where(eq(costCenters.id, input.costCenterId));
 
   let totalCost = 0;
   const lineRows: { stockItemId: string; qty: number; unitLabel?: string; reason: string; notes?: string; rateAtWaste?: number; amountAtWaste?: number; photoUrl?: string }[] = [];
@@ -51,7 +53,8 @@ async function insertWastageEvent(tx: Db, input: z.infer<typeof wastageInputSche
     .values({
       wastageNo,
       eventDate: input.eventDate,
-      costCenter: input.costCenter,
+      costCenter: costCenter?.name ?? "",
+      costCenterId: input.costCenterId,
       branchId: input.branchId,
       staffName: input.staffName,
       totalCost,
@@ -75,6 +78,7 @@ async function applyWastageSideEffects(tx: Db, eventId: string, input: z.infer<t
     await recordStockMovement(tx, {
       stockItemId: l.stockItemId,
       branchId: input.branchId,
+      costCenterId: input.costCenterId,
       qtyDelta: -l.qty,
       unitLabel: l.unitLabel,
       movementType: "WASTAGE",
@@ -99,7 +103,7 @@ export async function postWastageEvent(input: z.infer<typeof wastageInputSchema>
       action: "Wastage Logged",
       entity: "Wastage Event",
       entityLabel: created.wastageNo,
-      detail: `${parsed.data.costCenter} — ${parsed.data.lines.length} item(s)`,
+      detail: `${parsed.data.lines.length} item(s)`,
     });
     return created;
   });
@@ -131,11 +135,12 @@ export async function postWastageDraft(id: string): Promise<WastageActionResult>
   const result = await db.transaction(async (tx) => {
     const [event] = await tx.select().from(wastageEvents).where(and(eq(wastageEvents.id, id), eq(wastageEvents.status, "DRAFT")));
     if (!event) return { error: "Wastage event not found or already posted." as const };
+    if (!event.costCenterId) return { error: "This draft has no sector set — edit it and pick one before posting." as const };
 
     const lines = await tx.select().from(wastageLines).where(eq(wastageLines.wastageEventId, id));
     const input: z.infer<typeof wastageInputSchema> = {
       eventDate: event.eventDate,
-      costCenter: event.costCenter,
+      costCenterId: event.costCenterId,
       branchId: event.branchId,
       staffName: event.staffName ?? undefined,
       lines: lines.map((l) => ({ stockItemId: l.stockItemId, qty: l.qty, unitLabel: l.unitLabel ?? undefined, reason: l.reason, notes: l.notes ?? undefined, rate: l.rateAtWaste ?? undefined, photoUrl: l.photoUrl ?? undefined })),
@@ -163,6 +168,8 @@ export async function updateWastageDraft(id: string, input: z.infer<typeof wasta
   if (!existing) return { error: "Wastage event not found or already posted — it can no longer be edited." };
 
   await db.transaction(async (tx) => {
+    const [costCenter] = await tx.select({ name: costCenters.name }).from(costCenters).where(eq(costCenters.id, parsed.data.costCenterId));
+
     let totalCost = 0;
     const lineRows: { stockItemId: string; qty: number; unitLabel?: string; reason: string; notes?: string; rateAtWaste?: number; amountAtWaste?: number; photoUrl?: string }[] = [];
     for (const l of parsed.data.lines) {
@@ -175,7 +182,14 @@ export async function updateWastageDraft(id: string, input: z.infer<typeof wasta
 
     await tx
       .update(wastageEvents)
-      .set({ eventDate: parsed.data.eventDate, costCenter: parsed.data.costCenter, branchId: parsed.data.branchId, staffName: parsed.data.staffName, totalCost })
+      .set({
+        eventDate: parsed.data.eventDate,
+        costCenter: costCenter?.name ?? "",
+        costCenterId: parsed.data.costCenterId,
+        branchId: parsed.data.branchId,
+        staffName: parsed.data.staffName,
+        totalCost,
+      })
       .where(eq(wastageEvents.id, id));
 
     await tx.delete(wastageLines).where(eq(wastageLines.wastageEventId, id));

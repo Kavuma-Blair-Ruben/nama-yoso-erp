@@ -8,6 +8,7 @@ import { productionBatches, productionBatchIngredients, subRecipes, stockItems, 
 import { assertPermission } from "@/server/auth/permissions";
 import { nextProductionBatchNo, nextLotNumber } from "@/server/db/sequences";
 import { recordStockMovement } from "@/server/db/stockLedger";
+import { getDefaultCostCenterId } from "@/server/db/costCenterDefaults";
 import { convertQtyToCanonical } from "@/lib/unitMath";
 
 const ingredientSchema = z.object({
@@ -55,6 +56,10 @@ async function insertProductionBatch(tx: Db, input: z.infer<typeof productionInp
   }
   const costPerUnit = input.yieldQty > 0 ? totalCost / input.yieldQty : undefined;
 
+  // Production has no sector picker yet — defaults to the branch's Kitchen
+  // sector, since that's almost always where prep happens.
+  const costCenterId = await getDefaultCostCenterId(tx, input.branchId, "Kitchen");
+
   const [batch] = await tx
     .insert(productionBatches)
     .values({
@@ -62,6 +67,7 @@ async function insertProductionBatch(tx: Db, input: z.infer<typeof productionInp
       lotNo,
       subRecipeId: input.subRecipeId,
       branchId: input.branchId,
+      costCenterId,
       scaleMultiplier: input.scaleMultiplier,
       yieldQty: input.yieldQty,
       yieldUnit: input.yieldUnit,
@@ -90,6 +96,7 @@ async function insertProductionBatch(tx: Db, input: z.infer<typeof productionInp
 async function applyProductionSideEffects(
   tx: Db,
   batchId: string,
+  costCenterId: string,
   input: z.infer<typeof productionInputSchema>,
   subRecipeStockItemId: string,
   actorId: string
@@ -99,6 +106,7 @@ async function applyProductionSideEffects(
     await recordStockMovement(tx, {
       stockItemId: ing.stockItemId,
       branchId: input.branchId,
+      costCenterId,
       qtyDelta: -ing.qty,
       unitLabel: ing.unitLabel,
       movementType: "PRODUCTION_CONSUME",
@@ -115,6 +123,7 @@ async function applyProductionSideEffects(
     await recordStockMovement(tx, {
       stockItemId: subRecipeStockItemId,
       branchId: input.branchId,
+      costCenterId,
       qtyDelta: convertQtyToCanonical(input.yieldQty, input.yieldUnit),
       unitLabel: input.yieldUnit,
       movementType: "PRODUCTION_OUTPUT",
@@ -166,7 +175,8 @@ async function closeProductionBatchCore(id: string, actorId: string, closeDetail
       producedDate: batch.producedDate,
       ingredients: ingredientRows.map((r) => ({ stockItemId: r.stockItemId, qty: r.qty, unitLabel: r.unitLabel ?? undefined, rate: r.rateAtProduction ?? undefined })),
     };
-    await applyProductionSideEffects(tx, id, input, subRecipe.stockItemId, actorId);
+    const costCenterId = batch.costCenterId ?? (await getDefaultCostCenterId(tx, batch.branchId, "Kitchen"));
+    await applyProductionSideEffects(tx, id, costCenterId, input, subRecipe.stockItemId, actorId);
     const postedAt = new Date();
     await tx.update(productionBatches).set({ status: "CLOSED", postedAt, postedBy: actorId }).where(eq(productionBatches.id, id));
     const durationMinutes = Math.round((postedAt.getTime() - batch.createdAt.getTime()) / 60000);
@@ -237,12 +247,14 @@ export async function updateProductionBatch(id: string, input: z.infer<typeof pr
       ingredientRows.push({ stockItemId: ing.stockItemId, qty: ing.qty, unitLabel: ing.unitLabel, rateAtProduction: rate, amountAtProduction: amount });
     }
     const costPerUnit = parsed.data.yieldQty > 0 ? totalCost / parsed.data.yieldQty : undefined;
+    const costCenterId = await getDefaultCostCenterId(tx, parsed.data.branchId, "Kitchen");
 
     await tx
       .update(productionBatches)
       .set({
         subRecipeId: parsed.data.subRecipeId,
         branchId: parsed.data.branchId,
+        costCenterId,
         scaleMultiplier: parsed.data.scaleMultiplier,
         yieldQty: parsed.data.yieldQty,
         yieldUnit: parsed.data.yieldUnit,

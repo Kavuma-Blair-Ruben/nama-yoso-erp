@@ -14,6 +14,7 @@ type PickerItem = { id: string; legacyCode: string; name: string; issueUnit: str
 // in @/lib/format for why a number can't be stored straight back into the input.
 type Line = { stockItemId: string; legacyCode: string; name: string; unitLabel: string; systemQty: number; countedQty: string; rate: number };
 type Template = { id: string; name: string; costCenter: string | null; stockItemIds: string[] };
+type CostCenter = { id: string; branchId: string; name: string };
 
 export function StockCountBuilder({
   items,
@@ -24,25 +25,32 @@ export function StockCountBuilder({
   blindCounts,
   existingCountId,
   initialBranchId,
-  initialCostCenter,
+  initialCostCenterId,
   initialCountDate,
   initialLines,
 }: {
   items: PickerItem[];
   branches: { id: string; name: string }[];
-  costCenters: string[];
-  stockBalances: { stockItemId: string; branchId: string; qtyOnHand: number }[];
+  costCenters: CostCenter[];
+  stockBalances: { stockItemId: string; branchId: string; costCenterId: string | null; qtyOnHand: number }[];
   templates: Template[];
   blindCounts: boolean;
   existingCountId?: string;
   initialBranchId?: string;
-  initialCostCenter?: string;
+  initialCostCenterId?: string;
   initialCountDate?: string;
   initialLines?: Line[];
 }) {
   const router = useRouter();
   const [branchId, setBranchId] = useState(initialBranchId ?? branches[0]?.id ?? "");
-  const [costCenter, setCostCenter] = useState(initialCostCenter ?? costCenters[0] ?? "");
+  const costCentersForBranch = costCenters.filter((c) => c.branchId === branchId);
+  const [costCenterId, setCostCenterId] = useState(initialCostCenterId ?? costCentersForBranch[0]?.id ?? "");
+  const costCenterName = costCenters.find((c) => c.id === costCenterId)?.name ?? "";
+  function changeBranch(newBranchId: string) {
+    setBranchId(newBranchId);
+    const stillValid = costCenters.some((c) => c.branchId === newBranchId && c.id === costCenterId);
+    if (!stillValid) setCostCenterId(costCenters.find((c) => c.branchId === newBranchId)?.id ?? "");
+  }
   const [countDate, setCountDate] = useState(initialCountDate ?? todayStr());
   const [lines, setLines] = useState<Line[]>(initialLines ?? []);
   const [pickerId, setPickerId] = useState(items[0]?.id ?? "");
@@ -55,7 +63,7 @@ export function StockCountBuilder({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   function availableFor(stockItemId: string): number {
-    return stockBalances.find((b) => b.stockItemId === stockItemId && b.branchId === branchId)?.qtyOnHand ?? 0;
+    return stockBalances.find((b) => b.stockItemId === stockItemId && b.branchId === branchId && b.costCenterId === costCenterId)?.qtyOnHand ?? 0;
   }
 
   function addLine() {
@@ -88,7 +96,7 @@ export function StockCountBuilder({
   const countedLines = lines.filter((l) => l.countedQty !== "");
   const totalVariance = countedLines.reduce((s, l) => s + (num(l.countedQty) - l.systemQty) * l.rate, 0);
 
-  const templatesForCostCenter = templates.filter((t) => !t.costCenter || t.costCenter === costCenter);
+  const templatesForCostCenter = templates.filter((t) => !t.costCenter || t.costCenter === costCenterName);
 
   function loadTemplate(id: string) {
     setTemplateId(id);
@@ -114,9 +122,9 @@ export function StockCountBuilder({
       setError("Add items to the count first.");
       return;
     }
-    const name = templateName.trim() || `${costCenter || "Count"} Template`;
+    const name = templateName.trim() || `${costCenterName || "Count"} Template`;
     startTransition(async () => {
-      const result = await createStockCountTemplate(name, costCenter || null, lines.map((l) => l.stockItemId));
+      const result = await createStockCountTemplate(name, costCenterName || null, lines.map((l) => l.stockItemId));
       if (result.error) setError(result.error);
       else {
         setInfo(`Saved as template: ${name}`);
@@ -139,7 +147,7 @@ export function StockCountBuilder({
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `StockCount_${(costCenter || "sheet").replace(/[^a-z0-9]/gi, "_")}.csv`;
+    a.download = `StockCount_${(costCenterName || "sheet").replace(/[^a-z0-9]/gi, "_")}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -190,7 +198,7 @@ export function StockCountBuilder({
   function buildInput() {
     return {
       branchId,
-      costCenter: costCenter || undefined,
+      costCenterId,
       countDate,
       lines: lines.map((l) => ({ stockItemId: l.stockItemId, systemQty: l.systemQty, countedQty: l.countedQty === "" ? null : num(l.countedQty), unitLabel: l.unitLabel || undefined, rate: l.rate })),
     };
@@ -199,6 +207,7 @@ export function StockCountBuilder({
   function handleSubmit(status: "draft" | "posted") {
     setError(null);
     if (!branchId) return setError("Choose a branch.");
+    if (!costCenterId) return setError("Choose a sector.");
     const input = buildInput();
     if (input.lines.length === 0) return setError("Add at least one item to the count.");
     if (status === "posted" && !input.lines.some((l) => l.countedQty != null)) return setError("Enter a counted quantity for at least one item before posting.");
@@ -226,14 +235,14 @@ export function StockCountBuilder({
           <div>Count date</div>
         </div>
         <div className="line-builder-row" style={{ gridTemplateColumns: "1fr 1fr 1fr", marginBottom: 10 }}>
-          <select value={branchId} disabled={!!existingCountId} onChange={(e) => setBranchId(e.target.value)}>
+          <select value={branchId} disabled={!!existingCountId} onChange={(e) => changeBranch(e.target.value)}>
             {branches.map((b) => (
               <option key={b.id} value={b.id}>{b.name}</option>
             ))}
           </select>
-          <select value={costCenter} onChange={(e) => setCostCenter(e.target.value)}>
-            {costCenters.map((c) => (
-              <option key={c} value={c}>{c}</option>
+          <select value={costCenterId} onChange={(e) => setCostCenterId(e.target.value)}>
+            {costCentersForBranch.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
             ))}
           </select>
           <input type="date" value={countDate} max={todayStr()} onChange={(e) => setCountDate(e.target.value)} />

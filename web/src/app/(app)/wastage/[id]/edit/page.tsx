@@ -2,9 +2,10 @@ import { notFound } from "next/navigation";
 import { requireSection } from "@/server/auth/permissions";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { WastageBuilder } from "@/components/wastage/WastageBuilder";
-import { getWastageEventForEdit, listCostCenters, listWastageReasons } from "@/server/db/queries/wastage";
+import { getWastageEventForEdit, listWastageReasons } from "@/server/db/queries/wastage";
 import { listIngredientPickerItems, listMainRecipesForPicker } from "@/server/db/queries/recipes";
 import { listBranches } from "@/server/db/queries/purchaseOrders";
+import { listAllActiveCostCenters } from "@/server/db/queries/costCenters";
 
 export default async function EditWastageDraftPage({ params }: PageProps<"/wastage/[id]/edit">) {
   await requireSection("wastage", "edit");
@@ -13,7 +14,7 @@ export default async function EditWastageDraftPage({ params }: PageProps<"/wasta
     getWastageEventForEdit(id),
     listIngredientPickerItems(),
     listMainRecipesForPicker(),
-    listCostCenters(),
+    listAllActiveCostCenters(),
     listBranches(),
     listWastageReasons(),
   ]);
@@ -26,12 +27,12 @@ export default async function EditWastageDraftPage({ params }: PageProps<"/wasta
       <WastageBuilder
         items={items}
         mainRecipes={mainRecipes}
-        costCenters={costCenters.map((c) => c.name)}
+        costCenters={costCenters}
         branches={branches}
         reasons={reasons.map((r) => r.name)}
         existingEventId={event.id}
         initialEventDate={event.eventDate}
-        initialCostCenter={event.costCenter}
+        initialCostCenterId={event.costCenterId ?? undefined}
         initialBranchId={event.branchId}
         initialStaffName={event.staffName ?? undefined}
         initialLines={lines.map((l) => ({

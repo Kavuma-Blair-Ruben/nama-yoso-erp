@@ -1,11 +1,7 @@
 import "server-only";
 import { db } from "@/server/db";
-import { wastageEvents, wastageLines, stockItems, categories, branches, profiles, costCenters, wastageReasons } from "@/server/db/schema";
+import { wastageEvents, wastageLines, stockItems, categories, branches, profiles, wastageReasons } from "@/server/db/schema";
 import { and, eq, desc } from "drizzle-orm";
-
-export async function listCostCenters() {
-  return db.select({ id: costCenters.id, name: costCenters.name }).from(costCenters);
-}
 
 export async function listWastageReasons() {
   return db.select({ id: wastageReasons.id, name: wastageReasons.name, isExpense: wastageReasons.isExpense }).from(wastageReasons).orderBy(wastageReasons.name);

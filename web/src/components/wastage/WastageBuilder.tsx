@@ -11,6 +11,8 @@ type RecipePickerItem = { legacyCode: string; name: string };
 // qty is a raw string while editing — see num() in @/lib/format for why.
 type Line = { stockItemId: string; unitLabel: string; qty: string; reason: string; notes: string; rate: number; photoUrl?: string };
 
+type CostCenter = { id: string; branchId: string; name: string };
+
 export function WastageBuilder({
   items,
   mainRecipes,
@@ -19,27 +21,33 @@ export function WastageBuilder({
   reasons,
   existingEventId,
   initialEventDate,
-  initialCostCenter,
+  initialCostCenterId,
   initialBranchId,
   initialStaffName,
   initialLines,
 }: {
   items: PickerItem[];
   mainRecipes?: RecipePickerItem[];
-  costCenters: string[];
+  costCenters: CostCenter[];
   branches: { id: string; name: string }[];
   reasons: readonly string[];
   existingEventId?: string;
   initialEventDate?: string;
-  initialCostCenter?: string;
+  initialCostCenterId?: string;
   initialBranchId?: string;
   initialStaffName?: string;
   initialLines?: Line[];
 }) {
   const router = useRouter();
   const [eventDate, setEventDate] = useState(initialEventDate ?? todayStr());
-  const [costCenter, setCostCenter] = useState(initialCostCenter ?? costCenters[0] ?? "");
   const [branchId, setBranchId] = useState(initialBranchId ?? branches[0]?.id ?? "");
+  const costCentersForBranch = costCenters.filter((c) => c.branchId === branchId);
+  const [costCenterId, setCostCenterId] = useState(initialCostCenterId ?? costCentersForBranch[0]?.id ?? "");
+  function changeBranch(newBranchId: string) {
+    setBranchId(newBranchId);
+    const stillValid = costCenters.some((c) => c.branchId === newBranchId && c.id === costCenterId);
+    if (!stillValid) setCostCenterId(costCenters.find((c) => c.branchId === newBranchId)?.id ?? "");
+  }
   const [staffName, setStaffName] = useState(initialStaffName ?? "");
   const [lines, setLines] = useState<Line[]>(initialLines ?? []);
   const [error, setError] = useState<string | null>(null);
@@ -109,7 +117,7 @@ export function WastageBuilder({
   function buildInput() {
     return {
       eventDate,
-      costCenter,
+      costCenterId,
       branchId,
       staffName: staffName || undefined,
       lines: lines.filter((l) => num(l.qty) > 0).map((l) => ({ stockItemId: l.stockItemId, qty: num(l.qty), unitLabel: l.unitLabel || undefined, reason: l.reason, notes: l.notes || undefined, rate: l.rate, photoUrl: l.photoUrl })),
@@ -118,7 +126,7 @@ export function WastageBuilder({
 
   function handleSubmit(status: "draft" | "posted") {
     setError(null);
-    if (!costCenter) return setError("Choose a cost center / section.");
+    if (!costCenterId) return setError("Choose a sector.");
     if (!branchId) return setError("Choose a branch.");
     const input = buildInput();
     if (input.lines.length === 0) return setError("Add at least one wasted item with a quantity.");
@@ -148,12 +156,12 @@ export function WastageBuilder({
         </div>
         <div className="line-builder-row" style={{ gridTemplateColumns: "1fr 1fr 1fr", marginBottom: 10 }}>
           <input type="date" value={eventDate} max={todayStr()} onChange={(e) => setEventDate(e.target.value)} />
-          <select value={costCenter} onChange={(e) => setCostCenter(e.target.value)}>
-            {costCenters.map((c) => (
-              <option key={c} value={c}>{c}</option>
+          <select value={costCenterId} onChange={(e) => setCostCenterId(e.target.value)}>
+            {costCentersForBranch.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
             ))}
           </select>
-          <select value={branchId} onChange={(e) => setBranchId(e.target.value)}>
+          <select value={branchId} onChange={(e) => changeBranch(e.target.value)}>
             {branches.map((b) => (
               <option key={b.id} value={b.id}>{b.name}</option>
             ))}

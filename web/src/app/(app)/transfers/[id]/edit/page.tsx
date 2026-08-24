@@ -5,11 +5,12 @@ import { TransferBuilder } from "@/components/transfers/TransferBuilder";
 import { getTransferForEdit } from "@/server/db/queries/transfers";
 import { listIngredientPickerItems } from "@/server/db/queries/recipes";
 import { listBranches } from "@/server/db/queries/purchaseOrders";
+import { listAllActiveCostCenters } from "@/server/db/queries/costCenters";
 
 export default async function EditTransferDraftPage({ params }: PageProps<"/transfers/[id]/edit">) {
   await requireSection("transfers", "edit");
   const { id } = await params;
-  const [data, items, branches] = await Promise.all([getTransferForEdit(id), listIngredientPickerItems(), listBranches()]);
+  const [data, items, branches, costCenters] = await Promise.all([getTransferForEdit(id), listIngredientPickerItems(), listBranches(), listAllActiveCostCenters()]);
   if (!data) notFound();
   const { transfer, lines } = data;
 
@@ -19,9 +20,12 @@ export default async function EditTransferDraftPage({ params }: PageProps<"/tran
       <TransferBuilder
         items={items}
         branches={branches}
+        costCenters={costCenters}
         existingTransferId={transfer.id}
         initialFromBranchId={transfer.fromBranchId}
         initialToBranchId={transfer.toBranchId}
+        initialFromCostCenterId={transfer.fromCostCenterId ?? undefined}
+        initialToCostCenterId={transfer.toCostCenterId ?? undefined}
         initialTransferDate={transfer.transferDate}
         initialStaffName={transfer.staffName ?? undefined}
         initialNotes={transfer.notes ?? undefined}

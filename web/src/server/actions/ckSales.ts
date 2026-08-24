@@ -8,6 +8,7 @@ import { customers, priceLists, deliveryNotes, deliveryNoteLines, customerReturn
 import { assertPermission } from "@/server/auth/permissions";
 import { nextDnNumber, nextProNumber, nextReturnNumber } from "@/server/db/sequences";
 import { recordStockMovement } from "@/server/db/stockLedger";
+import { getDefaultCostCenterId } from "@/server/db/costCenterDefaults";
 import { buildDnPdfBuffer } from "@/server/pdf/deliveryNotePdf";
 import { sendEmailWithAttachment } from "@/lib/email";
 import { sendWhatsAppDocument, isWhatsAppBusinessConfigured } from "@/lib/whatsappBusiness";
@@ -60,12 +61,16 @@ export async function createDeliveryNote(input: z.infer<typeof dnInputSchema>): 
       .values({ number, docType: parsed.data.docType, customerId: parsed.data.customerId, branchId: parsed.data.branchId, deliveryDate: parsed.data.deliveryDate, total, createdBy: session.profile.id })
       .returning({ id: deliveryNotes.id });
 
+    // No sector picker on this form — CK sales always ship out of the
+    // branch's Central Warehouse.
+    const costCenterId = await getDefaultCostCenterId(tx, parsed.data.branchId, "Central Warehouse");
     for (const l of parsed.data.lines) {
       if (l.qty <= 0) continue;
       await tx.insert(deliveryNoteLines).values({ deliveryNoteId: dn.id, stockItemId: l.stockItemId, qty: l.qty, unitLabel: l.unitLabel, price: l.price, amount: l.qty * l.price });
       await recordStockMovement(tx, {
         stockItemId: l.stockItemId,
         branchId: parsed.data.branchId,
+        costCenterId,
         qtyDelta: -l.qty,
         unitLabel: l.unitLabel,
         movementType: "CK_SALE",
@@ -136,11 +141,13 @@ export async function createCustomerReturn(input: z.infer<typeof returnInputSche
       .values({ number, deliveryNoteId: dn.id, reason: parsed.data.reason, value, createdBy: session.profile.id })
       .returning({ id: customerReturns.id });
 
+    const costCenterId = await getDefaultCostCenterId(tx, dn.branchId, "Central Warehouse");
     for (const l of selected) {
       await tx.insert(customerReturnLines).values({ customerReturnId: ret.id, deliveryNoteLineId: l.id, stockItemId: l.stockItemId, qty: l.qty, unitLabel: l.unitLabel, price: l.price, amount: l.amount });
       await recordStockMovement(tx, {
         stockItemId: l.stockItemId,
         branchId: dn.branchId,
+        costCenterId,
         qtyDelta: l.qty,
         unitLabel: l.unitLabel,
         movementType: "CUSTOMER_RETURN",

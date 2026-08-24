@@ -151,11 +151,15 @@ export async function getProductByCode(code: string) {
     .innerJoin(subRecipes, eq(recipeIngredients.subRecipeId, subRecipes.id))
     .where(eq(recipeIngredients.stockItemId, item.id));
 
+  // Summed across every sector at that branch — a stock item can now have a
+  // separate stock_balances row per cost center (Kitchen/Bar/etc), but the
+  // product detail page shows one total per branch.
   const stockByBranch = await db
-    .select({ branchId: stockBalances.branchId, branchName: branches.name, qtyOnHand: stockBalances.qtyOnHand })
+    .select({ branchId: stockBalances.branchId, branchName: branches.name, qtyOnHand: sql<number>`sum(${stockBalances.qtyOnHand})` })
     .from(stockBalances)
     .innerJoin(branches, eq(stockBalances.branchId, branches.id))
-    .where(eq(stockBalances.stockItemId, item.id));
+    .where(eq(stockBalances.stockItemId, item.id))
+    .groupBy(stockBalances.branchId, branches.name);
 
   return {
     item,

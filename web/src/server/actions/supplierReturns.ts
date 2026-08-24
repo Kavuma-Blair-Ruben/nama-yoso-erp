@@ -8,6 +8,7 @@ import { grns, grnLines, supplierReturns, supplierReturnLines, stockItems, audit
 import { assertPermission } from "@/server/auth/permissions";
 import { nextSupplierReturnNumber } from "@/server/db/sequences";
 import { recordStockMovement } from "@/server/db/stockLedger";
+import { getDefaultCostCenterId } from "@/server/db/costCenterDefaults";
 import { convertQtyToCanonical } from "@/lib/unitMath";
 
 export type SupplierReturnResult = { error?: string; id?: string };
@@ -56,6 +57,9 @@ export async function createSupplierReturn(input: z.infer<typeof inputSchema>): 
       .values({ number, grnId: grn.id, supplierId: grn.supplierId, reason: parsed.data.reason || undefined, value, createdBy: session.profile.id })
       .returning({ id: supplierReturns.id });
 
+    // Inherit the GRN's own sector — a supplier return is stock going back
+    // out of exactly the sector it was received into.
+    const costCenterId = grn.costCenterId ?? (await getDefaultCostCenterId(tx, grn.branchId));
     for (const { line, qty } of selected) {
       const [item] = await tx.select().from(stockItems).where(eq(stockItems.id, line.stockItemId));
       if (!item) continue;
@@ -77,6 +81,7 @@ export async function createSupplierReturn(input: z.infer<typeof inputSchema>): 
       await recordStockMovement(tx, {
         stockItemId: item.id,
         branchId: grn.branchId,
+        costCenterId,
         qtyDelta: -canonicalQty,
         unitLabel: item.issueUnit,
         movementType: "SUPPLIER_RETURN",

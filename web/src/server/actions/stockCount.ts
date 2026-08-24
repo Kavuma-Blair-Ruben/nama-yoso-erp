@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { eq, and } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/server/db";
-import { stockCounts, stockCountLines, stockItems, stockBalances, auditLog } from "@/server/db/schema";
+import { stockCounts, stockCountLines, stockItems, stockBalances, auditLog, costCenters } from "@/server/db/schema";
 import { assertPermission } from "@/server/auth/permissions";
 import { nextStockCountNo } from "@/server/db/sequences";
 import { recordStockMovement } from "@/server/db/stockLedger";
@@ -19,7 +19,7 @@ const lineSchema = z.object({
 
 const stockCountInputSchema = z.object({
   branchId: z.string().min(1),
-  costCenter: z.string().optional(),
+  costCenterId: z.string().min(1),
   countDate: z.string().min(1),
   staffName: z.string().optional(),
   lines: z.array(lineSchema).min(1),
@@ -44,13 +44,15 @@ function computeTotalVarianceValue(input: z.infer<typeof stockCountInputSchema>)
 async function insertStockCount(tx: Db, input: z.infer<typeof stockCountInputSchema>, status: "DRAFT" | "POSTED", actorId: string) {
   const countNo = await nextStockCountNo();
   const totalVarianceValue = computeTotalVarianceValue(input);
+  const [costCenter] = await tx.select({ name: costCenters.name }).from(costCenters).where(eq(costCenters.id, input.costCenterId));
 
   const [stockCount] = await tx
     .insert(stockCounts)
     .values({
       countNo,
       branchId: input.branchId,
-      costCenter: input.costCenter,
+      costCenter: costCenter?.name,
+      costCenterId: input.costCenterId,
       countDate: input.countDate,
       staffName: input.staffName,
       totalVarianceValue,
@@ -77,16 +79,20 @@ async function insertStockCount(tx: Db, input: z.infer<typeof stockCountInputSch
   return { countId: stockCount.id, countNo };
 }
 
-async function applyStockCountSideEffects(tx: Db, countId: string, branchId: string, input: z.infer<typeof stockCountInputSchema>, actorId: string) {
+async function applyStockCountSideEffects(tx: Db, countId: string, branchId: string, costCenterId: string, input: z.infer<typeof stockCountInputSchema>, actorId: string) {
   for (const l of input.lines) {
     if (l.countedQty == null) continue;
-    const [balance] = await tx.select().from(stockBalances).where(and(eq(stockBalances.stockItemId, l.stockItemId), eq(stockBalances.branchId, branchId)));
+    const [balance] = await tx
+      .select()
+      .from(stockBalances)
+      .where(and(eq(stockBalances.stockItemId, l.stockItemId), eq(stockBalances.branchId, branchId), eq(stockBalances.costCenterId, costCenterId)));
     const currentQty = balance?.qtyOnHand ?? 0;
     const delta = l.countedQty - currentQty;
     if (Math.abs(delta) < 0.0001) continue;
     await recordStockMovement(tx, {
       stockItemId: l.stockItemId,
       branchId,
+      costCenterId,
       qtyDelta: delta,
       unitLabel: l.unitLabel,
       movementType: "STOCK_COUNT_ADJUSTMENT",
@@ -105,7 +111,7 @@ export async function postStockCount(input: z.infer<typeof stockCountInputSchema
 
   const { countId } = await db.transaction(async (tx) => {
     const created = await insertStockCount(tx, parsed.data, "POSTED", session.profile.id);
-    await applyStockCountSideEffects(tx, created.countId, parsed.data.branchId, parsed.data, session.profile.id);
+    await applyStockCountSideEffects(tx, created.countId, parsed.data.branchId, parsed.data.costCenterId, parsed.data, session.profile.id);
     await tx.insert(auditLog).values({
       actorId: session.profile.id,
       action: "Stock Count Posted",
@@ -143,17 +149,18 @@ export async function postStockCountDraft(id: string): Promise<StockCountActionR
   const result = await db.transaction(async (tx) => {
     const [stockCount] = await tx.select().from(stockCounts).where(and(eq(stockCounts.id, id), eq(stockCounts.status, "DRAFT")));
     if (!stockCount) return { error: "Stock count not found or already posted." as const };
+    if (!stockCount.costCenterId) return { error: "This draft has no sector set — edit it and pick one before posting." as const };
 
     const lines = await tx.select().from(stockCountLines).where(eq(stockCountLines.stockCountId, id));
     const input: z.infer<typeof stockCountInputSchema> = {
       branchId: stockCount.branchId,
-      costCenter: stockCount.costCenter ?? undefined,
+      costCenterId: stockCount.costCenterId,
       countDate: stockCount.countDate,
       staffName: stockCount.staffName ?? undefined,
       lines: lines.map((l) => ({ stockItemId: l.stockItemId, systemQty: l.systemQty, countedQty: l.countedQty, unitLabel: l.unitLabel ?? undefined, rate: l.rateAtCount ?? undefined })),
     };
     const totalVarianceValue = computeTotalVarianceValue(input);
-    await applyStockCountSideEffects(tx, id, stockCount.branchId, input, session.profile.id);
+    await applyStockCountSideEffects(tx, id, stockCount.branchId, stockCount.costCenterId, input, session.profile.id);
     await tx.update(stockCounts).set({ status: "POSTED", postedAt: new Date(), postedBy: session.profile.id, totalVarianceValue }).where(eq(stockCounts.id, id));
     await tx.insert(auditLog).values({ actorId: session.profile.id, action: "Stock Count Posted", entity: "Stock Count", entityLabel: stockCount.countNo, detail: "Stock adjusted" });
     return { id };
@@ -177,11 +184,13 @@ export async function updateStockCountDraft(id: string, input: z.infer<typeof st
 
   await db.transaction(async (tx) => {
     const totalVarianceValue = computeTotalVarianceValue(parsed.data);
+    const [costCenter] = await tx.select({ name: costCenters.name }).from(costCenters).where(eq(costCenters.id, parsed.data.costCenterId));
     await tx
       .update(stockCounts)
       .set({
         branchId: parsed.data.branchId,
-        costCenter: parsed.data.costCenter,
+        costCenter: costCenter?.name,
+        costCenterId: parsed.data.costCenterId,
         countDate: parsed.data.countDate,
         staffName: parsed.data.staffName,
         totalVarianceValue,

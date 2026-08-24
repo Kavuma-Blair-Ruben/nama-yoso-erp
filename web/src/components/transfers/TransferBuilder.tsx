@@ -7,15 +7,19 @@ import { money, todayStr, num } from "@/lib/format";
 import { canonicalUnitLabel } from "@/lib/unitMath";
 
 type PickerItem = { id: string; legacyCode: string; name: string; issueUnit: string | null; ratePerKgL: number | null };
+type CostCenter = { id: string; branchId: string; name: string };
 // qty/rate are raw strings while editing — see num() in @/lib/format for why.
 type Line = { stockItemId: string; unitLabel: string; qty: string; rate: string };
 
 export function TransferBuilder({
   items,
   branches,
+  costCenters,
   existingTransferId,
   initialFromBranchId,
   initialToBranchId,
+  initialFromCostCenterId,
+  initialToCostCenterId,
   initialTransferDate,
   initialStaffName,
   initialNotes,
@@ -23,9 +27,12 @@ export function TransferBuilder({
 }: {
   items: PickerItem[];
   branches: { id: string; name: string }[];
+  costCenters: CostCenter[];
   existingTransferId?: string;
   initialFromBranchId?: string;
   initialToBranchId?: string;
+  initialFromCostCenterId?: string;
+  initialToCostCenterId?: string;
   initialTransferDate?: string;
   initialStaffName?: string;
   initialNotes?: string;
@@ -34,6 +41,20 @@ export function TransferBuilder({
   const router = useRouter();
   const [fromBranchId, setFromBranchId] = useState(initialFromBranchId ?? branches[0]?.id ?? "");
   const [toBranchId, setToBranchId] = useState(initialToBranchId ?? branches[1]?.id ?? branches[0]?.id ?? "");
+  const fromCostCentersForBranch = costCenters.filter((c) => c.branchId === fromBranchId);
+  const toCostCentersForBranch = costCenters.filter((c) => c.branchId === toBranchId);
+  const [fromCostCenterId, setFromCostCenterId] = useState(initialFromCostCenterId ?? fromCostCentersForBranch[0]?.id ?? "");
+  const [toCostCenterId, setToCostCenterId] = useState(initialToCostCenterId ?? toCostCentersForBranch[0]?.id ?? "");
+  function changeFromBranch(newBranchId: string) {
+    setFromBranchId(newBranchId);
+    const stillValid = costCenters.some((c) => c.branchId === newBranchId && c.id === fromCostCenterId);
+    if (!stillValid) setFromCostCenterId(costCenters.find((c) => c.branchId === newBranchId)?.id ?? "");
+  }
+  function changeToBranch(newBranchId: string) {
+    setToBranchId(newBranchId);
+    const stillValid = costCenters.some((c) => c.branchId === newBranchId && c.id === toCostCenterId);
+    if (!stillValid) setToCostCenterId(costCenters.find((c) => c.branchId === newBranchId)?.id ?? "");
+  }
   const [transferDate, setTransferDate] = useState(initialTransferDate ?? todayStr());
   const [staffName, setStaffName] = useState(initialStaffName ?? "");
   const [notes, setNotes] = useState(initialNotes ?? "");
@@ -64,6 +85,8 @@ export function TransferBuilder({
     return {
       fromBranchId,
       toBranchId,
+      fromCostCenterId,
+      toCostCenterId,
       transferDate,
       staffName: staffName || undefined,
       notes: notes || undefined,
@@ -74,6 +97,7 @@ export function TransferBuilder({
   function handleSubmit(status: "draft" | "sent") {
     setError(null);
     if (fromBranchId === toBranchId) return setError("From and To branch must be different.");
+    if (!fromCostCenterId || !toCostCenterId) return setError("Choose a sector on both sides.");
     const input = buildInput();
     if (input.lines.length === 0) return setError("Add at least one item with a quantity.");
 
@@ -98,15 +122,27 @@ export function TransferBuilder({
           <div>From</div>
           <div>To</div>
         </div>
-        <div className="line-builder-row" style={{ gridTemplateColumns: "1fr 1fr", marginBottom: 10 }}>
-          <select value={fromBranchId} onChange={(e) => setFromBranchId(e.target.value)}>
+        <div className="line-builder-row" style={{ gridTemplateColumns: "1fr 1fr", marginBottom: 4 }}>
+          <select value={fromBranchId} onChange={(e) => changeFromBranch(e.target.value)}>
             {branches.map((b) => (
               <option key={b.id} value={b.id}>{b.name}</option>
             ))}
           </select>
-          <select value={toBranchId} onChange={(e) => setToBranchId(e.target.value)}>
+          <select value={toBranchId} onChange={(e) => changeToBranch(e.target.value)}>
             {branches.map((b) => (
               <option key={b.id} value={b.id}>{b.name}</option>
+            ))}
+          </select>
+        </div>
+        <div className="line-builder-row" style={{ gridTemplateColumns: "1fr 1fr", marginBottom: 10 }}>
+          <select value={fromCostCenterId} onChange={(e) => setFromCostCenterId(e.target.value)}>
+            {fromCostCentersForBranch.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+          <select value={toCostCenterId} onChange={(e) => setToCostCenterId(e.target.value)}>
+            {toCostCentersForBranch.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
             ))}
           </select>
         </div>

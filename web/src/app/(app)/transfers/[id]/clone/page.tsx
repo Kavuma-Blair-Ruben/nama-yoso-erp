@@ -5,11 +5,12 @@ import { TransferBuilder } from "@/components/transfers/TransferBuilder";
 import { getTransferForClone } from "@/server/db/queries/transfers";
 import { listIngredientPickerItems } from "@/server/db/queries/recipes";
 import { listBranches } from "@/server/db/queries/purchaseOrders";
+import { listAllActiveCostCenters } from "@/server/db/queries/costCenters";
 
 export default async function CloneTransferPage({ params }: PageProps<"/transfers/[id]/clone">) {
   await requireSection("transfers", "edit");
   const { id } = await params;
-  const [data, items, branches] = await Promise.all([getTransferForClone(id), listIngredientPickerItems(), listBranches()]);
+  const [data, items, branches, costCenters] = await Promise.all([getTransferForClone(id), listIngredientPickerItems(), listBranches(), listAllActiveCostCenters()]);
   if (!data) notFound();
   const { transfer, lines } = data;
 
@@ -19,8 +20,11 @@ export default async function CloneTransferPage({ params }: PageProps<"/transfer
       <TransferBuilder
         items={items}
         branches={branches}
+        costCenters={costCenters}
         initialFromBranchId={transfer.fromBranchId}
         initialToBranchId={transfer.toBranchId}
+        initialFromCostCenterId={transfer.fromCostCenterId ?? undefined}
+        initialToCostCenterId={transfer.toCostCenterId ?? undefined}
         initialStaffName={transfer.staffName ?? undefined}
         initialNotes={transfer.notes ?? undefined}
         initialLines={lines.map((l) => ({

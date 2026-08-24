@@ -19,6 +19,8 @@ const lineSchema = z.object({
 const transferInputSchema = z.object({
   fromBranchId: z.string().min(1),
   toBranchId: z.string().min(1),
+  fromCostCenterId: z.string().min(1),
+  toCostCenterId: z.string().min(1),
   transferDate: z.string().min(1),
   staffName: z.string().optional(),
   notes: z.string().optional(),
@@ -48,6 +50,8 @@ async function insertTransfer(tx: Db, input: z.infer<typeof transferInputSchema>
       transferNo,
       fromBranchId: input.fromBranchId,
       toBranchId: input.toBranchId,
+      fromCostCenterId: input.fromCostCenterId,
+      toCostCenterId: input.toCostCenterId,
       transferDate: input.transferDate,
       staffName: input.staffName,
       notes: input.notes,
@@ -76,6 +80,7 @@ async function applyTransferOut(tx: Db, transferId: string, input: z.infer<typeo
     await recordStockMovement(tx, {
       stockItemId: l.stockItemId,
       branchId: input.fromBranchId,
+      costCenterId: input.fromCostCenterId,
       qtyDelta: -l.qty,
       unitLabel: l.unitLabel,
       movementType: "TRANSFER_OUT",
@@ -92,6 +97,7 @@ async function applyTransferIn(tx: Db, transferId: string, input: z.infer<typeof
     await recordStockMovement(tx, {
       stockItemId: l.stockItemId,
       branchId: input.toBranchId,
+      costCenterId: input.toCostCenterId,
       qtyDelta: l.qty,
       unitLabel: l.unitLabel,
       movementType: "TRANSFER_IN",
@@ -156,11 +162,14 @@ export async function sendTransferDraft(id: string): Promise<TransferActionResul
   const result = await db.transaction(async (tx) => {
     const [transfer] = await tx.select().from(stockTransfers).where(and(eq(stockTransfers.id, id), eq(stockTransfers.status, "DRAFT")));
     if (!transfer) return { error: "Transfer not found or already sent." as const };
+    if (!transfer.fromCostCenterId || !transfer.toCostCenterId) return { error: "This draft has no sector set — edit it and pick one before sending." as const };
 
     const lines = await tx.select().from(stockTransferLines).where(eq(stockTransferLines.stockTransferId, id));
     const input: z.infer<typeof transferInputSchema> = {
       fromBranchId: transfer.fromBranchId,
       toBranchId: transfer.toBranchId,
+      fromCostCenterId: transfer.fromCostCenterId,
+      toCostCenterId: transfer.toCostCenterId,
       transferDate: transfer.transferDate,
       staffName: transfer.staffName ?? undefined,
       notes: transfer.notes ?? undefined,
@@ -189,11 +198,14 @@ export async function receiveTransfer(id: string): Promise<TransferActionResult>
   const result = await db.transaction(async (tx) => {
     const [transfer] = await tx.select().from(stockTransfers).where(and(eq(stockTransfers.id, id), eq(stockTransfers.status, "IN_TRANSIT")));
     if (!transfer) return { error: "Transfer not found or not awaiting receipt." as const };
+    if (!transfer.fromCostCenterId || !transfer.toCostCenterId) return { error: "This transfer has no sector set — it can't be received." as const };
 
     const lines = await tx.select().from(stockTransferLines).where(eq(stockTransferLines.stockTransferId, id));
     const input: z.infer<typeof transferInputSchema> = {
       fromBranchId: transfer.fromBranchId,
       toBranchId: transfer.toBranchId,
+      fromCostCenterId: transfer.fromCostCenterId,
+      toCostCenterId: transfer.toCostCenterId,
       transferDate: transfer.transferDate,
       lines: lines.map((l) => ({ stockItemId: l.stockItemId, qty: l.qty, unitLabel: l.unitLabel ?? undefined, rate: l.rateAtTransfer ?? undefined })),
     };
@@ -236,6 +248,8 @@ export async function updateTransferDraft(id: string, input: z.infer<typeof tran
       .set({
         fromBranchId: parsed.data.fromBranchId,
         toBranchId: parsed.data.toBranchId,
+        fromCostCenterId: parsed.data.fromCostCenterId,
+        toCostCenterId: parsed.data.toCostCenterId,
         transferDate: parsed.data.transferDate,
         staffName: parsed.data.staffName,
         notes: parsed.data.notes,

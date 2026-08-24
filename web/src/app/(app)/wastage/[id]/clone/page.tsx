@@ -2,9 +2,10 @@ import { notFound } from "next/navigation";
 import { requireSection } from "@/server/auth/permissions";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { WastageBuilder } from "@/components/wastage/WastageBuilder";
-import { getWastageEventForClone, listCostCenters, listWastageReasons } from "@/server/db/queries/wastage";
+import { getWastageEventForClone, listWastageReasons } from "@/server/db/queries/wastage";
 import { listIngredientPickerItems, listMainRecipesForPicker } from "@/server/db/queries/recipes";
 import { listBranches } from "@/server/db/queries/purchaseOrders";
+import { listAllActiveCostCenters } from "@/server/db/queries/costCenters";
 
 export default async function CloneWastagePage({ params }: PageProps<"/wastage/[id]/clone">) {
   await requireSection("wastage", "edit");
@@ -13,7 +14,7 @@ export default async function CloneWastagePage({ params }: PageProps<"/wastage/[
     getWastageEventForClone(id),
     listIngredientPickerItems(),
     listMainRecipesForPicker(),
-    listCostCenters(),
+    listAllActiveCostCenters(),
     listBranches(),
     listWastageReasons(),
   ]);
@@ -26,10 +27,10 @@ export default async function CloneWastagePage({ params }: PageProps<"/wastage/[
       <WastageBuilder
         items={items}
         mainRecipes={mainRecipes}
-        costCenters={costCenters.map((c) => c.name)}
+        costCenters={costCenters}
         branches={branches}
         reasons={reasons.map((r) => r.name)}
-        initialCostCenter={event.costCenter}
+        initialCostCenterId={event.costCenterId ?? undefined}
         initialBranchId={event.branchId}
         initialStaffName={event.staffName ?? undefined}
         initialLines={lines.map((l) => ({

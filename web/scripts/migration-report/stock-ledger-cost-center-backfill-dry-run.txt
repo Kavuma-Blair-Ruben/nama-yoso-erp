@@ -1,0 +1,4 @@
+Would backfill 23 stock_balances row(s) and 51 stock_movements row(s),
+each assigned to its own branch's General cost center:
+  NAMAYOSO -> General (0ff4f4af-64a3-4b94-9c70-5fb6d12395c9)
+  THG -> General (48d17834-5da9-4fb4-b681-94009eb7a0dd)

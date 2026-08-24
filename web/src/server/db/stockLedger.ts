@@ -33,6 +33,7 @@ export async function recordStockMovement(
   args: {
     stockItemId: string;
     branchId: string;
+    costCenterId: string;
     qtyDelta: number;
     unitLabel?: string | null;
     movementType: MovementType;
@@ -45,19 +46,20 @@ export async function recordStockMovement(
   const [existing] = await tx
     .select()
     .from(stockBalances)
-    .where(and(eq(stockBalances.stockItemId, args.stockItemId), eq(stockBalances.branchId, args.branchId)));
+    .where(and(eq(stockBalances.stockItemId, args.stockItemId), eq(stockBalances.branchId, args.branchId), eq(stockBalances.costCenterId, args.costCenterId)));
 
   const newQty = (existing?.qtyOnHand ?? 0) + args.qtyDelta;
 
   if (existing) {
     await tx.update(stockBalances).set({ qtyOnHand: newQty, updatedAt: new Date() }).where(eq(stockBalances.id, existing.id));
   } else {
-    await tx.insert(stockBalances).values({ stockItemId: args.stockItemId, branchId: args.branchId, qtyOnHand: newQty });
+    await tx.insert(stockBalances).values({ stockItemId: args.stockItemId, branchId: args.branchId, costCenterId: args.costCenterId, qtyOnHand: newQty });
   }
 
   await tx.insert(stockMovements).values({
     stockItemId: args.stockItemId,
     branchId: args.branchId,
+    costCenterId: args.costCenterId,
     qtyDelta: args.qtyDelta,
     unitLabel: args.unitLabel ?? undefined,
     movementType: args.movementType,

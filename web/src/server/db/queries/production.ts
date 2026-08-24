@@ -1,7 +1,7 @@
 import "server-only";
 import { db } from "@/server/db";
 import { productionBatches, productionBatchIngredients, subRecipes, stockItems, recipeIngredients, branches, profiles, stockBalances } from "@/server/db/schema";
-import { and, eq, ilike, or, desc, inArray } from "drizzle-orm";
+import { and, eq, ilike, or, desc, inArray, sql } from "drizzle-orm";
 
 // One round trip for the New Production Batch builder: every stockable,
 // non-archived sub-recipe plus its flat ingredient list (at live rate),
@@ -52,12 +52,28 @@ export async function listEligibleSubRecipesWithIngredients() {
   }));
 }
 
-// All (item, branch) balances — small, bounded table — so the New Production
-// Batch builder can show "Available" stock and a non-blocking shortage
-// warning per ingredient without a fetch round trip on every branch/recipe
-// change (matches index.html's productionIngredientRowsHTML).
+// All (item, branch) balances, summed across every sector at that branch —
+// small, bounded table — so the New Production Batch builder can show
+// "Available" stock and a non-blocking shortage warning per ingredient
+// without a fetch round trip on every branch/recipe change (matches
+// index.html's productionIngredientRowsHTML). Summed rather than per-sector
+// because these callers (Production, Purchase Orders) care about whether the
+// branch has enough stock at all, not which sector it's sitting in — for a
+// sector-scoped view see listStockBalancesBySector().
 export async function listAllStockBalances() {
-  return db.select({ stockItemId: stockBalances.stockItemId, branchId: stockBalances.branchId, qtyOnHand: stockBalances.qtyOnHand }).from(stockBalances);
+  return db
+    .select({ stockItemId: stockBalances.stockItemId, branchId: stockBalances.branchId, qtyOnHand: sql<number>`sum(${stockBalances.qtyOnHand})` })
+    .from(stockBalances)
+    .groupBy(stockBalances.stockItemId, stockBalances.branchId);
+}
+
+// Ungrouped, per-sector balances — Stock Count needs the exact
+// (stockItemId, branchId, costCenterId) row since a physical count is
+// inherently scoped to one sector, not a branch-wide total.
+export async function listStockBalancesBySector() {
+  return db
+    .select({ stockItemId: stockBalances.stockItemId, branchId: stockBalances.branchId, costCenterId: stockBalances.costCenterId, qtyOnHand: stockBalances.qtyOnHand })
+    .from(stockBalances);
 }
 
 export async function listProductionBatches(filters: { status?: string; q?: string }) {

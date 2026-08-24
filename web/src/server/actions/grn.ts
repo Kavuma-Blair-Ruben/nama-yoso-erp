@@ -9,6 +9,7 @@ import { assertPermission } from "@/server/auth/permissions";
 import { nextGrnNumber, nextBatchNumber, nextLotNumber } from "@/server/db/sequences";
 import { uploadPhoto, deletePhoto } from "@/lib/supabaseAdmin";
 import { recordStockMovement } from "@/server/db/stockLedger";
+import { getDefaultCostCenterId } from "@/server/db/costCenterDefaults";
 import { convertQtyToCanonical } from "@/lib/unitMath";
 import { checkSupplierReceivingLimit, checkAbovePriceBreach, checkBranchReceivingLimit } from "@/server/policyChecks";
 
@@ -82,6 +83,17 @@ async function checkRoleGrnCap(roleId: string, total: number): Promise<string | 
 
 async function insertGrn(tx: Db, input: z.infer<typeof grnInputSchema>, status: "DRAFT" | "POSTED", actorId: string) {
   const grnNumber = await nextGrnNumber();
+
+  // Inherit the sector from the LPO being received against, if it has one;
+  // a Direct GRN (or an LPO with no sector set yet) falls back to the
+  // branch's General sector.
+  let costCenterId: string | undefined;
+  if (input.purchaseOrderId) {
+    const [po] = await tx.select({ costCenterId: purchaseOrders.costCenterId }).from(purchaseOrders).where(eq(purchaseOrders.id, input.purchaseOrderId));
+    costCenterId = po?.costCenterId ?? undefined;
+  }
+  costCenterId ??= await getDefaultCostCenterId(tx, input.branchId);
+
   const [grn] = await tx
     .insert(grns)
     .values({
@@ -89,6 +101,7 @@ async function insertGrn(tx: Db, input: z.infer<typeof grnInputSchema>, status: 
       purchaseOrderId: input.purchaseOrderId ?? undefined,
       supplierId: input.supplierId,
       branchId: input.branchId,
+      costCenterId,
       receivedDate: input.receivedDate,
       invoiceNumber: input.invoiceNumber,
       invoiceDueDate: input.invoiceDueDate || undefined,
@@ -127,10 +140,10 @@ async function insertGrn(tx: Db, input: z.infer<typeof grnInputSchema>, status: 
     void i;
   }
 
-  return { grnId: grn.id, grnNumber };
+  return { grnId: grn.id, grnNumber, costCenterId };
 }
 
-async function applyGrnSideEffects(tx: Db, grnId: string, input: z.infer<typeof grnInputSchema>, actorId: string) {
+async function applyGrnSideEffects(tx: Db, grnId: string, costCenterId: string, input: z.infer<typeof grnInputSchema>, actorId: string) {
   // Rate changes vs. current master price -> price_history + live rate update,
   // and a stock-in movement for every accepted line — the one place GRN
   // receiving needs a unit conversion (purchase unit -> canonical KG/LTR-or-
@@ -160,6 +173,7 @@ async function applyGrnSideEffects(tx: Db, grnId: string, input: z.infer<typeof 
       await recordStockMovement(tx, {
         stockItemId: item.id,
         branchId: input.branchId,
+        costCenterId,
         qtyDelta: canonicalQty,
         unitLabel: item.issueUnit,
         movementType: "GRN_RECEIPT",
@@ -210,7 +224,7 @@ export async function postGRN(input: z.infer<typeof grnInputSchema>): Promise<Gr
   // leave a POSTED GRN with no price_history / PO-status side effects applied.
   const { grnId, warning } = await db.transaction(async (tx) => {
     const created = await insertGrn(tx, parsed.data, "POSTED", session.profile.id);
-    await applyGrnSideEffects(tx, created.grnId, parsed.data, session.profile.id);
+    await applyGrnSideEffects(tx, created.grnId, created.costCenterId, parsed.data, session.profile.id);
     const grnWarning = await computeGrnWarning(tx, parsed.data);
     const [supplier] = await tx.select({ name: suppliers.name }).from(suppliers).where(eq(suppliers.id, parsed.data.supplierId));
     await tx.insert(auditLog).values({
@@ -278,7 +292,8 @@ export async function postDraftGrn(id: string): Promise<GrnActionResult> {
     };
     const roleCapBreach = await checkRoleGrnCap(session.role.id, grnTotal(input));
     if (roleCapBreach) return { error: roleCapBreach };
-    await applyGrnSideEffects(tx, id, input, session.profile.id);
+    const costCenterId = grn.costCenterId ?? (await getDefaultCostCenterId(tx, grn.branchId));
+    await applyGrnSideEffects(tx, id, costCenterId, input, session.profile.id);
     const grnWarning = await computeGrnWarning(tx, input);
     await tx.update(grns).set({ status: "POSTED", postedAt: new Date(), postedBy: session.profile.id }).where(eq(grns.id, id));
     await tx.insert(auditLog).values({ actorId: session.profile.id, action: "Posted", entity: "GRN", entityLabel: grn.grnNumber, detail: `Stock updated${grnWarning ? " ⚠ " + grnWarning : ""}` });
@@ -323,11 +338,19 @@ export async function updateGrnDraft(id: string, input: z.infer<typeof grnInputS
   if (!existing) return { error: "GRN not found or already posted — it can no longer be edited." };
 
   await db.transaction(async (tx) => {
+    let costCenterId: string | undefined;
+    if (parsed.data.purchaseOrderId) {
+      const [po] = await tx.select({ costCenterId: purchaseOrders.costCenterId }).from(purchaseOrders).where(eq(purchaseOrders.id, parsed.data.purchaseOrderId));
+      costCenterId = po?.costCenterId ?? undefined;
+    }
+    costCenterId ??= await getDefaultCostCenterId(tx, parsed.data.branchId);
+
     await tx
       .update(grns)
       .set({
         supplierId: parsed.data.supplierId,
         branchId: parsed.data.branchId,
+        costCenterId,
         receivedDate: parsed.data.receivedDate,
         invoiceNumber: parsed.data.invoiceNumber,
         invoiceDueDate: parsed.data.invoiceDueDate || undefined,

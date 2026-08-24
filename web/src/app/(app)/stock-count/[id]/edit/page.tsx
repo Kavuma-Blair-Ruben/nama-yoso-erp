@@ -5,8 +5,8 @@ import { StockCountBuilder } from "@/components/stockCount/StockCountBuilder";
 import { getStockCountForEdit, listStockCountTemplatesWithItems } from "@/server/db/queries/stockCount";
 import { listIngredientPickerItems } from "@/server/db/queries/recipes";
 import { listBranches } from "@/server/db/queries/purchaseOrders";
-import { listAllStockBalances } from "@/server/db/queries/production";
-import { listCostCenters } from "@/server/db/queries/wastage";
+import { listStockBalancesBySector } from "@/server/db/queries/production";
+import { listAllActiveCostCenters } from "@/server/db/queries/costCenters";
 import { getSystemSettings } from "@/server/db/queries/settings";
 
 export default async function EditStockCountDraftPage({ params }: PageProps<"/stock-count/[id]/edit">) {
@@ -16,8 +16,8 @@ export default async function EditStockCountDraftPage({ params }: PageProps<"/st
     getStockCountForEdit(id),
     listIngredientPickerItems(),
     listBranches(),
-    listAllStockBalances(),
-    listCostCenters(),
+    listStockBalancesBySector(),
+    listAllActiveCostCenters(),
     listStockCountTemplatesWithItems(),
     getSystemSettings(),
   ]);
@@ -30,13 +30,13 @@ export default async function EditStockCountDraftPage({ params }: PageProps<"/st
       <StockCountBuilder
         items={items}
         branches={branches}
-        costCenters={costCenters.map((c) => c.name)}
+        costCenters={costCenters}
         stockBalances={stockBalances}
         templates={templates}
         blindCounts={settings.blindCounts}
         existingCountId={stockCount.id}
         initialBranchId={stockCount.branchId}
-        initialCostCenter={stockCount.costCenter ?? undefined}
+        initialCostCenterId={stockCount.costCenterId ?? undefined}
         initialCountDate={stockCount.countDate}
         initialLines={lines.map((l) => ({
           stockItemId: l.stockItemId,

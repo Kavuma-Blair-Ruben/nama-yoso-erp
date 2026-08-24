@@ -716,9 +716,7 @@ export const stockMovements = pgTable("stock_movements", {
   id: uuid("id").primaryKey().defaultRandom(),
   stockItemId: uuid("stock_item_id").notNull().references(() => stockItems.id),
   branchId: uuid("branch_id").notNull().references(() => branches.id),
-  // Nullable only during the backfill migration — every new movement always
-  // sets it. See stockLedger.ts's recordStockMovement().
-  costCenterId: uuid("cost_center_id").references(() => costCenters.id),
+  costCenterId: uuid("cost_center_id").notNull().references(() => costCenters.id),
   qtyDelta: numeric("qty_delta", { precision: 14, scale: 4, mode: "number" }).notNull(), // canonical basis; +in / -out
   unitLabel: text("unit_label"), // display-only label (e.g. "KG", "L", "PC") at time of movement
   movementType: text("movement_type").notNull(),
@@ -739,8 +737,7 @@ export const stockBalances = pgTable("stock_balances", {
   id: uuid("id").primaryKey().defaultRandom(),
   stockItemId: uuid("stock_item_id").notNull().references(() => stockItems.id),
   branchId: uuid("branch_id").notNull().references(() => branches.id),
-  // Nullable only during the backfill migration — see stockMovements.costCenterId.
-  costCenterId: uuid("cost_center_id").references(() => costCenters.id),
+  costCenterId: uuid("cost_center_id").notNull().references(() => costCenters.id),
   qtyOnHand: numeric("qty_on_hand", { precision: 14, scale: 4, mode: "number" }).notNull().default(0),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [unique("stock_balances_item_branch_costcenter_unique").on(t.stockItemId, t.branchId, t.costCenterId)]);

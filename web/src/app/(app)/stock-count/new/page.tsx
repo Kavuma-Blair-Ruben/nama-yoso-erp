@@ -3,8 +3,8 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { StockCountBuilder } from "@/components/stockCount/StockCountBuilder";
 import { listIngredientPickerItems } from "@/server/db/queries/recipes";
 import { listBranches } from "@/server/db/queries/purchaseOrders";
-import { listAllStockBalances } from "@/server/db/queries/production";
-import { listCostCenters } from "@/server/db/queries/wastage";
+import { listStockBalancesBySector } from "@/server/db/queries/production";
+import { listAllActiveCostCenters } from "@/server/db/queries/costCenters";
 import { listStockCountTemplatesWithItems } from "@/server/db/queries/stockCount";
 import { getSystemSettings } from "@/server/db/queries/settings";
 
@@ -13,8 +13,8 @@ export default async function NewStockCountPage() {
   const [items, branches, stockBalances, costCenters, templates, settings] = await Promise.all([
     listIngredientPickerItems(),
     listBranches(),
-    listAllStockBalances(),
-    listCostCenters(),
+    listStockBalancesBySector(),
+    listAllActiveCostCenters(),
     listStockCountTemplatesWithItems(),
     getSystemSettings(),
   ]);
@@ -25,7 +25,7 @@ export default async function NewStockCountPage() {
       <StockCountBuilder
         items={items}
         branches={branches}
-        costCenters={costCenters.map((c) => c.name)}
+        costCenters={costCenters}
         stockBalances={stockBalances}
         templates={templates}
         blindCounts={settings.blindCounts}

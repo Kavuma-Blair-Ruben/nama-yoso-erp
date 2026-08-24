@@ -1,0 +1,1 @@
+Backfilled 23 stock_balances row(s) and 51 stock_movements row(s) into each branch's General sector.
