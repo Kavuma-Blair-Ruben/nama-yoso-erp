@@ -38,13 +38,17 @@ function computeExpiry(producedDate: string, shelfLifeDays: number | null): stri
   return `${y}-${m}-${day}`;
 }
 
+type CostCenter = { id: string; branchId: string; name: string };
+
 export function ProductionBuilder({
   subRecipes,
   branches,
+  costCenters,
   stockBalances,
   existingBatchId,
   initialSubRecipeId,
   initialBranchId,
+  initialCostCenterId,
   initialScaleMultiplier,
   initialYieldQty,
   initialYieldUnit,
@@ -56,10 +60,12 @@ export function ProductionBuilder({
 }: {
   subRecipes: SubRecipeOption[];
   branches: { id: string; name: string }[];
+  costCenters: CostCenter[];
   stockBalances?: { stockItemId: string; branchId: string; qtyOnHand: number }[];
   existingBatchId?: string;
   initialSubRecipeId?: string;
   initialBranchId?: string;
+  initialCostCenterId?: string;
   initialScaleMultiplier?: number;
   initialYieldQty?: number;
   initialYieldUnit?: string;
@@ -72,6 +78,18 @@ export function ProductionBuilder({
   const router = useRouter();
   const [subRecipeId, setSubRecipeId] = useState(initialSubRecipeId ?? subRecipes[0]?.id ?? "");
   const [branchId, setBranchId] = useState(initialBranchId ?? branches[0]?.id ?? "");
+  const costCentersForBranch = costCenters.filter((c) => c.branchId === branchId);
+  const [costCenterId, setCostCenterId] = useState(
+    initialCostCenterId ?? costCentersForBranch.find((c) => c.name === "Kitchen")?.id ?? costCentersForBranch[0]?.id ?? ""
+  );
+  function changeBranch(newBranchId: string) {
+    setBranchId(newBranchId);
+    const stillValid = costCenters.some((c) => c.branchId === newBranchId && c.id === costCenterId);
+    if (!stillValid) {
+      const opts = costCenters.filter((c) => c.branchId === newBranchId);
+      setCostCenterId(opts.find((c) => c.name === "Kitchen")?.id ?? opts[0]?.id ?? "");
+    }
+  }
   const [scaleMultiplier, setScaleMultiplier] = useState(String(initialScaleMultiplier ?? 1));
   const [producedDate, setProducedDate] = useState(initialProducedDate ?? todayStr());
   const [expiryDate, setExpiryDate] = useState(initialExpiryDate ?? "");
@@ -135,6 +153,7 @@ export function ProductionBuilder({
     return {
       subRecipeId,
       branchId,
+      costCenterId,
       scaleMultiplier: num(scaleMultiplier),
       yieldQty,
       yieldUnit: yieldUnit || undefined,
@@ -154,6 +173,10 @@ export function ProductionBuilder({
     }
     if (!branchId) {
       setError("Choose a branch.");
+      return;
+    }
+    if (!costCenterId) {
+      setError("Choose a sector.");
       return;
     }
     const input = buildInput();
@@ -178,19 +201,25 @@ export function ProductionBuilder({
         <h3>{existingBatchId ? "Edit Open Production Ticket" : "New Production Ticket"}</h3>
       </div>
       <div className="panel-body">
-        <div className="line-builder-row head" style={{ gridTemplateColumns: "2fr 1fr" }}>
+        <div className="line-builder-row head" style={{ gridTemplateColumns: "2fr 1fr 1fr" }}>
           <div>Sub-recipe to produce</div>
           <div>Branch</div>
+          <div>Sector</div>
         </div>
-        <div className="line-builder-row" style={{ gridTemplateColumns: "2fr 1fr", marginBottom: 10 }}>
+        <div className="line-builder-row" style={{ gridTemplateColumns: "2fr 1fr 1fr", marginBottom: 10 }}>
           <select value={subRecipeId} disabled={!!existingBatchId} onChange={(e) => handleSubRecipeChange(e.target.value)}>
             {subRecipes.map((s) => (
               <option key={s.id} value={s.id}>{s.legacyCode} — {s.name}</option>
             ))}
           </select>
-          <select value={branchId} onChange={(e) => setBranchId(e.target.value)}>
+          <select value={branchId} onChange={(e) => changeBranch(e.target.value)}>
             {branches.map((b) => (
               <option key={b.id} value={b.id}>{b.name}</option>
+            ))}
+          </select>
+          <select value={costCenterId} onChange={(e) => setCostCenterId(e.target.value)}>
+            {costCentersForBranch.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
             ))}
           </select>
         </div>

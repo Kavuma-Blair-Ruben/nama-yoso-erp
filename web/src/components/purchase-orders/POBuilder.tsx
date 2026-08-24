@@ -20,6 +20,7 @@ type Product = {
   itemTaxRate: number | null;
 };
 type Branch = { id: string; code: string; name: string };
+type CostCenter = { id: string; branchId: string; name: string };
 type Supplier = { id: string; name: string };
 type StockBalance = { stockItemId: string; branchId: string; qtyOnHand: number };
 
@@ -27,11 +28,31 @@ type StockBalance = { stockItemId: string; branchId: string; qtyOnHand: number }
 // @/lib/format for why (typing "2." must not snap back to "2" on every keystroke).
 type Line = { stockItemId: string; name: string; unitLabel: string; qty: string; rate: string; taxRate: string; supplierId: string | null; supplierName: string | null };
 
-export function POBuilder({ products, branches, suppliers, stockBalances }: { products: Product[]; branches: Branch[]; suppliers: Supplier[]; stockBalances: StockBalance[] }) {
+export function POBuilder({
+  products,
+  branches,
+  costCenters,
+  suppliers,
+  stockBalances,
+}: {
+  products: Product[];
+  branches: Branch[];
+  costCenters: CostCenter[];
+  suppliers: Supplier[];
+  stockBalances: StockBalance[];
+}) {
   const router = useRouter();
   const [lines, setLines] = useState<Line[]>([]);
   const [branchId, setBranchId] = useState(branches[0]?.id ?? "");
   const [deliverTo, setDeliverTo] = useState(branches[0]?.code ?? "");
+  const costCentersForBranch = costCenters.filter((c) => c.branchId === branchId);
+  const [costCenterId, setCostCenterId] = useState(costCentersForBranch[0]?.id ?? "");
+  function changeBranch(newBranchId: string) {
+    setBranchId(newBranchId);
+    setDeliverTo(branches.find((b) => b.id === newBranchId)?.code ?? "");
+    const stillValid = costCenters.some((c) => c.branchId === newBranchId && c.id === costCenterId);
+    if (!stillValid) setCostCenterId(costCenters.find((c) => c.branchId === newBranchId)?.id ?? "");
+  }
   const [fallbackSupplierId, setFallbackSupplierId] = useState("");
   const [notes, setNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -107,10 +128,15 @@ export function POBuilder({ products, branches, suppliers, stockBalances }: { pr
       setError("Add at least one item.");
       return;
     }
+    if (!costCenterId) {
+      setError("Choose a sector.");
+      return;
+    }
     startTransition(async () => {
       const result = await createPurchaseOrders({
         lines: lines.map((l) => ({ stockItemId: l.stockItemId, name: l.name, unitLabel: l.unitLabel, qty: num(l.qty), rate: num(l.rate), taxRate: num(l.taxRate), supplierId: l.supplierId })),
         branchId,
+        costCenterId,
         deliverTo,
         fallbackSupplierId: fallbackSupplierId || null,
         notes,
@@ -196,11 +222,19 @@ export function POBuilder({ products, branches, suppliers, stockBalances }: { pr
 
         <div className="form-row">
           <label>Deliver to</label>
-          <select value={branchId} onChange={(e) => { setBranchId(e.target.value); setDeliverTo(branches.find((b) => b.id === e.target.value)?.code ?? ""); }}>
+          <select value={branchId} onChange={(e) => changeBranch(e.target.value)}>
             {branches.map((b) => (
               <option key={b.id} value={b.id}>
                 {b.name}
               </option>
+            ))}
+          </select>
+        </div>
+        <div className="form-row">
+          <label>Sector</label>
+          <select value={costCenterId} onChange={(e) => setCostCenterId(e.target.value)}>
+            {costCentersForBranch.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
             ))}
           </select>
         </div>

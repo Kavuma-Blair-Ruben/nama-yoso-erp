@@ -4,14 +4,16 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { ProductionBuilder } from "@/components/production/ProductionBuilder";
 import { getProductionBatchForClone, listEligibleSubRecipesWithIngredients, listAllStockBalances } from "@/server/db/queries/production";
 import { listBranches } from "@/server/db/queries/purchaseOrders";
+import { listAllActiveCostCenters } from "@/server/db/queries/costCenters";
 
 export default async function CloneProductionPage({ params }: PageProps<"/production/[id]/clone">) {
   await requireSection("subrecipes", "edit");
   const { id } = await params;
-  const [batch, subRecipes, branches, stockBalances] = await Promise.all([
+  const [batch, subRecipes, branches, costCenters, stockBalances] = await Promise.all([
     getProductionBatchForClone(id),
     listEligibleSubRecipesWithIngredients(),
     listBranches(),
+    listAllActiveCostCenters(),
     listAllStockBalances(),
   ]);
   if (!batch) notFound();
@@ -22,9 +24,11 @@ export default async function CloneProductionPage({ params }: PageProps<"/produc
       <ProductionBuilder
         subRecipes={subRecipes}
         branches={branches}
+        costCenters={costCenters}
         stockBalances={stockBalances}
         initialSubRecipeId={batch.subRecipeId}
         initialBranchId={batch.branchId}
+        initialCostCenterId={batch.costCenterId ?? undefined}
         initialScaleMultiplier={batch.scaleMultiplier}
         initialNotes={batch.notes ?? undefined}
         initialStaffName={batch.staffName ?? undefined}

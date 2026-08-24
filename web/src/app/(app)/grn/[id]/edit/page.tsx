@@ -4,21 +4,24 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { GRNBuilder } from "@/components/grn/GRNBuilder";
 import { getGrnForEdit } from "@/server/db/queries/grn";
 import { listPurchasableProductsForPicker, listAllSuppliers, listBranches } from "@/server/db/queries/purchaseOrders";
+import { listAllActiveCostCenters } from "@/server/db/queries/costCenters";
 
 export default async function EditGrnPage({ params }: PageProps<"/grn/[id]/edit">) {
   await requireSection("grn", "edit");
   const { id } = await params;
 
-  const [data, products, suppliers, branches] = await Promise.all([
+  const [data, products, suppliers, branches, costCenters] = await Promise.all([
     getGrnForEdit(id),
     listPurchasableProductsForPicker(),
     listAllSuppliers(),
     listBranches(),
+    listAllActiveCostCenters(),
   ]);
   if (!data) notFound();
   const { grn, lines } = data;
   const mode: "po" | "direct" = grn.purchaseOrderId ? "po" : "direct";
   const supplierName = suppliers.find((s) => s.id === grn.supplierId)?.name;
+  const costCenterName = costCenters.find((c) => c.id === grn.costCenterId)?.name;
 
   const initialLines = lines.map((l) => ({
     stockItemId: l.stockItemId,
@@ -46,10 +49,13 @@ export default async function EditGrnPage({ params }: PageProps<"/grn/[id]/edit"
         supplierName={supplierName}
         supplierId={grn.supplierId}
         branchId={grn.branchId}
+        costCenterName={costCenterName}
         initialLines={initialLines}
         suppliers={suppliers}
         products={products}
         branches={branches}
+        costCenters={costCenters}
+        initialCostCenterId={grn.costCenterId ?? undefined}
         existingGrnId={grn.id}
         initialInvoiceNumber={grn.invoiceNumber ?? ""}
         initialReceivedDate={grn.receivedDate}

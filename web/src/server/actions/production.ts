@@ -21,6 +21,7 @@ const ingredientSchema = z.object({
 const productionInputSchema = z.object({
   subRecipeId: z.string().min(1),
   branchId: z.string().min(1),
+  costCenterId: z.string().optional(),
   scaleMultiplier: z.number().min(0.0001),
   yieldQty: z.number().min(0),
   yieldUnit: z.string().optional(),
@@ -56,9 +57,8 @@ async function insertProductionBatch(tx: Db, input: z.infer<typeof productionInp
   }
   const costPerUnit = input.yieldQty > 0 ? totalCost / input.yieldQty : undefined;
 
-  // Production has no sector picker yet — defaults to the branch's Kitchen
-  // sector, since that's almost always where prep happens.
-  const costCenterId = await getDefaultCostCenterId(tx, input.branchId, "Kitchen");
+  // Falls back to the branch's Kitchen sector if the builder didn't send one.
+  const costCenterId = input.costCenterId ?? (await getDefaultCostCenterId(tx, input.branchId, "Kitchen"));
 
   const [batch] = await tx
     .insert(productionBatches)
@@ -247,7 +247,7 @@ export async function updateProductionBatch(id: string, input: z.infer<typeof pr
       ingredientRows.push({ stockItemId: ing.stockItemId, qty: ing.qty, unitLabel: ing.unitLabel, rateAtProduction: rate, amountAtProduction: amount });
     }
     const costPerUnit = parsed.data.yieldQty > 0 ? totalCost / parsed.data.yieldQty : undefined;
-    const costCenterId = await getDefaultCostCenterId(tx, parsed.data.branchId, "Kitchen");
+    const costCenterId = parsed.data.costCenterId ?? (await getDefaultCostCenterId(tx, parsed.data.branchId, "Kitchen"));
 
     await tx
       .update(productionBatches)

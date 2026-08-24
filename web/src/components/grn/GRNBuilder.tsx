@@ -11,6 +11,7 @@ import { bestTextMatch } from "@/lib/textMatch";
 import { extractProductCode } from "@/lib/scanCode";
 
 type Product = { id: string; legacyCode: string; name: string; purchaseUnit: string | null; purchaseRate: number | null };
+type CostCenter = { id: string; branchId: string; name: string };
 
 type Line = {
   stockItemId: string;
@@ -70,10 +71,13 @@ export function GRNBuilder({
   supplierId,
   supplierName,
   branchId,
+  costCenterName,
   initialLines,
   suppliers,
   products,
   branches,
+  costCenters,
+  initialCostCenterId,
   existingGrnId,
   initialInvoiceNumber,
   initialReceivedDate,
@@ -87,10 +91,15 @@ export function GRNBuilder({
   supplierId?: string;
   supplierName?: string;
   branchId?: string;
+  // mode "po" only — the LPO's own sector, shown read-only.
+  costCenterName?: string;
   initialLines: Line[];
   suppliers: { id: string; name: string }[];
   products: Product[];
   branches?: { id: string; name: string }[];
+  // mode "direct" only — the sector picker's options.
+  costCenters: CostCenter[];
+  initialCostCenterId?: string;
   existingGrnId?: string;
   initialInvoiceNumber?: string;
   initialReceivedDate?: string;
@@ -102,6 +111,13 @@ export function GRNBuilder({
   const [lines, setLines] = useState<EditLine[]>(() => initialLines.map(toEditLine));
   const [directSupplierId, setDirectSupplierId] = useState(supplierId ?? suppliers[0]?.id ?? "");
   const [directBranchId, setDirectBranchId] = useState(branchId ?? branches?.[0]?.id ?? "");
+  const directCostCentersForBranch = costCenters.filter((c) => c.branchId === directBranchId);
+  const [directCostCenterId, setDirectCostCenterId] = useState(initialCostCenterId ?? directCostCentersForBranch[0]?.id ?? "");
+  function changeDirectBranch(newBranchId: string) {
+    setDirectBranchId(newBranchId);
+    const stillValid = costCenters.some((c) => c.branchId === newBranchId && c.id === directCostCenterId);
+    if (!stillValid) setDirectCostCenterId(costCenters.find((c) => c.branchId === newBranchId)?.id ?? "");
+  }
   const [invoiceNumber, setInvoiceNumber] = useState(initialInvoiceNumber ?? "");
   const [receivedDate, setReceivedDate] = useState(initialReceivedDate ?? todayStr());
   const [invoiceDueDate, setInvoiceDueDate] = useState(initialInvoiceDueDate ?? "");
@@ -260,6 +276,7 @@ export function GRNBuilder({
       purchaseOrderId: poId,
       supplierId: resolvedSupplierId,
       branchId: mode === "po" ? branchId ?? "" : directBranchId,
+      costCenterId: mode === "direct" ? directCostCenterId : undefined,
       receivedDate,
       invoiceNumber,
       invoiceDueDate,
@@ -290,6 +307,10 @@ export function GRNBuilder({
       setError("Choose a supplier for this direct GRN.");
       return;
     }
+    if (mode === "direct" && !directCostCenterId) {
+      setError("Choose a sector for this direct GRN.");
+      return;
+    }
     const input = buildInput();
     if (input.lines.length === 0) {
       setError("Enter a received quantity for at least one item.");
@@ -315,11 +336,12 @@ export function GRNBuilder({
         {mode === "direct" && (
           <>
             <div className="callout">No Purchase Order behind this receipt — use this when stock genuinely arrived without one.</div>
-            <div className="line-builder-row head" style={{ gridTemplateColumns: "1fr 1fr" }}>
+            <div className="line-builder-row head" style={{ gridTemplateColumns: "1fr 1fr 1fr" }}>
               <div>Supplier</div>
               <div>Receiving branch</div>
+              <div>Sector</div>
             </div>
-            <div className="line-builder-row" style={{ gridTemplateColumns: "1fr 1fr", marginBottom: 10 }}>
+            <div className="line-builder-row" style={{ gridTemplateColumns: "1fr 1fr 1fr", marginBottom: 10 }}>
               <select value={directSupplierId} onChange={(e) => setDirectSupplierId(e.target.value)}>
                 {suppliers.map((s) => (
                   <option key={s.id} value={s.id}>
@@ -327,17 +349,27 @@ export function GRNBuilder({
                   </option>
                 ))}
               </select>
-              <select value={directBranchId} onChange={(e) => setDirectBranchId(e.target.value)}>
+              <select value={directBranchId} onChange={(e) => changeDirectBranch(e.target.value)}>
                 {(branches ?? []).map((b) => (
                   <option key={b.id} value={b.id}>
                     {b.name}
                   </option>
                 ))}
               </select>
+              <select value={directCostCenterId} onChange={(e) => setDirectCostCenterId(e.target.value)}>
+                {directCostCentersForBranch.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
             </div>
           </>
         )}
-        {mode === "po" && <div style={{ fontSize: 12, color: "var(--ink-soft)", marginBottom: 10 }}>{supplierName}</div>}
+        {mode === "po" && (
+          <div style={{ fontSize: 12, color: "var(--ink-soft)", marginBottom: 10 }}>
+            {supplierName}
+            {costCenterName && <> · Sector: <b>{costCenterName}</b></>}
+          </div>
+        )}
 
         <div className="line-builder-row head" style={{ gridTemplateColumns: "1fr 1fr 1fr 1fr" }}>
           <div>Document type</div>

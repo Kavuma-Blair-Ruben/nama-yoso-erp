@@ -3,12 +3,14 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { ProductionBuilder } from "@/components/production/ProductionBuilder";
 import { listEligibleSubRecipesWithIngredients, listAllStockBalances } from "@/server/db/queries/production";
 import { listBranches } from "@/server/db/queries/purchaseOrders";
+import { listAllActiveCostCenters } from "@/server/db/queries/costCenters";
 
 export default async function NewProductionPage() {
   await requireSection("subrecipes", "edit");
-  const [subRecipes, branches, stockBalances] = await Promise.all([
+  const [subRecipes, branches, costCenters, stockBalances] = await Promise.all([
     listEligibleSubRecipesWithIngredients(),
     listBranches(),
+    listAllActiveCostCenters(),
     listAllStockBalances(),
   ]);
 
@@ -20,7 +22,7 @@ export default async function NewProductionPage() {
           No stockable sub-recipes are available to produce yet. Mark a sub-recipe as Stockable in Recipe Costing first.
         </div>
       ) : (
-        <ProductionBuilder subRecipes={subRecipes} branches={branches} stockBalances={stockBalances} />
+        <ProductionBuilder subRecipes={subRecipes} branches={branches} costCenters={costCenters} stockBalances={stockBalances} />
       )}
     </>
   );

@@ -3,19 +3,21 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { POBuilder } from "@/components/purchase-orders/POBuilder";
 import { listPurchasableProductsForPicker, listBranches, listAllSuppliers } from "@/server/db/queries/purchaseOrders";
 import { listAllStockBalances } from "@/server/db/queries/production";
+import { listAllActiveCostCenters } from "@/server/db/queries/costCenters";
 
 export default async function NewPurchaseOrderPage() {
   await requireSection("orders", "edit");
-  const [products, branches, suppliers, stockBalances] = await Promise.all([
+  const [products, branches, costCenters, suppliers, stockBalances] = await Promise.all([
     listPurchasableProductsForPicker(),
     listBranches(),
+    listAllActiveCostCenters(),
     listAllSuppliers(),
     listAllStockBalances(),
   ]);
   return (
     <>
       <PageHeader title="New Purchase Order" subtitle="Pick items from any category, from any supplier — grouped by designated supplier automatically." />
-      <POBuilder products={products} branches={branches} suppliers={suppliers} stockBalances={stockBalances} />
+      <POBuilder products={products} branches={branches} costCenters={costCenters} suppliers={suppliers} stockBalances={stockBalances} />
     </>
   );
 }

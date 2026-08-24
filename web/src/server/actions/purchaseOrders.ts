@@ -26,6 +26,7 @@ const lineSchema = z.object({
 const createSchema = z.object({
   lines: z.array(lineSchema).min(1),
   branchId: z.string().min(1),
+  costCenterId: z.string().min(1),
   deliverTo: z.string().optional(),
   fallbackSupplierId: z.string().nullable().optional(),
   notes: z.string().optional(),
@@ -48,7 +49,7 @@ export async function createPurchaseOrders(input: z.infer<typeof createSchema>):
   const session = await assertPermission("orders", "edit");
   const parsed = createSchema.safeParse(input);
   if (!parsed.success) return { error: "Add at least one valid line item." };
-  const { lines, branchId, deliverTo, fallbackSupplierId, notes } = parsed.data;
+  const { lines, branchId, costCenterId, deliverTo, fallbackSupplierId, notes } = parsed.data;
 
   if (deliverTo) {
     const [settings] = await db.select().from(policySettings);
@@ -106,7 +107,7 @@ export async function createPurchaseOrders(input: z.infer<typeof createSchema>):
     const [supplier] = await db.select({ name: suppliers.name }).from(suppliers).where(eq(suppliers.id, supplierId));
     const [po] = await db
       .insert(purchaseOrders)
-      .values({ poNumber, supplierId, branchId, deliverTo, notes, createdBy: session.profile.id })
+      .values({ poNumber, supplierId, branchId, costCenterId, deliverTo, notes, createdBy: session.profile.id })
       .returning({ id: purchaseOrders.id });
     await db.insert(purchaseOrderLines).values(
       groupLines.map((l, i) => ({

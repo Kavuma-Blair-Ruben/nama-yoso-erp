@@ -16,6 +16,7 @@ import {
   consolidatedInvoices,
   consolidatedInvoiceGrns,
   profiles,
+  costCenters,
 } from "@/server/db/schema";
 import { and, eq, ilike, or, sql, desc, inArray, notInArray } from "drizzle-orm";
 
@@ -62,9 +63,19 @@ export async function getEligiblePOsForReceiving() {
 
 export async function getPOLinesForReceiving(poId: string) {
   const [po] = await db
-    .select({ id: purchaseOrders.id, poNumber: purchaseOrders.poNumber, supplierId: purchaseOrders.supplierId, supplier: suppliers.name, branchId: purchaseOrders.branchId, status: purchaseOrders.status })
+    .select({
+      id: purchaseOrders.id,
+      poNumber: purchaseOrders.poNumber,
+      supplierId: purchaseOrders.supplierId,
+      supplier: suppliers.name,
+      branchId: purchaseOrders.branchId,
+      costCenterId: purchaseOrders.costCenterId,
+      costCenterName: costCenters.name,
+      status: purchaseOrders.status,
+    })
     .from(purchaseOrders)
     .innerJoin(suppliers, eq(purchaseOrders.supplierId, suppliers.id))
+    .leftJoin(costCenters, eq(purchaseOrders.costCenterId, costCenters.id))
     .where(eq(purchaseOrders.id, poId));
   if (!po) return null;
 

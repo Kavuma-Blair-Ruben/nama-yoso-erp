@@ -4,14 +4,16 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { ProductionBuilder } from "@/components/production/ProductionBuilder";
 import { getProductionBatchForEdit, listEligibleSubRecipesWithIngredients, listAllStockBalances } from "@/server/db/queries/production";
 import { listBranches } from "@/server/db/queries/purchaseOrders";
+import { listAllActiveCostCenters } from "@/server/db/queries/costCenters";
 
 export default async function EditProductionDraftPage({ params }: PageProps<"/production/[id]/edit">) {
   await requireSection("subrecipes", "edit");
   const { id } = await params;
-  const [data, subRecipes, branches, stockBalances] = await Promise.all([
+  const [data, subRecipes, branches, costCenters, stockBalances] = await Promise.all([
     getProductionBatchForEdit(id),
     listEligibleSubRecipesWithIngredients(),
     listBranches(),
+    listAllActiveCostCenters(),
     listAllStockBalances(),
   ]);
   if (!data) notFound();
@@ -23,10 +25,12 @@ export default async function EditProductionDraftPage({ params }: PageProps<"/pr
       <ProductionBuilder
         subRecipes={subRecipes}
         branches={branches}
+        costCenters={costCenters}
         stockBalances={stockBalances}
         existingBatchId={batch.id}
         initialSubRecipeId={batch.subRecipeId}
         initialBranchId={batch.branchId}
+        initialCostCenterId={batch.costCenterId ?? undefined}
         initialScaleMultiplier={batch.scaleMultiplier}
         initialYieldQty={batch.yieldQty}
         initialYieldUnit={batch.yieldUnit ?? undefined}

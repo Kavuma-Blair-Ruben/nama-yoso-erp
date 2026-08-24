@@ -37,6 +37,9 @@ const grnInputSchema = z.object({
   purchaseOrderId: z.string().nullable(),
   supplierId: z.string().min(1),
   branchId: z.string().min(1),
+  // Direct GRN only — an LPO-backed GRN always inherits the LPO's own
+  // sector instead (see insertGrn).
+  costCenterId: z.string().optional(),
   receivedDate: z.string().min(1),
   invoiceNumber: z.string().optional(),
   invoiceDueDate: z.string().optional(),
@@ -85,12 +88,14 @@ async function insertGrn(tx: Db, input: z.infer<typeof grnInputSchema>, status: 
   const grnNumber = await nextGrnNumber();
 
   // Inherit the sector from the LPO being received against, if it has one;
-  // a Direct GRN (or an LPO with no sector set yet) falls back to the
-  // branch's General sector.
+  // otherwise use whatever the Direct GRN form's picker sent, falling back
+  // to the branch's General sector if even that's missing.
   let costCenterId: string | undefined;
   if (input.purchaseOrderId) {
     const [po] = await tx.select({ costCenterId: purchaseOrders.costCenterId }).from(purchaseOrders).where(eq(purchaseOrders.id, input.purchaseOrderId));
     costCenterId = po?.costCenterId ?? undefined;
+  } else {
+    costCenterId = input.costCenterId;
   }
   costCenterId ??= await getDefaultCostCenterId(tx, input.branchId);
 
@@ -342,6 +347,8 @@ export async function updateGrnDraft(id: string, input: z.infer<typeof grnInputS
     if (parsed.data.purchaseOrderId) {
       const [po] = await tx.select({ costCenterId: purchaseOrders.costCenterId }).from(purchaseOrders).where(eq(purchaseOrders.id, parsed.data.purchaseOrderId));
       costCenterId = po?.costCenterId ?? undefined;
+    } else {
+      costCenterId = parsed.data.costCenterId;
     }
     costCenterId ??= await getDefaultCostCenterId(tx, parsed.data.branchId);
 
