@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { eq, sql } from "drizzle-orm";
 import { db } from "@/server/db";
-import { categories, subcategories, storageAreas, costCenters, wastageReasons, unitsOfMeasure, taxRates, systemSettings, auditLog } from "@/server/db/schema";
+import { categories, subcategories, storageAreas, wastageReasons, unitsOfMeasure, taxRates, systemSettings, auditLog } from "@/server/db/schema";
 import { assertPermission } from "@/server/auth/permissions";
 
 export async function createCategory(name: string) {
@@ -80,23 +80,6 @@ export async function deleteStorageArea(id: string) {
   const [area] = await db.select({ name: storageAreas.name }).from(storageAreas).where(eq(storageAreas.id, id));
   await db.delete(storageAreas).where(eq(storageAreas.id, id));
   if (area) await db.insert(auditLog).values({ actorId: session.profile.id, action: "Deleted", entity: "Storage Area", entityLabel: area.name, detail: "Removed" });
-  revalidatePath("/settings");
-}
-
-export async function createCostCenter(name: string) {
-  const session = await assertPermission("branchsettings", "edit");
-  const trimmed = name.trim();
-  if (!trimmed) return { error: "Enter a cost center name." };
-  await db.insert(costCenters).values({ name: trimmed });
-  await db.insert(auditLog).values({ actorId: session.profile.id, action: "Created", entity: "Cost Center", entityLabel: trimmed, detail: "Added" });
-  revalidatePath("/settings");
-}
-
-export async function deleteCostCenter(id: string) {
-  const session = await assertPermission("branchsettings", "edit");
-  const [center] = await db.select({ name: costCenters.name }).from(costCenters).where(eq(costCenters.id, id));
-  await db.delete(costCenters).where(eq(costCenters.id, id));
-  if (center) await db.insert(auditLog).values({ actorId: session.profile.id, action: "Deleted", entity: "Cost Center", entityLabel: center.name, detail: "Removed" });
   revalidatePath("/settings");
 }
 

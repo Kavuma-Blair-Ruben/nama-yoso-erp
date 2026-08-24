@@ -1,8 +1,9 @@
 import { requireSection } from "@/server/auth/permissions";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { listCategoriesWithSubcategories, listStorageAreas } from "@/server/db/queries/settings";
-import { listCostCenters, listWastageReasons } from "@/server/db/queries/wastage";
+import { listWastageReasons } from "@/server/db/queries/wastage";
 import { listBranchesAdmin } from "@/server/db/queries/branches";
+import { listCostCentersAdmin } from "@/server/db/queries/costCenters";
 import { CategorySettings } from "@/components/settings/CategorySettings";
 import { StorageAreaSettings } from "@/components/settings/StorageAreaSettings";
 import { CostCenterSettings } from "@/components/settings/CostCenterSettings";
@@ -14,7 +15,7 @@ export default async function SettingsPage() {
   const [categories, storageAreas, costCenters, reasons, branches] = await Promise.all([
     listCategoriesWithSubcategories(),
     listStorageAreas(),
-    listCostCenters(),
+    listCostCentersAdmin(),
     listWastageReasons(),
     listBranchesAdmin(),
   ]);
@@ -25,12 +26,14 @@ export default async function SettingsPage() {
       <div style={{ marginBottom: 16 }}>
         <BranchSettings branches={branches} />
       </div>
+      <div style={{ marginBottom: 16 }}>
+        <CostCenterSettings branches={branches} costCenters={costCenters} />
+      </div>
       <div className="grid-2">
         <CategorySettings categories={categories} />
         <StorageAreaSettings storageAreas={storageAreas} />
       </div>
       <div className="grid-2" style={{ marginTop: 16 }}>
-        <CostCenterSettings costCenters={costCenters} />
         <WastageReasonSettings reasons={reasons} />
       </div>
     </>

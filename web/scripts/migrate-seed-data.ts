@@ -266,12 +266,18 @@ async function main() {
   }
 
   console.log("\nInserting lookups...");
-  await db.insert(branches).values([
-    { code: "NAMAYOSO", name: "NAMAYOSO" },
-    { code: "THG", name: "THG" },
-  ]);
+  const insertedBranches = await db
+    .insert(branches)
+    .values([
+      { code: "NAMAYOSO", name: "NAMAYOSO" },
+      { code: "THG", name: "THG" },
+    ])
+    .returning({ id: branches.id });
+  // Cost centers are branch-scoped — each branch gets its own independent
+  // Kitchen/Bar/General/Central Warehouse (see migrate-cost-centers-branch-scope.ts
+  // for the migration that later applied this same shape to a live DB).
   await db.insert(costCenters).values(
-    ["Kitchen", "Bar", "General", "Central Warehouse"].map((name) => ({ name }))
+    insertedBranches.flatMap((b) => ["Kitchen", "Bar", "General", "Central Warehouse"].map((name) => ({ branchId: b.id, name })))
   );
   await db.insert(storageAreas).values(
     ["Dry Store", "Walk-in Chiller", "Walk-in Freezer", "Bar Store"].map((name) => ({ name }))

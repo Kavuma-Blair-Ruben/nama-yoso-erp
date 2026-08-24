@@ -1,0 +1,1 @@
+ALTER TABLE "cost_centers" ALTER COLUMN "branch_id" SET NOT NULL;

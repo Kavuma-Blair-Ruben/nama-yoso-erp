@@ -1,0 +1,19 @@
+Would insert 8 branch-scoped cost center rows:
+  NAMAYOSO / Kitchen
+  NAMAYOSO / Bar
+  NAMAYOSO / General
+  NAMAYOSO / Central Warehouse
+  THG / Kitchen
+  THG / Bar
+  THG / General
+  THG / Central Warehouse
+
+Would delete 4 global cost center row(s).
+
+Would repoint 2 wastage_events row(s) by (name, branchId) match:
+  WST-00001: "Kitchen" @ branch 947a2052-4a94-488c-a52e-08a7b4153c84
+  WST-00002: "Kitchen" @ branch 947a2052-4a94-488c-a52e-08a7b4153c84
+
+Would repoint 2 stock_counts row(s) with a non-null costCenter by (name, branchId) match:
+  SC-00001: "Kitchen" @ branch 947a2052-4a94-488c-a52e-08a7b4153c84
+  SC-00002: "Kitchen" @ branch 947a2052-4a94-488c-a52e-08a7b4153c84

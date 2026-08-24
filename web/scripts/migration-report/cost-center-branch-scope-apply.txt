@@ -1,0 +1,7 @@
+Inserted 8 branch-scoped cost center rows.
+
+Deleted 4 global cost center row(s).
+
+Repointed 2/2 wastage_events row(s).
+
+Repointed 2/2 stock_counts row(s).

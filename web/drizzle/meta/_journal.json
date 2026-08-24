@@ -253,6 +253,20 @@
       "when": 1787533851646,
       "tag": "0035_recipe_branch_prices",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1787536033723,
+      "tag": "0036_cost_center_sectors_expand",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1787536225394,
+      "tag": "0037_cost_centers_branch_id_not_null",
+      "breakpoints": true
     }
   ]
 }

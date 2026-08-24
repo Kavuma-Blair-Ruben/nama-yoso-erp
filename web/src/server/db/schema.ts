@@ -85,10 +85,19 @@ export const subcategories = pgTable(
 
 export const storageTypeEnum = pgEnum("storage_type", ["DRY", "CHILLED", "FROZEN"]);
 
-export const costCenters = pgTable("cost_centers", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  name: text("name").notNull().unique(),
-});
+// A "sector" within a branch (Kitchen, Bar, General, Central Warehouse) —
+// each branch gets its own independent set (NAMAYOSO's Kitchen is a
+// different row, and a different stock ledger, from THG's Kitchen).
+export const costCenters = pgTable(
+  "cost_centers",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    branchId: uuid("branch_id").notNull().references(() => branches.id),
+    name: text("name").notNull(),
+    isActive: boolean("is_active").notNull().default(true),
+  },
+  (t) => [unique("cost_centers_branch_name_unique").on(t.branchId, t.name)]
+);
 
 export const storageAreas = pgTable("storage_areas", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -486,6 +495,9 @@ export const purchaseOrders = pgTable(
     poNumber: text("po_number").notNull().unique(),
     supplierId: uuid("supplier_id").notNull().references(() => suppliers.id),
     branchId: uuid("branch_id").notNull().references(() => branches.id),
+    // Which sector (Kitchen/Bar/...) this order is for — nullable for
+    // pre-existing rows, enforced as required by the create action going forward.
+    costCenterId: uuid("cost_center_id").references(() => costCenters.id),
     status: text("status").notNull().default("DRAFT"),
     deliverTo: text("deliver_to"),
     notes: text("notes"),
@@ -522,6 +534,9 @@ export const grns = pgTable(
     purchaseOrderId: uuid("purchase_order_id").references(() => purchaseOrders.id), // null = Direct GRN
     supplierId: uuid("supplier_id").notNull().references(() => suppliers.id),
     branchId: uuid("branch_id").notNull().references(() => branches.id),
+    // Inherited from the LPO when receiving against one; set directly on a
+    // Direct GRN. Nullable for pre-existing rows.
+    costCenterId: uuid("cost_center_id").references(() => costCenters.id),
     receivedDate: date("received_date").notNull(),
     invoiceNumber: text("invoice_number"),
     invoiceDueDate: date("invoice_due_date"),
@@ -701,6 +716,9 @@ export const stockMovements = pgTable("stock_movements", {
   id: uuid("id").primaryKey().defaultRandom(),
   stockItemId: uuid("stock_item_id").notNull().references(() => stockItems.id),
   branchId: uuid("branch_id").notNull().references(() => branches.id),
+  // Nullable only during the backfill migration — every new movement always
+  // sets it. See stockLedger.ts's recordStockMovement().
+  costCenterId: uuid("cost_center_id").references(() => costCenters.id),
   qtyDelta: numeric("qty_delta", { precision: 14, scale: 4, mode: "number" }).notNull(), // canonical basis; +in / -out
   unitLabel: text("unit_label"), // display-only label (e.g. "KG", "L", "PC") at time of movement
   movementType: text("movement_type").notNull(),
@@ -721,9 +739,11 @@ export const stockBalances = pgTable("stock_balances", {
   id: uuid("id").primaryKey().defaultRandom(),
   stockItemId: uuid("stock_item_id").notNull().references(() => stockItems.id),
   branchId: uuid("branch_id").notNull().references(() => branches.id),
+  // Nullable only during the backfill migration — see stockMovements.costCenterId.
+  costCenterId: uuid("cost_center_id").references(() => costCenters.id),
   qtyOnHand: numeric("qty_on_hand", { precision: 14, scale: 4, mode: "number" }).notNull().default(0),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-}, (t) => [unique("stock_balances_item_branch_unique").on(t.stockItemId, t.branchId)]);
+}, (t) => [unique("stock_balances_item_branch_costcenter_unique").on(t.stockItemId, t.branchId, t.costCenterId)]);
 
 /* ============================================================
    Production — converts raw stock into a produced sub-recipe item. Consumes
@@ -740,6 +760,9 @@ export const productionBatches = pgTable(
     lotNo: text("lot_no").notNull(),
     subRecipeId: uuid("sub_recipe_id").notNull().references(() => subRecipes.id),
     branchId: uuid("branch_id").notNull().references(() => branches.id),
+    // Which sector produced this batch — almost always Kitchen. Nullable for
+    // pre-existing rows.
+    costCenterId: uuid("cost_center_id").references(() => costCenters.id),
     scaleMultiplier: numeric("scale_multiplier", { precision: 10, scale: 4, mode: "number" }).notNull().default(1),
     yieldQty: numeric("yield_qty", { precision: 14, scale: 4, mode: "number" }).notNull(), // canonical basis
     yieldUnit: text("yield_unit"),
@@ -798,7 +821,10 @@ export const wastageEvents = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     wastageNo: text("wastage_no").notNull().unique(),
     eventDate: date("event_date").notNull(),
+    // Kept in sync with costCenterId's name as a safety net during the
+    // cost-center-scoping migration — not the source of truth going forward.
     costCenter: text("cost_center").notNull(),
+    costCenterId: uuid("cost_center_id").references(() => costCenters.id),
     branchId: uuid("branch_id").notNull().references(() => branches.id),
     staffName: text("staff_name"),
     status: text("status").notNull().default("DRAFT"),
@@ -836,6 +862,10 @@ export const stockTransfers = pgTable(
     transferNo: text("transfer_no").notNull().unique(),
     fromBranchId: uuid("from_branch_id").notNull().references(() => branches.id),
     toBranchId: uuid("to_branch_id").notNull().references(() => branches.id),
+    // Which sector the stock leaves from / lands in at each end — nullable
+    // for pre-existing rows.
+    fromCostCenterId: uuid("from_cost_center_id").references(() => costCenters.id),
+    toCostCenterId: uuid("to_cost_center_id").references(() => costCenters.id),
     transferDate: date("transfer_date").notNull(),
     staffName: text("staff_name"),
     // DRAFT -> IN_TRANSIT (send: deducts source branch only) -> POSTED
@@ -880,7 +910,10 @@ export const stockCounts = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     countNo: text("count_no").notNull().unique(),
     branchId: uuid("branch_id").notNull().references(() => branches.id),
+    // Kept in sync with costCenterId's name as a safety net during the
+    // cost-center-scoping migration — not the source of truth going forward.
     costCenter: text("cost_center"),
+    costCenterId: uuid("cost_center_id").references(() => costCenters.id),
     countDate: date("count_date").notNull(),
     staffName: text("staff_name"),
     status: text("status").notNull().default("DRAFT"),
