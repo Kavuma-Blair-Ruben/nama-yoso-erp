@@ -10,6 +10,7 @@ import {
   boolean,
   timestamp,
   date,
+  jsonb,
   primaryKey,
   unique,
   check,
@@ -729,7 +730,7 @@ export const stockMovements = pgTable("stock_movements", {
 }, (t) => [
   check(
     "stock_movements_type_check",
-    sql`${t.movementType} in ('GRN_RECEIPT','PRODUCTION_CONSUME','PRODUCTION_OUTPUT','WASTAGE','TRANSFER_OUT','TRANSFER_IN','STOCK_COUNT_ADJUSTMENT','CK_SALE','CUSTOMER_RETURN','SUPPLIER_RETURN')`
+    sql`${t.movementType} in ('GRN_RECEIPT','PRODUCTION_CONSUME','PRODUCTION_OUTPUT','WASTAGE','TRANSFER_OUT','TRANSFER_IN','STOCK_COUNT_ADJUSTMENT','CK_SALE','CUSTOMER_RETURN','SUPPLIER_RETURN','POS_SALE')`
   ),
 ]);
 
@@ -1147,7 +1148,76 @@ export const recipeSales = pgTable(
 export const posIntegrations = pgTable("pos_integrations", {
   id: text("id").primaryKey(), // provider key, e.g. "foodics" — one row per provider
   apiToken: text("api_token"),
+  // Long random token embedded in the webhook URL path
+  // (/api/webhooks/foodics/[token]) — the only auth available, since
+  // Foodics documents no signature/HMAC scheme for webhook requests.
+  webhookSecret: text("webhook_secret"),
   lastSyncAt: timestamp("last_sync_at", { withTimezone: true }),
   lastSyncStatus: text("last_sync_status"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+/* ============================================================
+   POS webhook processing — real-time stock depletion from Foodics sales.
+   Separate from posIntegrations/recipeSales above, which power the older
+   manual pull-sync (reporting only, never touches stock).
+   ============================================================ */
+
+// One row per external order, keyed for idempotency — Foodics retries a
+// webhook up to 2 more times on any non-2xx response, and may resend
+// order.updated for the same order. The unique constraint on
+// (provider, externalOrderId) is the actual dedupe guard: the webhook
+// handler's first statement is an insert…onConflictDoNothing on this
+// table, and zero rows back means "already processed," full stop.
+export const posWebhookEvents = pgTable(
+  "pos_webhook_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    provider: text("provider").notNull(),
+    externalOrderId: text("external_order_id").notNull(),
+    eventType: text("event_type").notNull(),
+    rawPayload: jsonb("raw_payload").notNull(),
+    receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
+    processedAt: timestamp("processed_at", { withTimezone: true }),
+    // Set when a line was skipped (unmapped item) or the whole order was
+    // held (unmapped branch) — surfaced in the admin UI, not just a log.
+    processNotes: text("process_notes"),
+  },
+  (t) => [unique("pos_webhook_events_provider_order_unique").on(t.provider, t.externalOrderId)]
+);
+
+// Maps a Foodics branch id to one of our real branches + a single sector to
+// absorb its stock depletion. A row auto-inserts the first time a webhook
+// mentions a branch id we haven't seen (branchId/costCenterId left null);
+// an admin fills those in via Settings before depletion can happen for that
+// branch. One sector per Foodics branch, not a per-item Kitchen/Bar split —
+// Foodics doesn't send a per-line hint that would support that.
+export const posBranchMappings = pgTable(
+  "pos_branch_mappings",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    provider: text("provider").notNull(),
+    externalBranchId: text("external_branch_id").notNull(),
+    externalBranchName: text("external_branch_name"),
+    branchId: uuid("branch_id").references(() => branches.id),
+    costCenterId: uuid("cost_center_id").references(() => costCenters.id),
+  },
+  (t) => [unique("pos_branch_mappings_provider_branch_unique").on(t.provider, t.externalBranchId)]
+);
+
+// Maps a Foodics product id to a main_recipes row — same auto-insert-as-seen
+// pattern as posBranchMappings. A sale of an unmapped product still gets a
+// recipe_sales row (mainRecipeId null, for revenue reporting) but deducts no
+// stock, since guessing which recipe it means would silently corrupt real
+// stock levels.
+export const posItemMappings = pgTable(
+  "pos_item_mappings",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    provider: text("provider").notNull(),
+    externalProductId: text("external_product_id").notNull(),
+    externalProductName: text("external_product_name"),
+    mainRecipeId: uuid("main_recipe_id").references(() => mainRecipes.id),
+  },
+  (t) => [unique("pos_item_mappings_provider_product_unique").on(t.provider, t.externalProductId)]
+);

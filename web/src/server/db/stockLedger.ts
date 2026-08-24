@@ -18,7 +18,8 @@ export type MovementType =
   | "STOCK_COUNT_ADJUSTMENT"
   | "CK_SALE"
   | "CUSTOMER_RETURN"
-  | "SUPPLIER_RETURN";
+  | "SUPPLIER_RETURN"
+  | "POS_SALE";
 
 /**
  * Appends one stock_movements row and keeps stock_balances in sync in the
@@ -40,7 +41,9 @@ export async function recordStockMovement(
     refType?: string;
     refId?: string;
     notes?: string;
-    actorId: string;
+    // Optional — a webhook-triggered movement (e.g. a POS sale) has no
+    // logged-in user. stock_movements.created_by is a nullable FK.
+    actorId?: string;
   }
 ): Promise<number> {
   const [existing] = await tx

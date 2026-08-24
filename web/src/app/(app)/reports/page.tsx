@@ -13,7 +13,10 @@ import {
 import { listSuppliers } from "@/server/db/queries/suppliers";
 import { getDashboardData } from "@/server/db/queries/dashboard";
 import { getRecipeSalesReport, getMenuEngineeringData } from "@/server/db/queries/sales";
-import { getPosIntegration } from "@/server/db/queries/pos";
+import { getPosIntegration, listPosBranchMappings, listPosItemMappings, listPosWebhookEvents } from "@/server/db/queries/pos";
+import { listBranches } from "@/server/db/queries/purchaseOrders";
+import { listAllActiveCostCenters } from "@/server/db/queries/costCenters";
+import { listMainRecipesForPicker } from "@/server/db/queries/recipes";
 import { fmt, money, pct } from "@/lib/format";
 import { canonicalUnitLabel } from "@/lib/unitMath";
 import { DonutChart } from "@/components/charts/DonutChart";
@@ -21,6 +24,7 @@ import { HorizontalBarChart } from "@/components/charts/HorizontalBarChart";
 import { TrendLineChart } from "@/components/charts/TrendLineChart";
 import { MenuEngineeringScatter } from "@/components/charts/MenuEngineeringScatter";
 import { PosIntegrationPanel } from "@/components/reports/PosIntegrationPanel";
+import { FoodicsWebhookPanel } from "@/components/reports/FoodicsWebhookPanel";
 import { RecipeSalesImport } from "@/components/reports/RecipeSalesImport";
 
 type Tab = "purchasing" | "suppliers" | "cost" | "sales" | "menuengineering" | "slowmoving" | "pricechange" | "costadjustments" | "sections" | "costcenter" | "stock";
@@ -259,7 +263,16 @@ async function CostDashboardTab() {
 }
 
 async function RecipeSalesTab() {
-  const [report, foodicsIntegration] = await Promise.all([getRecipeSalesReport(), getPosIntegration("foodics")]);
+  const [report, foodicsIntegration, branches, costCenters, recipes, branchMappings, itemMappings, recentEvents] = await Promise.all([
+    getRecipeSalesReport(),
+    getPosIntegration("foodics"),
+    listBranches(),
+    listAllActiveCostCenters(),
+    listMainRecipesForPicker(),
+    listPosBranchMappings("foodics"),
+    listPosItemMappings("foodics"),
+    listPosWebhookEvents("foodics"),
+  ]);
 
   return (
     <>
@@ -267,6 +280,16 @@ async function RecipeSalesTab() {
         hasToken={!!foodicsIntegration?.apiToken}
         lastSyncAt={foodicsIntegration?.lastSyncAt ? foodicsIntegration.lastSyncAt.toISOString().slice(0, 16).replace("T", " ") : null}
         lastSyncStatus={foodicsIntegration?.lastSyncStatus ?? null}
+      />
+      <FoodicsWebhookPanel
+        hasToken={!!foodicsIntegration?.apiToken}
+        webhookConfigured={!!foodicsIntegration?.webhookSecret}
+        branches={branches}
+        costCenters={costCenters}
+        recipes={recipes}
+        branchMappings={branchMappings}
+        itemMappings={itemMappings}
+        recentEvents={recentEvents}
       />
       <RecipeSalesImport hasData={report.hasData} unmatchedCount={report.unmatchedCount} />
       {!report.hasData ? (

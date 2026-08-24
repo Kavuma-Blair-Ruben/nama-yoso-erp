@@ -9,7 +9,7 @@ import { assertPermission } from "@/server/auth/permissions";
 import { nextWastageNo } from "@/server/db/sequences";
 import { recordStockMovement } from "@/server/db/stockLedger";
 import { uploadPhoto, deletePhoto } from "@/lib/supabaseAdmin";
-import { loadCostingGraph, recipeCurrentCost, type Ingredient, type IngredientCostResult } from "@/server/costing/recipeCost";
+import { loadCostingGraph, recipeCurrentCost, flattenRecipeToStockLines, type RecipeWasteLine } from "@/server/costing/recipeCost";
 
 const lineSchema = z.object({
   stockItemId: z.string().min(1),
@@ -240,29 +240,6 @@ export async function deleteWastagePhoto(url: string): Promise<{ error?: string 
   } catch {
     return { error: "Couldn't remove the old photo, but you can still upload a replacement." };
   }
-}
-
-export type RecipeWasteLine = { stockItemId: string; unitLabel: string | null; qty: number; rate: number; legacyCode: string; name: string };
-
-// A recipe's top-level ingredient lines are already the right granularity to
-// deduct — a sub-recipe ingredient has its own stock_item_id and gets
-// deducted from ITS OWN balance (same as wasting a sub-recipe batch
-// directly), not exploded further. Only an ingredient that is itself a main
-// recipe (a nested "combo") has no stock item to deduct from, so that one
-// case recurses into its own resolved lines (already computed by
-// ingredientCost/recipeCurrentCost via the shared `sub` shape).
-function flattenRecipeToStockLines(lines: { ing: Ingredient; result: IngredientCostResult }[], multiplier: number): RecipeWasteLine[] {
-  const out: RecipeWasteLine[] = [];
-  for (const { ing, result } of lines) {
-    if (ing.stockItemId) {
-      const qty = ing.qty * multiplier;
-      const rate = ing.qty !== 0 ? result.cost / ing.qty : (ing.rateAtBuild ?? 0);
-      out.push({ stockItemId: ing.stockItemId, unitLabel: ing.unitLabel, qty, rate, legacyCode: ing.legacyCode, name: ing.name });
-    } else if (result.sub) {
-      out.push(...flattenRecipeToStockLines(result.sub.lines, multiplier * ing.qty));
-    }
-  }
-  return out;
 }
 
 // Powers "Waste a Finished Dish" — given a main recipe and how many portions

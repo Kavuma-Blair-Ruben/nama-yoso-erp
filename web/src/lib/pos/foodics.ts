@@ -50,7 +50,21 @@ export async function testFoodicsConnection(apiToken: string): Promise<{ error?:
   return { branchCount: rows.length, sample: rows[0] ?? result.data };
 }
 
-export type FoodicsOrderLine = { sourceOrderId: string; saleDate: string; productLabel: string; qty: number; revenue: number };
+export type FoodicsBranch = { id: string; name: string };
+
+// Real field names confirmed against Foodics' published webhook payload
+// (order.branch = {id, name}) — GET /branches is documented as returning an
+// unspecified body, but a webhook's branch object is the same entity, so
+// {id, name} is a solid bet rather than a guess.
+export async function fetchFoodicsBranches(apiToken: string): Promise<{ error?: string; branches?: FoodicsBranch[] }> {
+  const result = await foodicsGet(apiToken, "/branches");
+  if (result.error) return { error: result.error };
+  const rows = unwrapList(result.data);
+  const branches = rows.map((r) => ({ id: String(r.id ?? ""), name: String(r.name ?? "Unnamed branch") })).filter((b) => b.id);
+  return { branches };
+}
+
+export type FoodicsOrderLine = { sourceOrderId: string; saleDate: string; productId?: string; productLabel: string; qty: number; revenue: number };
 
 // Fetches every order and flattens it to one row per product line, filtered
 // client-side to the requested date range — deliberately not relying on a
@@ -69,11 +83,16 @@ export async function fetchFoodicsSales(apiToken: string, fromDate: string, toDa
     const products = Array.isArray(order.products) ? order.products : [];
     for (const [i, p] of products.entries()) {
       const line = p as Record<string, unknown>;
-      const productLabel = String(line.name ?? (line.product as { name?: string } | undefined)?.name ?? line.product_id ?? "Unknown item");
+      // "product" nested object with {id, sku, name} is the shape confirmed
+      // against Foodics' real webhook payload — kept as the primary read,
+      // with flatter fallbacks for whatever this unverified GET actually returns.
+      const product = line.product as { id?: string; name?: string } | undefined;
+      const productId = product?.id ?? (line.product_id != null ? String(line.product_id) : undefined);
+      const productLabel = String(line.name ?? product?.name ?? productId ?? "Unknown item");
       const qty = Number(line.quantity ?? line.qty ?? 0);
       const revenue = Number(line.total_price ?? line.unit_price ?? 0) || (Number(line.unit_price ?? 0) * qty);
       if (qty <= 0) continue;
-      lines.push({ sourceOrderId: `${orderId}:${i}`, saleDate, productLabel, qty, revenue });
+      lines.push({ sourceOrderId: `${orderId}:${i}`, saleDate, productId, productLabel, qty, revenue });
     }
   }
   return { lines, rawOrderCount: orders.length };

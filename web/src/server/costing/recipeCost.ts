@@ -280,3 +280,30 @@ export function recipeOriginalCost(recipe: { ingredients: Ingredient[]; yieldQty
 export function getSubRecipeCost(graph: CostingGraph, subRecipeId: string): SubRecipeCostResult {
   return subRecipeCost(graph, subRecipeId, new Set());
 }
+
+export type RecipeWasteLine = { stockItemId: string; unitLabel: string | null; qty: number; rate: number; legacyCode: string; name: string };
+
+// Turns a costed recipe's ingredient tree into a flat list of real stock
+// deductions — one row per stock-backed ingredient, already scaled by
+// `multiplier` (e.g. portions wasted, or units sold). A recipe's top-level
+// ingredient lines are already the right granularity to deduct — a
+// sub-recipe ingredient has its own stock_item_id and gets deducted from ITS
+// OWN balance (same as wasting a sub-recipe batch directly), not exploded
+// further. Only an ingredient that is itself a main recipe (a nested
+// "combo") has no stock item to deduct from, so that one case recurses into
+// its own resolved lines (already computed by ingredientCost/
+// recipeCurrentCost via the shared `sub` shape). Shared by "Waste a Finished
+// Dish" (src/server/actions/wastage.ts) and the Foodics sale webhook.
+export function flattenRecipeToStockLines(lines: { ing: Ingredient; result: IngredientCostResult }[], multiplier: number): RecipeWasteLine[] {
+  const out: RecipeWasteLine[] = [];
+  for (const { ing, result } of lines) {
+    if (ing.stockItemId) {
+      const qty = ing.qty * multiplier;
+      const rate = ing.qty !== 0 ? result.cost / ing.qty : (ing.rateAtBuild ?? 0);
+      out.push({ stockItemId: ing.stockItemId, unitLabel: ing.unitLabel, qty, rate, legacyCode: ing.legacyCode, name: ing.name });
+    } else if (result.sub) {
+      out.push(...flattenRecipeToStockLines(result.sub.lines, multiplier * ing.qty));
+    }
+  }
+  return out;
+}

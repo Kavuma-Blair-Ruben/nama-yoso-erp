@@ -12,7 +12,7 @@ export type RecipeType = "main" | "sub";
 // live ingredient breakdown.
 export async function listMainRecipesForPicker() {
   return db
-    .select({ legacyCode: mainRecipes.legacyCode, name: mainRecipes.name })
+    .select({ id: mainRecipes.id, legacyCode: mainRecipes.legacyCode, name: mainRecipes.name })
     .from(mainRecipes)
     .where(eq(mainRecipes.isArchived, false))
     .orderBy(mainRecipes.name);
