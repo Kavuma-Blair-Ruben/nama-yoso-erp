@@ -33,8 +33,9 @@ const money = (name: string) => numeric(name, { precision: 14, scale: 4, mode: "
    ============================================================ */
 export const branches = pgTable("branches", {
   id: uuid("id").primaryKey().defaultRandom(),
-  code: text("code").notNull().unique(), // NAMAYOSO, THG
+  code: text("code").notNull().unique(), // NAMAYOSO, THG, plus any added by an admin
   name: text("name").notNull(),
+  isActive: boolean("is_active").notNull().default(true),
 });
 
 export const suppliers = pgTable(
