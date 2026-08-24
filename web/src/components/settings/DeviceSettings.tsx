@@ -21,7 +21,22 @@ type Device = {
 
 type PrintNodePrinter = { id: number; name: string; description: string | null; state: string; computerName: string | null };
 
-const TYPE_LABEL: Record<string, string> = { label_printer: "Label/Sticker Printer", receipt_printer: "Receipt Printer", barcode_scanner: "Barcode/QR Scanner", other: "Other" };
+const TYPE_LABEL: Record<string, string> = {
+  label_printer: "Label/Sticker Printer",
+  receipt_printer: "Receipt Printer",
+  barcode_scanner: "Barcode/QR Scanner",
+  document_scanner: "Document Scanner",
+  fax: "Fax Machine",
+  other: "Other",
+};
+const TYPE_ICON: Record<string, string> = {
+  label_printer: "🏷",
+  receipt_printer: "🖨",
+  barcode_scanner: "📷",
+  document_scanner: "🖹",
+  fax: "📠",
+  other: "🔌",
+};
 const CONNECTION_LABEL: Record<string, string> = { network: "Network (IP)", bluetooth: "Bluetooth", wifi_direct: "Wi-Fi Direct", printnode: "PrintNode (cloud bridge)", other: "Other" };
 const REACHABLE_CONNECTIONS = new Set(["network", "printnode"]);
 
@@ -167,6 +182,50 @@ function DeviceRow({ device }: { device: Device }) {
   );
 }
 
+function DeviceStatusSummary({ devices }: { devices: Device[] }) {
+  const total = devices.length;
+  const active = devices.filter((d) => d.isActive).length;
+  const reachable = devices.filter((d) => REACHABLE_CONNECTIONS.has(d.connection));
+  const online = reachable.filter((d) => d.lastTestOk === true).length;
+  const offline = reachable.filter((d) => d.lastTestOk !== true).length;
+  const untested = reachable.filter((d) => d.lastTestedAt === null).length;
+
+  const cards = [
+    { label: "Total Devices", value: total, color: "var(--ink)" },
+    { label: "Online", value: online, color: "var(--good)" },
+    { label: "Offline / Unreachable", value: offline, color: "var(--bad)" },
+    { label: "Never Tested", value: untested, color: "var(--ink-faint)" },
+    { label: "Inactive", value: total - active, color: "var(--ink-faint)" },
+  ];
+
+  const byType = Object.keys(TYPE_LABEL).map((type) => ({
+    type,
+    count: devices.filter((d) => d.type === type).length,
+  }));
+
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 8, marginBottom: 10 }}>
+        {cards.map((c) => (
+          <div key={c.label} className="usedin-item" style={{ flexDirection: "column", alignItems: "flex-start", gap: 2 }}>
+            <span style={{ fontSize: 20, fontWeight: 700, color: c.color }}>{c.value}</span>
+            <span style={{ fontSize: 11, color: "var(--ink-faint)" }}>{c.label}</span>
+          </div>
+        ))}
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+        {byType
+          .filter((t) => t.count > 0)
+          .map((t) => (
+            <span key={t.type} className="tag neutral">
+              {TYPE_ICON[t.type]} {TYPE_LABEL[t.type]}: {t.count}
+            </span>
+          ))}
+      </div>
+    </div>
+  );
+}
+
 export function DeviceSettings({
   devices,
   branches,
@@ -212,11 +271,12 @@ export function DeviceSettings({
       <div className="panel-head"><h3>Hardware Devices</h3></div>
       <div className="panel-body">
         <div className="callout">
-          Register printers and scanners that connect wirelessly instead of being plugged into this computer — a network
-          label/receipt printer reachable by IP address, a printer relayed through PrintNode (works even when this app is
-          hosted in the cloud, since PrintNode&apos;s client app bridges to whatever local network the printer is on), or a
-          Bluetooth/Wi-Fi Direct scanner. Network and PrintNode devices can be tested for reachability directly from here;
-          Bluetooth/Wi-Fi Direct devices pair with whichever phone or tablet is using the app.
+          Register and monitor every piece of hardware across your branches — label/receipt printers, barcode/QR scanners,
+          document scanners, fax machines — that connects wirelessly instead of being plugged into this computer. A network
+          device is reachable by IP address; a printer relayed through PrintNode works even when this app is hosted in the
+          cloud (PrintNode&apos;s client app bridges to whatever local network the printer is on); Bluetooth/Wi-Fi Direct
+          devices pair directly with whichever phone or tablet is using the app. Network and PrintNode devices can be tested
+          for reachability directly from here.
         </div>
         {connection === "printnode" && !printNodeConfigured && (
           <div className="callout" style={{ borderColor: "var(--bad)", color: "var(--bad)" }}>
@@ -225,7 +285,25 @@ export function DeviceSettings({
           </div>
         )}
 
-        {devices.length ? devices.map((d) => <DeviceRow key={d.id} device={d} />) : <div style={{ fontSize: 12, color: "var(--ink-faint)", padding: "6px 0" }}>No devices registered yet.</div>}
+        <DeviceStatusSummary devices={devices} />
+
+        {devices.length ? (
+          Object.keys(TYPE_LABEL)
+            .map((t) => ({ type: t, rows: devices.filter((d) => d.type === t) }))
+            .filter((g) => g.rows.length > 0)
+            .map((g) => (
+              <div key={g.type} style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-soft)", margin: "10px 0 4px" }}>
+                  {TYPE_ICON[g.type]} {TYPE_LABEL[g.type]} ({g.rows.length})
+                </div>
+                {g.rows.map((d) => (
+                  <DeviceRow key={d.id} device={d} />
+                ))}
+              </div>
+            ))
+        ) : (
+          <div style={{ fontSize: 12, color: "var(--ink-faint)", padding: "6px 0" }}>No devices registered yet.</div>
+        )}
 
         <div className="line-builder-row head" style={{ gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr", marginTop: 14 }}>
           <div>Name</div>

@@ -10,7 +10,7 @@ import { buildTestPrintTicket, buildExpiryTicketEscPos } from "@/lib/escpos";
 import { listExpiringBatches } from "@/server/db/queries/expiry";
 import { listPrintNodePrinters, sendPrintNodeJob, isPrintNodeConfigured } from "@/lib/printnode";
 
-const DEVICE_TYPES = ["label_printer", "receipt_printer", "barcode_scanner", "other"] as const;
+const DEVICE_TYPES = ["label_printer", "receipt_printer", "barcode_scanner", "document_scanner", "fax", "other"] as const;
 const CONNECTIONS = ["network", "bluetooth", "wifi_direct", "printnode", "other"] as const;
 
 export type CreateDeviceInput = { name: string; type: string; connection: string; address?: string; printnodePrinterId?: number; branchId?: string; notes?: string };
@@ -35,6 +35,7 @@ export async function createDevice(input: CreateDeviceInput): Promise<{ error?: 
   });
   await db.insert(auditLog).values({ actorId: session.profile.id, action: "Created", entity: "Device", entityLabel: name, detail: `${input.type} via ${input.connection}` });
   revalidatePath("/system-settings");
+  revalidatePath("/devices");
   return {};
 }
 
@@ -50,6 +51,7 @@ export async function deleteDevice(id: string): Promise<{ error?: string }> {
   await db.delete(devices).where(eq(devices.id, id));
   if (device) await db.insert(auditLog).values({ actorId: session.profile.id, action: "Deleted", entity: "Device", entityLabel: device.name, detail: "Removed" });
   revalidatePath("/system-settings");
+  revalidatePath("/devices");
   return {};
 }
 
@@ -61,6 +63,7 @@ export async function setDeviceActive(id: string, isActive: boolean): Promise<{ 
   await db.update(devices).set({ isActive }).where(eq(devices.id, id));
   await db.insert(auditLog).values({ actorId: session.profile.id, action: isActive ? "Activated" : "Deactivated", entity: "Device", entityLabel: device.name, detail: isActive ? "Marked active" : "Marked inactive" });
   revalidatePath("/system-settings");
+  revalidatePath("/devices");
   return {};
 }
 
@@ -91,6 +94,7 @@ export async function testDeviceConnection(id: string): Promise<{ error?: string
     await db.update(devices).set({ lastTestedAt: new Date(), lastTestStatus: status, lastTestOk: online }).where(eq(devices.id, id));
     await db.insert(auditLog).values({ actorId: session.profile.id, action: "Tested", entity: "Device", entityLabel: device.name, detail: status });
     revalidatePath("/system-settings");
+    revalidatePath("/devices");
     return online ? { ok: true, message: status } : { error: status };
   }
 
@@ -106,6 +110,7 @@ export async function testDeviceConnection(id: string): Promise<{ error?: string
   await db.update(devices).set({ lastTestedAt: new Date(), lastTestStatus: status, lastTestOk: result.ok }).where(eq(devices.id, id));
   await db.insert(auditLog).values({ actorId: session.profile.id, action: "Tested", entity: "Device", entityLabel: device.name, detail: status });
   revalidatePath("/system-settings");
+  revalidatePath("/devices");
 
   if (!result.ok) return { error: result.error };
   return { ok: true, message: status };
@@ -141,6 +146,7 @@ export async function sendTestPrint(id: string): Promise<{ error?: string; ok?: 
   await db.update(devices).set({ lastTestedAt: new Date(), lastTestStatus: result.status, lastTestOk: result.ok }).where(eq(devices.id, id));
   await db.insert(auditLog).values({ actorId: session.profile.id, action: "Test Printed", entity: "Device", entityLabel: device.name, detail: result.status });
   revalidatePath("/system-settings");
+  revalidatePath("/devices");
 
   if (!result.ok) return { error: result.status };
   return { ok: true, message: `${result.status} — check the printer for output.` };
@@ -167,6 +173,7 @@ export async function sendExpiryTicketTestPrint(id: string): Promise<{ error?: s
   await db.update(devices).set({ lastTestedAt: new Date(), lastTestStatus: result.status, lastTestOk: result.ok }).where(eq(devices.id, id));
   await db.insert(auditLog).values({ actorId: session.profile.id, action: "Test Printed", entity: "Device", entityLabel: device.name, detail: result.status });
   revalidatePath("/system-settings");
+  revalidatePath("/devices");
 
   if (!result.ok) return { error: result.status };
   return { ok: true, message: `${result.status} (${overdue ? overdue.name : "demo data — no real expired item found"}) — check the printer for output.` };

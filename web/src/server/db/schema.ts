@@ -105,7 +105,7 @@ export const devices = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     name: text("name").notNull(),
-    type: text("type").notNull(), // 'label_printer' | 'receipt_printer' | 'barcode_scanner' | 'other'
+    type: text("type").notNull(), // 'label_printer' | 'receipt_printer' | 'barcode_scanner' | 'document_scanner' | 'fax' | 'other'
     connection: text("connection").notNull(), // 'network' | 'bluetooth' | 'wifi_direct' | 'printnode' | 'other'
     address: text("address"), // IP (and optionally :port) for network devices; free text otherwise
     // Set only when connection = 'printnode' — the printer's id in PrintNode's
@@ -124,7 +124,7 @@ export const devices = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
-    check("devices_type_check", sql`${t.type} in ('label_printer','receipt_printer','barcode_scanner','other')`),
+    check("devices_type_check", sql`${t.type} in ('label_printer','receipt_printer','barcode_scanner','document_scanner','fax','other')`),
     check("devices_connection_check", sql`${t.connection} in ('network','bluetooth','wifi_direct','printnode','other')`),
   ]
 );

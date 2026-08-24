@@ -232,6 +232,13 @@
       "when": 1787531000000,
       "tag": "0032_backfill_sticker_printed",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1787531147534,
+      "tag": "0033_add_fax_document_scanner_device_types",
+      "breakpoints": true
     }
   ]
 }

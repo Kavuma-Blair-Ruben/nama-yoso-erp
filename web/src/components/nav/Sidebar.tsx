@@ -73,6 +73,7 @@ const NAV: NavGroupDef[] = [
     items: [
       { href: "/reports", label: "Reports", ico: "📊", section: "reports" },
       { href: "/print-center", label: "Print Center", ico: "🖨", section: null },
+      { href: "/devices", label: "Devices", ico: "🖧", section: "system" },
       { href: "/audit", label: "Audit Trail", ico: "📜", section: "system" },
       { href: "/policies", label: "Policies & Approvals", ico: "⚖", section: "policies" },
       { href: "/permissions", label: "User Permission", ico: "🔐", section: "permissions" },

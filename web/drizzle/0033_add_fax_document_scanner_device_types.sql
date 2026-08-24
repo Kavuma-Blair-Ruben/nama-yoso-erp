@@ -1,0 +1,2 @@
+ALTER TABLE "devices" DROP CONSTRAINT "devices_type_check";--> statement-breakpoint
+ALTER TABLE "devices" ADD CONSTRAINT "devices_type_check" CHECK ("devices"."type" in ('label_printer','receipt_printer','barcode_scanner','document_scanner','fax','other'));
