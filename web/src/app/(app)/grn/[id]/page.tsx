@@ -2,11 +2,12 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireSection, hasAccess } from "@/server/auth/permissions";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { getGrnDetail, listCreditNotesForGrn, listSupplierReturnsForGrn } from "@/server/db/queries/grn";
+import { getGrnDetail, getGrnLinesForLabels, listCreditNotesForGrn, listSupplierReturnsForGrn } from "@/server/db/queries/grn";
 import { PostDraftButton } from "@/components/grn/PostDraftButton";
 import { PaymentStatusToggle } from "@/components/grn/PaymentStatusToggle";
 import { CreditNoteSection } from "@/components/grn/CreditNoteSection";
 import { SupplierReturnSection } from "@/components/grn/SupplierReturnSection";
+import { GrnStickerAutoPrint } from "@/components/grn/GrnStickerAutoPrint";
 import { InvoicePreview } from "@/components/ui/InvoicePreview";
 import { fmt, money } from "@/lib/format";
 
@@ -15,13 +16,20 @@ export default async function GrnDetailPage({ params, searchParams }: PageProps<
   const { id } = await params;
   const sp = await searchParams;
   const warning = typeof sp.warning === "string" ? sp.warning : undefined;
-  const [data, creditNotes, supplierReturns] = await Promise.all([getGrnDetail(id), listCreditNotesForGrn(id), listSupplierReturnsForGrn(id)]);
+  const [data, creditNotes, supplierReturns, labelData] = await Promise.all([
+    getGrnDetail(id),
+    listCreditNotesForGrn(id),
+    listSupplierReturnsForGrn(id),
+    getGrnLinesForLabels(id),
+  ]);
   if (!data) notFound();
   const { grn, lines, net, vat, total } = data;
   const canEdit = hasAccess(session, "grn", "edit");
+  const unstickeredLines = (labelData?.lines ?? []).filter((l) => l.lotNo && !l.stickerPrintedAt);
 
   return (
     <>
+      {grn.status === "POSTED" && <GrnStickerAutoPrint grnId={grn.id} lines={unstickeredLines} />}
       <PageHeader
         title={grn.grnNumber}
         subtitle={`${grn.supplier} · ${grn.receivedDate}${grn.poNumber ? " · LPO " + grn.poNumber : " · Direct GRN"}`}
@@ -50,7 +58,8 @@ export default async function GrnDetailPage({ params, searchParams }: PageProps<
         </div>
       ) : (
         <div style={{ fontSize: 11, color: "var(--ink-faint)", marginBottom: 12 }}>
-          Posted GRNs are locked — stock and PO status have already been updated and this record can&apos;t be edited.
+          Posted GRNs are locked — stock and PO status have already been updated and this record can&apos;t be edited. Batch/lot
+          stickers auto-print the moment a GRN is posted; print more copies anytime from Print Batch/Lot Labels.
         </div>
       )}
 

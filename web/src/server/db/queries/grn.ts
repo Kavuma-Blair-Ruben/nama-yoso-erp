@@ -202,6 +202,7 @@ export async function getGrnLinesForLabels(id: string) {
       mfgDate: grnLines.mfgDate,
       expiryDate: grnLines.expiryDate,
       condition: grnLines.condition,
+      stickerPrintedAt: grnLines.stickerPrintedAt,
     })
     .from(grnLines)
     .innerJoin(stockItems, eq(grnLines.stockItemId, stockItems.id))

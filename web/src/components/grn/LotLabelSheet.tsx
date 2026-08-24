@@ -5,7 +5,7 @@ import JsBarcode from "jsbarcode";
 import QRCode from "qrcode";
 import { fmt } from "@/lib/format";
 
-type Line = {
+export type Line = {
   id: string;
   name: string;
   legacyCode: string;
@@ -17,7 +17,7 @@ type Line = {
   condition: string;
 };
 
-function LotLabel({ line }: { line: Line }) {
+export function LotLabel({ line }: { line: Line }) {
   const ref = useRef<SVGSVGElement>(null);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
 

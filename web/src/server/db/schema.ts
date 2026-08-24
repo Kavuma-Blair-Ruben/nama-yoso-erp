@@ -554,6 +554,10 @@ export const grnLines = pgTable(
     expiryDate: date("expiry_date"),
     expiryExtensionCount: integer("expiry_extension_count").notNull().default(0),
     expiryTicketPrintedAt: timestamp("expiry_ticket_printed_at", { withTimezone: true }),
+    // Set once the batch/lot sticker auto-printed on GRN posting has
+    // actually printed — same pattern as expiryTicketPrintedAt and
+    // productionBatches.openTicketPrintedAt, prevents re-firing on reload.
+    stickerPrintedAt: timestamp("sticker_printed_at", { withTimezone: true }),
     condition: text("condition").notNull().default("ACCEPTED"),
     lineAmount: money("line_amount").notNull(),
   },

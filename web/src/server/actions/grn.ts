@@ -402,3 +402,17 @@ export async function markGrnPaymentStatus(id: string, status: "OUTSTANDING" | "
   revalidatePath("/dashboard");
   return { id };
 }
+
+// Fires once, right after the auto-print effect actually shows the browser's
+// print dialog for a freshly posted GRN's batch/lot stickers — same pattern
+// as markExpiryTicketsPrinted / markProductionTicketPrinted.
+export async function markGrnStickersPrinted(grnId: string, lineIds: string[]): Promise<{ error?: string }> {
+  await assertPermission("grn", "edit");
+  if (lineIds.length === 0) return {};
+  const now = new Date();
+  for (const lineId of lineIds) {
+    await db.update(grnLines).set({ stickerPrintedAt: now }).where(eq(grnLines.id, lineId));
+  }
+  revalidatePath(`/grn/${grnId}`);
+  return {};
+}

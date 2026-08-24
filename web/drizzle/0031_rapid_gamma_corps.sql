@@ -1,0 +1,1 @@
+ALTER TABLE "grn_lines" ADD COLUMN "sticker_printed_at" timestamp with time zone;
