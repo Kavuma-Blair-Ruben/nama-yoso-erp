@@ -262,6 +262,13 @@ function weekStart(dateStr: string): string {
 export async function getPurchasingStats() {
   const invoices = await db.select({ total: invoicesHistorical.total, status: invoicesHistorical.status, terms: invoicesHistorical.termsNormalized, invoiceDate: invoicesHistorical.invoiceDate, weekLabel: invoicesHistorical.weekLabel }).from(invoicesHistorical);
   const lines = await db.select({ itemLabel: purchaseLinesHistorical.itemLabel, amount: purchaseLinesHistorical.amount }).from(purchaseLinesHistorical);
+  // Historical purchase lines carry only a free-text item label, no
+  // stockItemId — resolve to a real product page by exact name match where
+  // one exists (same lookup pattern as listSlowMovingItems above), so the
+  // dashboard's "Top Purchased Items" can link straight to the product
+  // instead of a text search when the label happens to match verbatim.
+  const items = await db.select({ legacyCode: stockItems.legacyCode, name: stockItems.name }).from(stockItems);
+  const codeByName = new Map(items.map((i) => [i.name, i.legacyCode]));
 
   const totalSpend = invoices.reduce((s, i) => s + (i.total ?? 0), 0);
   const outstanding = invoices.filter((i) => i.status === "OUTSTANDING").reduce((s, i) => s + (i.total ?? 0), 0);
@@ -284,7 +291,10 @@ export async function getPurchasingStats() {
     if (!l.itemLabel) continue;
     itemSpend.set(l.itemLabel, (itemSpend.get(l.itemLabel) ?? 0) + (l.amount ?? 0));
   }
-  const topItems = [...itemSpend.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10);
+  const topItems = [...itemSpend.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10)
+    .map(([label, value]) => ({ label, value, code: codeByName.get(label) ?? null }));
 
   const weekSpend = new Map<string, number>();
   for (const i of invoices) {

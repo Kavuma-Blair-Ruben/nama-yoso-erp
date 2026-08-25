@@ -19,7 +19,8 @@ export type InvoiceRow = {
 // A GRN with a real Tax Invoice/Delivery Note attached doubles as its own AP
 // record — this merges it into the same list as the imported historical
 // ledger so there's one place to see everything owed, regardless of source.
-export async function listInvoices(filters: { q?: string; status?: string }): Promise<InvoiceRow[]> {
+export async function listInvoices(filters: { q?: string; status?: string; limit?: number }): Promise<InvoiceRow[]> {
+  const limit = filters.limit ?? 500;
   const historicalConditions = [];
   if (filters.q) historicalConditions.push(or(ilike(invoicesHistorical.invoiceNumber, `%${filters.q}%`), ilike(suppliers.name, `%${filters.q}%`))!);
   if (filters.status) historicalConditions.push(eq(invoicesHistorical.status, filters.status));
@@ -40,7 +41,7 @@ export async function listInvoices(filters: { q?: string; status?: string }): Pr
     .leftJoin(suppliers, eq(invoicesHistorical.supplierId, suppliers.id))
     .where(historicalConditions.length ? and(...historicalConditions) : undefined)
     .orderBy(desc(invoicesHistorical.invoiceDate))
-    .limit(500);
+    .limit(limit);
 
   let grnRows: InvoiceRow[] = [];
   // GRN payment status is only ever OUTSTANDING/PAID — a status filter for
@@ -68,7 +69,7 @@ export async function listInvoices(filters: { q?: string; status?: string }): Pr
       .leftJoin(suppliers, eq(grns.supplierId, suppliers.id))
       .where(and(...grnConditions))
       .orderBy(desc(grns.receivedDate))
-      .limit(500);
+      .limit(limit);
 
     grnRows = rawGrnRows.map((r) => ({
       id: r.id,
@@ -85,7 +86,7 @@ export async function listInvoices(filters: { q?: string; status?: string }): Pr
   }
 
   const historical: InvoiceRow[] = historicalRows.map((r) => ({ ...r, source: "historical" as const }));
-  return [...historical, ...grnRows].sort((a, b) => (b.invoiceDate ?? "").localeCompare(a.invoiceDate ?? "")).slice(0, 500);
+  return [...historical, ...grnRows].sort((a, b) => (b.invoiceDate ?? "").localeCompare(a.invoiceDate ?? "")).slice(0, limit);
 }
 
 export async function getInvoiceDetail(id: string) {

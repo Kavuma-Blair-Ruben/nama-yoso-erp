@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireSection, hasAccess } from "@/server/auth/permissions";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { listGrns, getEligiblePOsForReceiving } from "@/server/db/queries/grn";
+import { listAllActiveCostCenters } from "@/server/db/queries/costCenters";
 import { ReceiveAgainstPO } from "@/components/grn/ReceiveAgainstPO";
 import { fmt, money } from "@/lib/format";
 
@@ -9,9 +10,11 @@ export default async function GrnPage({ searchParams }: PageProps<"/grn">) {
   const session = await requireSection("grn", "view");
   const sp = await searchParams;
   const q = typeof sp.q === "string" ? sp.q : undefined;
-  const [rows, eligible] = await Promise.all([listGrns({ q }), getEligiblePOsForReceiving()]);
+  const costCenterId = typeof sp.costCenterId === "string" ? sp.costCenterId : undefined;
+  const [rows, eligible, costCenters] = await Promise.all([listGrns({ q, costCenterId }), getEligiblePOsForReceiving(), listAllActiveCostCenters()]);
   const canEdit = hasAccess(session, "grn", "edit");
   const draftCount = rows.filter((g) => g.status === "DRAFT").length;
+  const filteredCostCenter = costCenterId ? costCenters.find((c) => c.id === costCenterId) : undefined;
 
   return (
     <>
@@ -20,12 +23,18 @@ export default async function GrnPage({ searchParams }: PageProps<"/grn">) {
         subtitle="Receive stock against purchase orders — batch, lot, and expiry capture."
         action={canEdit ? <Link href="/grn/new" className="btn accent">+ New Direct GRN (no LPO)</Link> : undefined}
       />
+      {costCenterId && (
+        <div className="callout">
+          Filtered to sector: <b>{filteredCostCenter?.name ?? costCenterId}</b> — <Link href="/grn">clear filter</Link>
+        </div>
+      )}
       {draftCount > 0 && (
         <div className="callout" style={{ borderColor: "var(--accent)" }}>
           {draftCount} GRN(s) saved as draft — stock hasn&apos;t been updated for these yet. Open one to post it.
         </div>
       )}
       <form className="filterbar" method="get">
+        {costCenterId && <input type="hidden" name="costCenterId" value={costCenterId} />}
         <input type="text" name="q" placeholder="Search GRN, PO or supplier..." defaultValue={q ?? ""} />
         {canEdit && <ReceiveAgainstPO eligible={eligible} />}
         <button className="btn ghost" type="submit">Search</button>

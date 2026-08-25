@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireSection, hasAccess } from "@/server/auth/permissions";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { listWastageEvents, getWastageStats } from "@/server/db/queries/wastage";
+import { listAllActiveCostCenters } from "@/server/db/queries/costCenters";
 import { money } from "@/lib/format";
 import { DonutChart } from "@/components/charts/DonutChart";
 import { HorizontalBarChart } from "@/components/charts/HorizontalBarChart";
@@ -10,9 +11,11 @@ export default async function WastagePage({ searchParams }: PageProps<"/wastage"
   const session = await requireSection("wastage", "view");
   const sp = await searchParams;
   const status = typeof sp.status === "string" ? sp.status : undefined;
-  const [rows, stats] = await Promise.all([listWastageEvents({ status }), getWastageStats()]);
+  const costCenterId = typeof sp.costCenterId === "string" ? sp.costCenterId : undefined;
+  const [rows, stats, costCenters] = await Promise.all([listWastageEvents({ status, costCenterId }), getWastageStats({ costCenterId }), listAllActiveCostCenters()]);
   const canEdit = hasAccess(session, "wastage", "edit");
   const draftCount = rows.filter((w) => w.status === "DRAFT").length;
+  const filteredCostCenter = costCenterId ? costCenters.find((c) => c.id === costCenterId) : undefined;
 
   return (
     <>
@@ -21,6 +24,11 @@ export default async function WastagePage({ searchParams }: PageProps<"/wastage"
         subtitle="Spoilage, trimming and waste logged by section — deducts from the real stock ledger."
         action={canEdit ? <Link href="/wastage/new" className="btn accent">+ Log Wastage</Link> : undefined}
       />
+      {costCenterId && (
+        <div className="callout">
+          Filtered to sector: <b>{filteredCostCenter?.name ?? costCenterId}</b> — <Link href="/wastage">clear filter</Link>
+        </div>
+      )}
       {draftCount > 0 && (
         <div className="callout" style={{ borderColor: "var(--accent)" }}>
           {draftCount} log(s) saved as draft — stock hasn&apos;t been updated for these yet. Open one to post it.

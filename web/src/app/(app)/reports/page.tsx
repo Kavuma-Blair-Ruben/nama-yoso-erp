@@ -6,50 +6,56 @@ import {
   listPriceChangeEvents,
   listCostAdjustmentEvents,
   getSectionStats,
-  getCostCenterStats,
-  getPurchasingStats,
   getStockPageRows,
 } from "@/server/db/queries/reports";
-import { listSuppliers } from "@/server/db/queries/suppliers";
-import { getDashboardData } from "@/server/db/queries/dashboard";
-import { getRecipeSalesReport, getMenuEngineeringData } from "@/server/db/queries/sales";
+import { getRecipeSalesReport } from "@/server/db/queries/sales";
 import { getPosIntegration, listPosBranchMappings, listPosItemMappings, listPosWebhookEvents } from "@/server/db/queries/pos";
-import { listBranches } from "@/server/db/queries/purchaseOrders";
+import { listBranches, listPurchaseOrders } from "@/server/db/queries/purchaseOrders";
+import { listGrns, listAllSupplierReturns } from "@/server/db/queries/grn";
+import { listWastageEvents } from "@/server/db/queries/wastage";
+import { listTransfers } from "@/server/db/queries/transfers";
+import { listStockCounts } from "@/server/db/queries/stockCount";
+import { listProductionBatches } from "@/server/db/queries/production";
+import { listInvoices } from "@/server/db/queries/invoices";
 import { listAllActiveCostCenters } from "@/server/db/queries/costCenters";
 import { listMainRecipesForPicker } from "@/server/db/queries/recipes";
 import { fmt, money, pct } from "@/lib/format";
 import { canonicalUnitLabel } from "@/lib/unitMath";
 import { DonutChart } from "@/components/charts/DonutChart";
 import { HorizontalBarChart } from "@/components/charts/HorizontalBarChart";
-import { TrendLineChart } from "@/components/charts/TrendLineChart";
-import { MenuEngineeringScatter } from "@/components/charts/MenuEngineeringScatter";
 import { PosIntegrationPanel } from "@/components/reports/PosIntegrationPanel";
 import { FoodicsWebhookPanel } from "@/components/reports/FoodicsWebhookPanel";
 import { RecipeSalesImport } from "@/components/reports/RecipeSalesImport";
+import { ReportExportBar } from "@/components/reports/ReportExportBar";
 
-type Tab = "purchasing" | "suppliers" | "cost" | "sales" | "menuengineering" | "slowmoving" | "pricechange" | "costadjustments" | "sections" | "costcenter" | "stock";
+type Tab =
+  | "sales" | "slowmoving" | "pricechange" | "costadjustments" | "sections" | "stock"
+  | "purchaseorders" | "grns" | "supplierreturns" | "invoices" | "wastage" | "transfers" | "stockcounts" | "production";
 const TABS: { id: Tab; label: string }[] = [
-  { id: "purchasing", label: "Purchasing Dashboard" },
-  { id: "suppliers", label: "Supplier Dashboard" },
-  { id: "cost", label: "Cost Dashboard" },
   { id: "sales", label: "Recipe Sales" },
-  { id: "menuengineering", label: "Menu Engineering" },
   { id: "stock", label: "Stock Page" },
   { id: "slowmoving", label: "Slow Moving Items" },
   { id: "pricechange", label: "Item Price Change" },
   { id: "costadjustments", label: "Cost Adjustments" },
   { id: "sections", label: "Cost by Brand & Section" },
-  { id: "costcenter", label: "Cost by Sector (Live)" },
+  { id: "purchaseorders", label: "Purchase Orders" },
+  { id: "grns", label: "GRNs" },
+  { id: "supplierreturns", label: "Supplier Returns" },
+  { id: "invoices", label: "Invoices" },
+  { id: "wastage", label: "Wastage" },
+  { id: "transfers", label: "Transfers" },
+  { id: "stockcounts", label: "Stock Counts" },
+  { id: "production", label: "Production" },
 ];
 
 export default async function ReportsPage({ searchParams }: PageProps<"/reports">) {
   await requireSection("reports", "view");
   const sp = await searchParams;
-  const tab: Tab = (typeof sp.tab === "string" ? (sp.tab as Tab) : "purchasing");
+  const tab: Tab = (typeof sp.tab === "string" ? (sp.tab as Tab) : "sales");
 
   return (
     <>
-      <PageHeader title="Reports" subtitle="Purchasing, stock, and cost analytics across your live and historical data." />
+      <PageHeader title="Reports" subtitle="Printable and exportable reports across your live and historical data." />
       <div className="pill-tabs">
         {TABS.map((t) => (
           <Link key={t.id} href={`/reports?tab=${t.id}`} className={`btn ${tab === t.id ? "" : "ghost"}`} style={{ borderRadius: 20 }}>
@@ -57,207 +63,22 @@ export default async function ReportsPage({ searchParams }: PageProps<"/reports"
           </Link>
         ))}
       </div>
+      <ReportExportBar tab={tab} sp={sp} />
 
-      {tab === "purchasing" && <PurchasingTab />}
-      {tab === "suppliers" && <SupplierDashboardTab />}
-      {tab === "cost" && <CostDashboardTab />}
       {tab === "sales" && <RecipeSalesTab />}
-      {tab === "menuengineering" && <MenuEngineeringTab />}
       {tab === "stock" && <StockTab />}
       {tab === "slowmoving" && <SlowMovingTab minDays={typeof sp.minDays === "string" ? Number(sp.minDays) : 0} />}
       {tab === "pricechange" && <PriceChangeTab />}
       {tab === "costadjustments" && <CostAdjustmentsTab q={typeof sp.q === "string" ? sp.q : undefined} />}
       {tab === "sections" && <SectionsTab sector={typeof sp.sector === "string" ? sp.sector : undefined} />}
-      {tab === "costcenter" && <CostCenterTab />}
-    </>
-  );
-}
-
-async function PurchasingTab() {
-  const stats = await getPurchasingStats();
-  const agingColor: Record<string, string> = { "0-14": "var(--chart-1)", "15-30": "var(--chart-1)", "31-60": "var(--chart-5)", "61-90": "var(--bad)", "90+": "var(--bad)" };
-
-  return (
-    <>
-      <div className="kpi-grid">
-        <div className="kpi"><div className="n">{money(stats.totalSpend, 0)}</div><div className="l">Total Purchases</div><div className="d">{stats.invoiceCount} invoices</div></div>
-        <div className="kpi"><div className="n" style={{ color: "var(--bad)" }}>{money(stats.outstanding, 0)}</div><div className="l">Outstanding Payables</div><div className="d">{stats.outstandingCount} unpaid invoices</div></div>
-        <div className="kpi"><div className="n">{money(stats.cashSpend, 0)}</div><div className="l">Cash / Paid</div><div className="d">{fmt(stats.totalSpend ? (stats.cashSpend / stats.totalSpend) * 100 : 0, 0)}% of spend</div></div>
-        <div className="kpi"><div className="n">{money(stats.creditSpend, 0)}</div><div className="l">Credit Purchases</div><div className="d">{fmt(stats.totalSpend ? (stats.creditSpend / stats.totalSpend) * 100 : 0, 0)}% of spend</div></div>
-      </div>
-      <div className="grid-2">
-        <div className="panel">
-          <div className="panel-head"><h3>Accounts Payable Aging</h3></div>
-          <div className="panel-body chart-card">
-            <HorizontalBarChart
-              data={Object.entries(stats.buckets).map(([label, value]) => ({ label: `${label} days`, value, color: agingColor[label] }))}
-              format="money0"
-              height={180}
-            />
-            <div style={{ fontSize: 11, color: "var(--ink-faint)", marginTop: 8 }}>Aging is calculated from invoice date to today, based on the historical expense register.</div>
-          </div>
-        </div>
-        <div className="panel">
-          <div className="panel-head"><h3>Top Purchased Items by Spend</h3></div>
-          <div className="panel-body chart-card">
-            <HorizontalBarChart data={stats.topItems.map(([label, value]) => ({ label, value }))} format="money0" color="var(--chart-2)" />
-          </div>
-        </div>
-      </div>
-      <div style={{ height: 16 }} />
-      <div className="panel">
-        <div className="panel-head"><h3>Weekly Purchase Trend</h3></div>
-        <div className="panel-body chart-card">
-          <TrendLineChart data={stats.weeks.map(([label, value]) => ({ label, value }))} format="money0" />
-        </div>
-      </div>
-    </>
-  );
-}
-
-async function SupplierDashboardTab() {
-  const suppliers = await listSuppliers();
-  const bySpend = [...suppliers].sort((a, b) => b.totalSpend - a.totalSpend).filter((s) => s.totalSpend > 0);
-  const totalSpend = bySpend.reduce((s, x) => s + x.totalSpend, 0);
-  const top5 = bySpend.slice(0, 5);
-  const top5Spend = top5.reduce((s, x) => s + x.totalSpend, 0);
-  const flaggedSuppliers = suppliers.filter((s) => s.qualityPct != null && s.qualityPct < 90);
-  const suppliersWithLeadTime = suppliers.filter((s) => s.avgLeadTimeDays != null);
-  const avgLeadTime = suppliersWithLeadTime.length ? suppliersWithLeadTime.reduce((s, x) => s + (x.avgLeadTimeDays ?? 0), 0) / suppliersWithLeadTime.length : null;
-
-  return (
-    <>
-      <div className="kpi-grid">
-        <div className="kpi"><div className="n">{suppliers.length}</div><div className="l">Active Suppliers</div><div className="d">{bySpend.length} with purchase history</div></div>
-        <div className="kpi"><div className="n">{money(totalSpend, 0)}</div><div className="l">Total Spend</div><div className="d">All-time, historical + live</div></div>
-        <div className="kpi"><div className="n">{totalSpend ? fmt((top5Spend / totalSpend) * 100, 0) : 0}%</div><div className="l">Spend in Top 5 Suppliers</div><div className="d">Concentration risk</div></div>
-        <div className="kpi"><div className="n" style={{ color: flaggedSuppliers.length ? "var(--bad)" : "inherit" }}>{flaggedSuppliers.length}</div><div className="l">Below 90% Quality</div><div className="d">{avgLeadTime != null ? `${fmt(avgLeadTime, 1)}d avg lead time` : "No lead-time data yet"}</div></div>
-      </div>
-      <div className="grid-2">
-        <div className="panel">
-          <div className="panel-head"><h3>Top 5 Suppliers by Spend</h3></div>
-          <div className="panel-body chart-card">
-            {top5.length ? (
-              <DonutChart
-                data={[...top5.map((s) => ({ label: s.name, value: s.totalSpend })), ...(totalSpend - top5Spend > 0.01 ? [{ label: "All others", value: totalSpend - top5Spend, color: "var(--line)" }] : [])]}
-                format="money0"
-                centerLabel="total spend"
-              />
-            ) : (
-              <div style={{ color: "var(--ink-faint)", fontSize: 12.5 }}>No purchase history yet.</div>
-            )}
-          </div>
-        </div>
-        <div className="panel">
-          <div className="panel-head"><h3>Top Suppliers by Spend</h3></div>
-          <div className="panel-body chart-card">
-            {bySpend.length ? (
-              <HorizontalBarChart data={bySpend.slice(0, 8).map((s) => ({ label: s.name, value: s.totalSpend }))} format="money0" color="var(--chart-1)" />
-            ) : (
-              <div style={{ color: "var(--ink-faint)", fontSize: 12.5 }}>No purchase history yet.</div>
-            )}
-          </div>
-        </div>
-      </div>
-      <div style={{ height: 16 }} />
-      <div className="panel">
-        <div className="panel-head"><h3>Supplier Quality &amp; Delivery</h3></div>
-        <div className="table-wrap" style={{ maxHeight: 420 }}>
-          <table className="data">
-            <thead><tr><th>Supplier</th><th className="right">Total Spend</th><th className="right">Outstanding</th><th className="right">Deliveries</th><th className="right">Quality</th><th className="right">Avg Lead Time</th></tr></thead>
-            <tbody>
-              {suppliers.length ? (
-                [...suppliers].sort((a, b) => b.totalSpend - a.totalSpend).map((s) => (
-                  <tr key={s.id}>
-                    <td><Link href={`/suppliers/${s.id}`}>{s.name}</Link></td>
-                    <td className="mono-r">{money(s.totalSpend, 0)}</td>
-                    <td className="mono-r" style={{ color: s.outstanding > 0 ? "var(--bad)" : "inherit" }}>{money(s.outstanding, 0)}</td>
-                    <td className="mono-r">{s.deliveryCount}</td>
-                    <td className="right">{s.qualityPct != null ? <span className={`tag ${s.qualityPct < 90 ? "bad" : "good"}`}>{fmt(s.qualityPct, 0)}%</span> : "-"}</td>
-                    <td className="mono-r">{s.avgLeadTimeDays != null ? `${fmt(s.avgLeadTimeDays, 1)}d` : "-"}</td>
-                  </tr>
-                ))
-              ) : (
-                <tr className="empty-row"><td colSpan={6}>No suppliers yet.</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </>
-  );
-}
-
-async function CostDashboardTab() {
-  const [d, adjustments] = await Promise.all([getDashboardData(), listCostAdjustmentEvents({})]);
-  const totalDrift = adjustments.reduce((s, e) => s + e.affected.reduce((s2, a) => s2 + a.impact, 0), 0);
-  const increases = adjustments.filter((e) => e.pctChange > 0).length;
-  const decreases = adjustments.filter((e) => e.pctChange < 0).length;
-
-  // Cumulative cost-impact trend across all recipes, oldest to newest —
-  // "actual" cost drift over time driven by real ingredient price changes.
-  const byDate = new Map<string, number>();
-  for (const e of [...adjustments].sort((a, b) => a.date.localeCompare(b.date))) {
-    const dayImpact = e.affected.reduce((s, a) => s + a.impact, 0);
-    byDate.set(e.date, (byDate.get(e.date) ?? 0) + dayImpact);
-  }
-  let cumulative = 0;
-  const trend = [...byDate.entries()].map(([label, v]) => {
-    cumulative += v;
-    return { label, value: cumulative };
-  });
-
-  const compareRows = d.topVariance.map((r) => ({ ...r }));
-
-  return (
-    <>
-      <div className="callout">
-        <b>Actual vs. Theoretical:</b> &quot;Theoretical&quot; is each recipe&apos;s cost when it was first built; &quot;Actual&quot; is what it costs today
-        against live ingredient prices. Without sales data imported yet, this compares recipe-card cost drift rather than realized food-cost % —
-        the closest actual-vs-theoretical view available until POS sales import lands.
-      </div>
-      <div className="kpi-grid">
-        <div className="kpi"><div className="n">{d.topCost.length ? d.mainRecipeCount : 0}</div><div className="l">Main Recipes Costed</div><div className="d">{d.missingIngredientCount} ingredient(s) missing a live price</div></div>
-        <div className="kpi"><div className="n" style={{ color: totalDrift >= 0 ? "var(--bad)" : "var(--good)" }}>{money(totalDrift, 0)}</div><div className="l">Net Cost Drift</div><div className="d">{totalDrift >= 0 ? "Costing more than build-time" : "Costing less than build-time"}</div></div>
-        <div className="kpi"><div className="n" style={{ color: "var(--bad)" }}>{increases}</div><div className="l">Price Increases</div><div className="d">of {adjustments.length} recorded changes</div></div>
-        <div className="kpi"><div className="n" style={{ color: "var(--good)" }}>{decreases}</div><div className="l">Price Decreases</div><div className="d">of {adjustments.length} recorded changes</div></div>
-      </div>
-      <div className="grid-2">
-        <div className="panel">
-          <div className="panel-head"><h3>Recipes Most Impacted by Price Changes</h3></div>
-          <div className="panel-body chart-card">
-            {compareRows.length ? (
-              <HorizontalBarChart
-                data={compareRows.map((r) => ({ label: r.name, value: r.variancePct, color: r.variancePct >= 0 ? "var(--bad)" : "var(--good)" }))}
-                format="percent"
-              />
-            ) : (
-              <div style={{ color: "var(--ink-faint)", fontSize: 12.5 }}>No recipe cost variance yet.</div>
-            )}
-          </div>
-        </div>
-        <div className="panel">
-          <div className="panel-head"><h3>Cumulative Cost Drift Over Time</h3></div>
-          <div className="panel-body chart-card">
-            {trend.length ? (
-              <TrendLineChart data={trend} format="money0" color={totalDrift >= 0 ? "var(--bad)" : "var(--good)"} />
-            ) : (
-              <div style={{ color: "var(--ink-faint)", fontSize: 12.5 }}>No price history recorded yet.</div>
-            )}
-          </div>
-        </div>
-      </div>
-      <div style={{ height: 16 }} />
-      <div className="panel">
-        <div className="panel-head"><h3>Highest Food Cost — Main Recipes (Actual, Live)</h3></div>
-        <div className="panel-body chart-card">
-          {d.topCost.length ? (
-            <HorizontalBarChart data={d.topCost.map((r) => ({ label: r.name, value: r.perUnit }))} format="money2" color="var(--chart-4)" />
-          ) : (
-            <div style={{ color: "var(--ink-faint)", fontSize: 12.5 }}>No recipe costing data yet.</div>
-          )}
-        </div>
-      </div>
+      {tab === "purchaseorders" && <PurchaseOrdersTab q={typeof sp.q === "string" ? sp.q : undefined} status={typeof sp.status === "string" ? sp.status : undefined} />}
+      {tab === "grns" && <GrnsTab q={typeof sp.q === "string" ? sp.q : undefined} />}
+      {tab === "supplierreturns" && <SupplierReturnsTab />}
+      {tab === "invoices" && <InvoicesReportTab q={typeof sp.q === "string" ? sp.q : undefined} status={typeof sp.status === "string" ? sp.status : undefined} />}
+      {tab === "wastage" && <WastageReportTab status={typeof sp.status === "string" ? sp.status : undefined} />}
+      {tab === "transfers" && <TransfersReportTab status={typeof sp.status === "string" ? sp.status : undefined} />}
+      {tab === "stockcounts" && <StockCountsTab status={typeof sp.status === "string" ? sp.status : undefined} />}
+      {tab === "production" && <ProductionReportTab status={typeof sp.status === "string" ? sp.status : undefined} />}
     </>
   );
 }
@@ -328,39 +149,6 @@ async function RecipeSalesTab() {
                   ))}
                 </tbody>
               </table>
-            </div>
-          </div>
-        </>
-      )}
-    </>
-  );
-}
-
-async function MenuEngineeringTab() {
-  const { items, avgQty, avgMargin } = await getMenuEngineeringData();
-  const byClass = { Star: 0, "Plow-Horse": 0, Puzzle: 0, Dog: 0 } as Record<string, number>;
-  for (const it of items) byClass[it.classification]++;
-
-  return (
-    <>
-      <div className="callout">
-        <b>Stars</b> (top-right): popular and profitable — protect these. <b>Plow-Horses</b> (bottom-right): popular but thin margin — consider a price nudge.{" "}
-        <b>Puzzles</b> (top-left): profitable but rarely ordered — promote or reposition on the menu. <b>Dogs</b> (bottom-left): neither — candidates to cut or rework.
-      </div>
-      {items.length === 0 ? (
-        <div className="callout">No matched recipe sales yet — import sales data on the Recipe Sales tab first.</div>
-      ) : (
-        <>
-          <div className="kpi-grid">
-            <div className="kpi"><div className="n" style={{ color: "var(--good)" }}>{byClass.Star}</div><div className="l">Stars</div></div>
-            <div className="kpi"><div className="n" style={{ color: "var(--chart-5)" }}>{byClass["Plow-Horse"]}</div><div className="l">Plow-Horses</div></div>
-            <div className="kpi"><div className="n" style={{ color: "var(--chart-4)" }}>{byClass.Puzzle}</div><div className="l">Puzzles</div></div>
-            <div className="kpi"><div className="n" style={{ color: "var(--bad)" }}>{byClass.Dog}</div><div className="l">Dogs</div></div>
-          </div>
-          <div className="panel">
-            <div className="panel-head"><h3>Menu Engineering — Popularity vs. Profitability</h3></div>
-            <div className="panel-body chart-card">
-              <MenuEngineeringScatter items={items} avgQty={avgQty} avgMargin={avgMargin} />
             </div>
           </div>
         </>
@@ -617,47 +405,385 @@ async function SectionsTab({ sector }: { sector?: string }) {
   );
 }
 
-async function CostCenterTab() {
-  const rows = await getCostCenterStats();
-  const totalGrnSpend = rows.reduce((s, r) => s + r.grnSpend, 0);
-  const totalWastage = rows.reduce((s, r) => s + r.wastageCost, 0);
-  const byBranch = new Map<string, typeof rows>();
-  for (const r of rows) byBranch.set(r.branchName, [...(byBranch.get(r.branchName) ?? []), r]);
+async function PurchaseOrdersTab({ q, status }: { q?: string; status?: string }) {
+  const rows = await listPurchaseOrders({ q, status });
+  const totalValue = rows.reduce((s, r) => s + r.total, 0);
 
   return (
     <>
-      <div className="callout">
-        <b>What this shows:</b> real GRN receipts and wastage posted against each branch&apos;s sectors — a Kitchen sector&apos;s
-        spend reads as your food cost, a Bar sector&apos;s as your beverage cost. Unlike &quot;Cost by Brand &amp; Section&quot;,
-        this is live and grows as you post GRNs/wastage with a sector selected, not a snapshot of historical import data.
-      </div>
       <div className="kpi-grid">
-        <div className="kpi"><div className="n">{money(totalGrnSpend, 0)}</div><div className="l">Total Received (all sectors)</div></div>
-        <div className="kpi"><div className="n" style={{ color: totalWastage > 0 ? "var(--bad)" : "inherit" }}>{money(totalWastage, 0)}</div><div className="l">Total Wastage (all sectors)</div></div>
-        <div className="kpi"><div className="n">{totalGrnSpend ? fmt((totalWastage / totalGrnSpend) * 100, 1) : "0.0"}%</div><div className="l">Wastage as % of Spend</div></div>
+        <div className="kpi"><div className="n">{rows.length}</div><div className="l">Purchase Orders</div></div>
+        <div className="kpi"><div className="n">{money(totalValue, 0)}</div><div className="l">Total Value</div></div>
       </div>
-      {[...byBranch.entries()].map(([branchName, sectors]) => (
-        <div className="panel" key={branchName} style={{ marginBottom: 16 }}>
-          <div className="panel-head"><h3>{branchName}</h3></div>
-          <div className="table-wrap">
-            <table className="data">
-              <thead><tr><th>Sector</th><th className="right">Received (GRN)</th><th className="right">Wastage</th><th className="right">Wastage %</th></tr></thead>
-              <tbody>
-                {sectors.map((s) => (
-                  <tr key={s.id}>
-                    <td>{s.name}</td>
-                    <td className="mono-r">{money(s.grnSpend, 2)}</td>
-                    <td className="mono-r" style={{ color: s.wastageCost > 0 ? "var(--bad)" : "inherit" }}>{money(s.wastageCost, 2)}</td>
-                    <td className="right">
-                      {s.grnSpend > 0 ? <span className={`tag ${s.wastagePct > 5 ? "bad" : "good"}`}>{fmt(s.wastagePct, 1)}%</span> : "—"}
-                    </td>
+      <form className="filterbar" method="get">
+        <input type="hidden" name="tab" value="purchaseorders" />
+        <input type="text" name="q" placeholder="Search PO number or supplier..." defaultValue={q ?? ""} />
+        <select name="status" defaultValue={status ?? ""}>
+          <option value="">All statuses</option>
+          <option value="DRAFT">Draft</option>
+          <option value="APPROVED">Approved</option>
+          <option value="ORDERED">Ordered</option>
+          <option value="PARTIALLY RECEIVED">Partially Received</option>
+          <option value="FULLY RECEIVED">Fully Received</option>
+          <option value="CANCELLED">Cancelled</option>
+        </select>
+        <button className="btn ghost" type="submit">Apply</button>
+        <span style={{ marginLeft: "auto", alignSelf: "center", fontSize: 12, color: "var(--ink-soft)" }}>{rows.length} order(s)</span>
+      </form>
+      <div className="panel">
+        <div className="table-wrap" style={{ maxHeight: 560 }}>
+          <table className="data">
+            <thead><tr><th>LPO Number</th><th>Supplier</th><th>Date</th><th className="right">Net</th><th className="right">VAT</th><th className="right">Total</th><th>Status</th></tr></thead>
+            <tbody>
+              {rows.length ? (
+                rows.map((r) => (
+                  <tr key={r.id}>
+                    <td><Link href={`/purchase-orders/${r.id}`}>{r.poNumber}</Link></td>
+                    <td>{r.supplier}</td>
+                    <td>{r.createdDate}</td>
+                    <td className="mono-r">{fmt(r.net, 2)}</td>
+                    <td className="mono-r">{fmt(r.vat, 2)}</td>
+                    <td className="mono-r">{money(r.total, 2)}</td>
+                    <td><span className="tag neutral">{r.status}</span></td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                ))
+              ) : (
+                <tr className="empty-row"><td colSpan={7}>No purchase orders match this filter.</td></tr>
+              )}
+            </tbody>
+          </table>
         </div>
-      ))}
+      </div>
+    </>
+  );
+}
+
+async function GrnsTab({ q }: { q?: string }) {
+  const rows = await listGrns({ q });
+  const totalValue = rows.reduce((s, r) => s + r.total, 0);
+
+  return (
+    <>
+      <div className="kpi-grid">
+        <div className="kpi"><div className="n">{rows.length}</div><div className="l">GRNs</div></div>
+        <div className="kpi"><div className="n">{money(totalValue, 0)}</div><div className="l">Total Value</div></div>
+      </div>
+      <form className="filterbar" method="get">
+        <input type="hidden" name="tab" value="grns" />
+        <input type="text" name="q" placeholder="Search GRN/PO number or supplier..." defaultValue={q ?? ""} />
+        <button className="btn ghost" type="submit">Search</button>
+        <span style={{ marginLeft: "auto", alignSelf: "center", fontSize: 12, color: "var(--ink-soft)" }}>{rows.length} GRN(s)</span>
+      </form>
+      <div className="panel">
+        <div className="table-wrap" style={{ maxHeight: 560 }}>
+          <table className="data">
+            <thead><tr><th>GRN Number</th><th>LPO Number</th><th>Supplier</th><th>Received Date</th><th>Invoice #</th><th className="right">Net</th><th className="right">VAT</th><th className="right">Total</th><th>Status</th></tr></thead>
+            <tbody>
+              {rows.length ? (
+                rows.map((r) => (
+                  <tr key={r.id}>
+                    <td><Link href={`/grn/${r.id}`}>{r.grnNumber}</Link></td>
+                    <td>{r.poNumber ?? "-"}</td>
+                    <td>{r.supplier}</td>
+                    <td>{r.receivedDate}</td>
+                    <td>{r.invoiceNumber ?? "-"}</td>
+                    <td className="mono-r">{fmt(r.net, 2)}</td>
+                    <td className="mono-r">{fmt(r.vat, 2)}</td>
+                    <td className="mono-r">{money(r.total, 2)}</td>
+                    <td><span className="tag neutral">{r.status}</span></td>
+                  </tr>
+                ))
+              ) : (
+                <tr className="empty-row"><td colSpan={9}>No GRNs match this filter.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </>
+  );
+}
+
+async function SupplierReturnsTab() {
+  const rows = await listAllSupplierReturns();
+  const totalValue = rows.reduce((s, r) => s + r.value, 0);
+
+  return (
+    <>
+      <div className="kpi-grid">
+        <div className="kpi"><div className="n">{rows.length}</div><div className="l">Supplier Returns</div></div>
+        <div className="kpi"><div className="n">{money(totalValue, 0)}</div><div className="l">Total Value</div></div>
+      </div>
+      <div className="panel">
+        <div className="table-wrap" style={{ maxHeight: 560 }}>
+          <table className="data">
+            <thead><tr><th>Return</th><th>GRN</th><th>Supplier</th><th>Reason</th><th className="right">Value</th><th>Date</th></tr></thead>
+            <tbody>
+              {rows.length ? (
+                rows.map((r) => (
+                  <tr key={r.id}>
+                    <td>{r.number}</td>
+                    <td><Link href={`/grn/${r.grnId}`}>{r.grnNumber}</Link></td>
+                    <td>{r.supplierName}</td>
+                    <td>{r.reason}</td>
+                    <td className="mono-r">{money(r.value, 2)}</td>
+                    <td>{r.createdAt.toISOString().slice(0, 10)}</td>
+                  </tr>
+                ))
+              ) : (
+                <tr className="empty-row"><td colSpan={6}>No supplier returns recorded yet.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </>
+  );
+}
+
+async function InvoicesReportTab({ q, status }: { q?: string; status?: string }) {
+  const rows = await listInvoices({ q, status, limit: 1_000_000 });
+  const totalValue = rows.reduce((s, r) => s + (r.total ?? 0), 0);
+  const outstanding = rows.filter((r) => r.status === "OUTSTANDING").reduce((s, r) => s + (r.total ?? 0), 0);
+
+  return (
+    <>
+      <div className="kpi-grid">
+        <div className="kpi"><div className="n">{rows.length}</div><div className="l">Invoices</div></div>
+        <div className="kpi"><div className="n">{money(totalValue, 0)}</div><div className="l">Total Value</div></div>
+        <div className="kpi"><div className="n" style={{ color: outstanding > 0 ? "var(--bad)" : "inherit" }}>{money(outstanding, 0)}</div><div className="l">Outstanding</div></div>
+      </div>
+      <form className="filterbar" method="get">
+        <input type="hidden" name="tab" value="invoices" />
+        <input type="text" name="q" placeholder="Search invoice number or supplier..." defaultValue={q ?? ""} />
+        <select name="status" defaultValue={status ?? ""}>
+          <option value="">All statuses</option>
+          <option value="OUTSTANDING">Outstanding</option>
+          <option value="PAID">Paid</option>
+          <option value="OTHER">Other</option>
+        </select>
+        <button className="btn ghost" type="submit">Apply</button>
+        <span style={{ marginLeft: "auto", alignSelf: "center", fontSize: 12, color: "var(--ink-soft)" }}>{rows.length} invoice(s)</span>
+      </form>
+      <div className="panel">
+        <div className="table-wrap" style={{ maxHeight: 560 }}>
+          <table className="data">
+            <thead><tr><th>Date</th><th>Invoice #</th><th>Supplier</th><th className="right">Net</th><th className="right">VAT</th><th className="right">Total</th><th>Status</th><th>Source</th></tr></thead>
+            <tbody>
+              {rows.length ? (
+                rows.map((r) => (
+                  <tr key={`${r.source}-${r.id}`}>
+                    <td>{r.invoiceDate ?? "-"}</td>
+                    <td>{r.source === "grn" ? <Link href={`/grn/${r.id}`}>{r.invoiceNumber ?? "-"}</Link> : <Link href={`/invoices/${r.id}`}>{r.invoiceNumber ?? "-"}</Link>}</td>
+                    <td>{r.supplier ?? "-"}</td>
+                    <td className="mono-r">{r.net != null ? fmt(r.net, 2) : "-"}</td>
+                    <td className="mono-r">{r.vat != null ? fmt(r.vat, 2) : "-"}</td>
+                    <td className="mono-r">{r.total != null ? money(r.total, 2) : "-"}</td>
+                    <td><span className="tag neutral">{r.status ?? "-"}</span></td>
+                    <td><span className="tag">{r.source === "grn" ? "GRN" : "Historical"}</span></td>
+                  </tr>
+                ))
+              ) : (
+                <tr className="empty-row"><td colSpan={8}>No invoices match this filter.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </>
+  );
+}
+
+async function WastageReportTab({ status }: { status?: string }) {
+  const rows = await listWastageEvents({ status });
+  const totalCost = rows.reduce((s, r) => s + r.totalCost, 0);
+
+  return (
+    <>
+      <div className="kpi-grid">
+        <div className="kpi"><div className="n">{rows.length}</div><div className="l">Wastage Logs</div></div>
+        <div className="kpi"><div className="n">{money(totalCost, 0)}</div><div className="l">Total Wastage Cost</div></div>
+      </div>
+      <form className="filterbar" method="get">
+        <input type="hidden" name="tab" value="wastage" />
+        <select name="status" defaultValue={status ?? ""}>
+          <option value="">All statuses</option>
+          <option value="DRAFT">Draft</option>
+          <option value="POSTED">Posted</option>
+        </select>
+        <button className="btn ghost" type="submit">Apply</button>
+        <span style={{ marginLeft: "auto", alignSelf: "center", fontSize: 12, color: "var(--ink-soft)" }}>{rows.length} log(s)</span>
+      </form>
+      <div className="panel">
+        <div className="table-wrap" style={{ maxHeight: 560 }}>
+          <table className="data">
+            <thead><tr><th>Log No.</th><th>Sector</th><th>Branch</th><th>Date</th><th>Staff</th><th className="right">Total Cost</th><th>Status</th></tr></thead>
+            <tbody>
+              {rows.length ? (
+                rows.map((r) => (
+                  <tr key={r.id}>
+                    <td><Link href={`/wastage/${r.id}`}>{r.wastageNo}</Link></td>
+                    <td>{r.costCenter}</td>
+                    <td>{r.branchName ?? "-"}</td>
+                    <td>{r.eventDate}</td>
+                    <td>{r.staffName ?? "-"}</td>
+                    <td className="mono-r">{money(r.totalCost, 2)}</td>
+                    <td><span className="tag neutral">{r.status}</span></td>
+                  </tr>
+                ))
+              ) : (
+                <tr className="empty-row"><td colSpan={7}>No wastage logs match this filter.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </>
+  );
+}
+
+async function TransfersReportTab({ status }: { status?: string }) {
+  const rows = await listTransfers({ status });
+  const totalValue = rows.reduce((s, r) => s + r.totalCost, 0);
+
+  return (
+    <>
+      <div className="kpi-grid">
+        <div className="kpi"><div className="n">{rows.length}</div><div className="l">Transfers</div></div>
+        <div className="kpi"><div className="n">{money(totalValue, 0)}</div><div className="l">Total Value</div></div>
+      </div>
+      <form className="filterbar" method="get">
+        <input type="hidden" name="tab" value="transfers" />
+        <select name="status" defaultValue={status ?? ""}>
+          <option value="">All statuses</option>
+          <option value="DRAFT">Draft</option>
+          <option value="IN_TRANSIT">In Transit</option>
+          <option value="POSTED">Posted</option>
+        </select>
+        <button className="btn ghost" type="submit">Apply</button>
+        <span style={{ marginLeft: "auto", alignSelf: "center", fontSize: 12, color: "var(--ink-soft)" }}>{rows.length} transfer(s)</span>
+      </form>
+      <div className="panel">
+        <div className="table-wrap" style={{ maxHeight: 560 }}>
+          <table className="data">
+            <thead><tr><th>Transfer No.</th><th>From</th><th>To</th><th>Date</th><th>Staff</th><th className="right">Value</th><th>Status</th></tr></thead>
+            <tbody>
+              {rows.length ? (
+                rows.map((r) => (
+                  <tr key={r.id}>
+                    <td><Link href={`/transfers/${r.id}`}>{r.transferNo}</Link></td>
+                    <td>{r.fromBranchName}</td>
+                    <td>{r.toBranchName}</td>
+                    <td>{r.transferDate}</td>
+                    <td>{r.staffName ?? "-"}</td>
+                    <td className="mono-r">{money(r.totalCost, 2)}</td>
+                    <td><span className="tag neutral">{r.status}</span></td>
+                  </tr>
+                ))
+              ) : (
+                <tr className="empty-row"><td colSpan={7}>No transfers match this filter.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </>
+  );
+}
+
+async function StockCountsTab({ status }: { status?: string }) {
+  const rows = await listStockCounts({ status });
+  const totalVariance = rows.reduce((s, r) => s + r.totalVarianceValue, 0);
+
+  return (
+    <>
+      <div className="kpi-grid">
+        <div className="kpi"><div className="n">{rows.length}</div><div className="l">Stock Counts</div></div>
+        <div className="kpi"><div className="n" style={{ color: totalVariance < 0 ? "var(--bad)" : "inherit" }}>{money(totalVariance, 0)}</div><div className="l">Total Variance Value</div></div>
+      </div>
+      <form className="filterbar" method="get">
+        <input type="hidden" name="tab" value="stockcounts" />
+        <select name="status" defaultValue={status ?? ""}>
+          <option value="">All statuses</option>
+          <option value="DRAFT">Draft</option>
+          <option value="POSTED">Posted</option>
+        </select>
+        <button className="btn ghost" type="submit">Apply</button>
+        <span style={{ marginLeft: "auto", alignSelf: "center", fontSize: 12, color: "var(--ink-soft)" }}>{rows.length} count(s)</span>
+      </form>
+      <div className="panel">
+        <div className="table-wrap" style={{ maxHeight: 560 }}>
+          <table className="data">
+            <thead><tr><th>Count Number</th><th>Cost Center</th><th>Branch</th><th>Date</th><th className="right">Items</th><th className="right">Variance Value</th><th>Status</th></tr></thead>
+            <tbody>
+              {rows.length ? (
+                rows.map((r) => (
+                  <tr key={r.id}>
+                    <td><Link href={`/stock-count/${r.id}`}>{r.countNo}</Link></td>
+                    <td>{r.costCenter}</td>
+                    <td>{r.branchName ?? "-"}</td>
+                    <td>{r.countDate}</td>
+                    <td className="mono-r">{r.lineCount}</td>
+                    <td className="mono-r" style={{ color: r.totalVarianceValue < 0 ? "var(--bad)" : "inherit" }}>{money(r.totalVarianceValue, 2)}</td>
+                    <td><span className="tag neutral">{r.status}</span></td>
+                  </tr>
+                ))
+              ) : (
+                <tr className="empty-row"><td colSpan={7}>No stock counts match this filter.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </>
+  );
+}
+
+async function ProductionReportTab({ status }: { status?: string }) {
+  const rows = await listProductionBatches({ status });
+  const totalCost = rows.reduce((s, r) => s + r.totalCost, 0);
+
+  return (
+    <>
+      <div className="kpi-grid">
+        <div className="kpi"><div className="n">{rows.length}</div><div className="l">Production Batches</div></div>
+        <div className="kpi"><div className="n">{money(totalCost, 0)}</div><div className="l">Total Cost</div></div>
+      </div>
+      <form className="filterbar" method="get">
+        <input type="hidden" name="tab" value="production" />
+        <select name="status" defaultValue={status ?? ""}>
+          <option value="">All statuses</option>
+          <option value="OPEN">Open</option>
+          <option value="CLOSED">Closed</option>
+        </select>
+        <button className="btn ghost" type="submit">Apply</button>
+        <span style={{ marginLeft: "auto", alignSelf: "center", fontSize: 12, color: "var(--ink-soft)" }}>{rows.length} batch(es)</span>
+      </form>
+      <div className="panel">
+        <div className="table-wrap" style={{ maxHeight: 560 }}>
+          <table className="data">
+            <thead><tr><th>Batch No.</th><th>Sub-Recipe</th><th>Branch</th><th>Staff</th><th>Produced Date</th><th className="right">Yield</th><th className="right">Total Cost</th><th>Status</th></tr></thead>
+            <tbody>
+              {rows.length ? (
+                rows.map((r) => (
+                  <tr key={r.id}>
+                    <td><Link href={`/production/${r.id}`}>{r.batchNo}</Link></td>
+                    <td>{r.subRecipeCode ? <Link href={`/recipes/sub/${r.subRecipeCode}`}>{r.subRecipeName}</Link> : r.subRecipeName}</td>
+                    <td>{r.branchName ?? "-"}</td>
+                    <td>{r.staffName ?? "-"}</td>
+                    <td>{r.producedDate}</td>
+                    <td className="mono-r">{fmt(r.yieldQty, 2)} {r.yieldUnit}</td>
+                    <td className="mono-r">{money(r.totalCost, 2)}</td>
+                    <td><span className="tag neutral">{r.status}</span></td>
+                  </tr>
+                ))
+              ) : (
+                <tr className="empty-row"><td colSpan={8}>No production batches match this filter.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </>
   );
 }

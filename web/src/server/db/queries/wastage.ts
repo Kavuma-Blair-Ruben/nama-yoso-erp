@@ -7,9 +7,10 @@ export async function listWastageReasons() {
   return db.select({ id: wastageReasons.id, name: wastageReasons.name, isExpense: wastageReasons.isExpense }).from(wastageReasons).orderBy(wastageReasons.name);
 }
 
-export async function listWastageEvents(filters: { status?: string }) {
+export async function listWastageEvents(filters: { status?: string; costCenterId?: string }) {
   const conditions = [];
   if (filters.status) conditions.push(eq(wastageEvents.status, filters.status));
+  if (filters.costCenterId) conditions.push(eq(wastageEvents.costCenterId, filters.costCenterId));
 
   return db
     .select({
@@ -122,7 +123,10 @@ export async function getWastageEventForClone(id: string) {
 // Report aggregates for the Wastage Tracking dashboard — reason/section/
 // category breakdowns + top items, mirrors index.html's groupSum() but
 // scoped to POSTED events only (drafts haven't affected stock yet).
-export async function getWastageStats() {
+export async function getWastageStats(filters: { costCenterId?: string } = {}) {
+  const conditions = [eq(wastageEvents.status, "POSTED")];
+  if (filters.costCenterId) conditions.push(eq(wastageEvents.costCenterId, filters.costCenterId));
+
   const rows = await db
     .select({
       amount: wastageLines.amountAtWaste,
@@ -136,7 +140,7 @@ export async function getWastageStats() {
     .innerJoin(wastageEvents, eq(wastageLines.wastageEventId, wastageEvents.id))
     .innerJoin(stockItems, eq(wastageLines.stockItemId, stockItems.id))
     .leftJoin(categories, eq(stockItems.categoryId, categories.id))
-    .where(eq(wastageEvents.status, "POSTED"));
+    .where(and(...conditions));
 
   function groupSum(key: "reason" | "costCenter" | "category" | "itemName") {
     const g = new Map<string, number>();

@@ -1,9 +1,10 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { type ChartValueFormat, formatChartValue } from "./format";
 
-type Row = { label: string; value: number; color?: string };
+type Row = { label: string; value: number; color?: string; href?: string };
 
 // General-purpose ranked horizontal bar — top purchased items, wastage by
 // section, top suppliers by spend, etc. Same visual language as the
@@ -24,10 +25,12 @@ export function HorizontalBarChart({
   color?: string;
   height?: number;
 }) {
+  const router = useRouter();
   // Long product/supplier names wrap to multiple SVG text lines that don't
   // reserve extra row height, overlapping the bar above — truncate for the
   // axis label (the tooltip and underlying table still show the full name).
   const chartData = data.map((row) => ({ ...row, axisLabel: row.label.length > 24 ? row.label.slice(0, 23) + "…" : row.label }));
+  const hasLinks = data.some((row) => row.href);
 
   return (
     <ResponsiveContainer width="100%" height={height ?? Math.max(160, data.length * 36)}>
@@ -41,7 +44,13 @@ export function HorizontalBarChart({
           labelFormatter={(_, payload) => (payload?.[0]?.payload as Row | undefined)?.label ?? ""}
           contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid var(--line)" }}
         />
-        <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={16}>
+        <Bar
+          dataKey="value"
+          radius={[0, 4, 4, 0]}
+          barSize={16}
+          cursor={hasLinks ? "pointer" : undefined}
+          onClick={hasLinks ? (d: { payload?: Row }) => d.payload?.href && router.push(d.payload.href) : undefined}
+        >
           {data.map((row, i) => (
             <Cell key={i} fill={row.color ?? color} />
           ))}

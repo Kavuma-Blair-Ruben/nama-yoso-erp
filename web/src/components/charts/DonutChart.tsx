@@ -1,9 +1,10 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import { type ChartValueFormat, formatChartValue } from "./format";
 
-type Slice = { label: string; value: number; color?: string };
+type Slice = { label: string; value: number; color?: string; href?: string };
 
 const PALETTE = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)"];
 
@@ -11,6 +12,7 @@ const PALETTE = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--ch
 // centered total and a side legend — the donut-plus-legend layout Supy uses
 // for its category/reason splits, in NAMA YOSO's own 5-color chart palette.
 export function DonutChart({ data, format = "plain", centerLabel }: { data: Slice[]; format?: ChartValueFormat; centerLabel?: string }) {
+  const router = useRouter();
   const total = data.reduce((s, d) => s + d.value, 0);
   const fmt = (v: number) => formatChartValue(v, format);
 
@@ -21,7 +23,12 @@ export function DonutChart({ data, format = "plain", centerLabel }: { data: Slic
           <PieChart>
             <Pie data={data} dataKey="value" nameKey="label" innerRadius={54} outerRadius={82} paddingAngle={data.length > 1 ? 2 : 0} strokeWidth={0}>
               {data.map((d, i) => (
-                <Cell key={i} fill={d.color ?? PALETTE[i % PALETTE.length]} />
+                <Cell
+                  key={i}
+                  fill={d.color ?? PALETTE[i % PALETTE.length]}
+                  cursor={d.href ? "pointer" : undefined}
+                  onClick={d.href ? () => router.push(d.href!) : undefined}
+                />
               ))}
             </Pie>
             <Tooltip formatter={(v) => fmt(typeof v === "number" ? v : Number(v))} contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid var(--line)" }} />
@@ -34,7 +41,11 @@ export function DonutChart({ data, format = "plain", centerLabel }: { data: Slic
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 6, flex: 1, minWidth: 140 }}>
         {data.map((d, i) => (
-          <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
+          <div
+            key={i}
+            onClick={d.href ? () => router.push(d.href!) : undefined}
+            style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, cursor: d.href ? "pointer" : undefined }}
+          >
             <span style={{ width: 10, height: 10, borderRadius: 3, background: d.color ?? PALETTE[i % PALETTE.length], flexShrink: 0 }} />
             <span style={{ flex: 1, color: "var(--ink)" }}>{d.label}</span>
             <span className="mono-r" style={{ color: "var(--ink-soft)" }}>{fmt(d.value)}</span>

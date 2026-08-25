@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { CartesianGrid, ReferenceLine, Scatter, ScatterChart, Tooltip, XAxis, YAxis, ZAxis } from "recharts";
 import { ResponsiveContainer } from "recharts";
 import { money } from "@/lib/format";
@@ -18,6 +19,7 @@ const CLASS_COLOR: Record<Item["classification"], string> = {
 // dataset averages splitting the four quadrants — Stars top-right,
 // Plow-Horses bottom-right, Puzzles top-left, Dogs bottom-left.
 export function MenuEngineeringScatter({ items, avgQty, avgMargin }: { items: Item[]; avgQty: number; avgMargin: number }) {
+  const router = useRouter();
   const byClass: Record<Item["classification"], Item[]> = { Star: [], "Plow-Horse": [], Puzzle: [], Dog: [] };
   for (const it of items) byClass[it.classification].push(it);
 
@@ -47,7 +49,14 @@ export function MenuEngineeringScatter({ items, avgQty, avgMargin }: { items: It
           }}
         />
         {(Object.keys(byClass) as Item["classification"][]).map((cls) => (
-          <Scatter key={cls} name={cls} data={byClass[cls]} fill={CLASS_COLOR[cls]} />
+          <Scatter
+            key={cls}
+            name={cls}
+            data={byClass[cls]}
+            fill={CLASS_COLOR[cls]}
+            cursor="pointer"
+            onClick={(d: { payload?: Item }) => d.payload?.code && router.push(`/recipes/main/${d.payload.code}`)}
+          />
         ))}
       </ScatterChart>
     </ResponsiveContainer>
