@@ -134,8 +134,8 @@ export default async function ReportPrintPage({ params, searchParams }: PageProp
   } else if (tab === "grns") {
     const q = typeof sp.q === "string" ? sp.q : undefined;
     const list = await listGrns({ q });
-    headers = ["GRN Number", "LPO Number", "Supplier", "Received Date", "Invoice #", "Net", "VAT", "Total", "Status"];
-    rows = list.map((r) => [r.grnNumber, r.poNumber ?? "-", r.supplier, r.receivedDate, r.invoiceNumber ?? "-", fmt(r.net, 2), fmt(r.vat, 2), fmt(r.total, 2), r.status]);
+    headers = ["GRN Number", "LPO Number", "Supplier", "Received Date", "Invoice #", "Net", "VAT", "Total", "Status", "Payment"];
+    rows = list.map((r) => [r.grnNumber, r.poNumber ?? "-", r.supplier, r.receivedDate, r.invoiceNumber ?? "-", fmt(r.net, 2), fmt(r.vat, 2), fmt(r.total, 2), r.status, r.paymentMethod === "PETTY_CASH" ? "Petty Cash" : "Invoice"]);
   } else if (tab === "supplierreturns") {
     const list = await listAllSupplierReturns();
     headers = ["Return", "GRN", "Supplier", "Reason", "Value", "Date"];

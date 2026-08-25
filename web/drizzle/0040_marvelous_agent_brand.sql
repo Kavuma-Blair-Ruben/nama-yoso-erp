@@ -1,0 +1,2 @@
+ALTER TABLE "grns" ADD COLUMN "payment_method" text DEFAULT 'INVOICE' NOT NULL;--> statement-breakpoint
+ALTER TABLE "grns" ADD CONSTRAINT "grns_payment_method_check" CHECK ("grns"."payment_method" in ('INVOICE','PETTY_CASH'));

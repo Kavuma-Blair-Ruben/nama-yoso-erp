@@ -16,7 +16,10 @@ const NAV: NavGroupDef[] = [
   {
     id: "overview",
     label: "Overview",
-    items: [{ href: "/dashboard", label: "Dashboard", ico: "◆", section: null }],
+    items: [
+      { href: "/dashboard", label: "Dashboard", ico: "◆", section: null },
+      { href: "/scanner", label: "Scanner", ico: "📷", section: null },
+    ],
   },
   {
     id: "inventory",

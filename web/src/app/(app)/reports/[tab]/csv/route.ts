@@ -77,8 +77,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ tab: str
   } else if (tab === "grns") {
     const q = sp.get("q") ?? undefined;
     const list = await listGrns({ q });
-    headers = ["GRN Number", "LPO Number", "Supplier", "Received Date", "Invoice #", "Net", "VAT", "Total", "Status"];
-    rows = list.map((r) => [r.grnNumber, r.poNumber, r.supplier, r.receivedDate, r.invoiceNumber, r.net, r.vat, r.total, r.status]);
+    headers = ["GRN Number", "LPO Number", "Supplier", "Received Date", "Invoice #", "Net", "VAT", "Total", "Status", "Payment"];
+    rows = list.map((r) => [r.grnNumber, r.poNumber, r.supplier, r.receivedDate, r.invoiceNumber, r.net, r.vat, r.total, r.status, r.paymentMethod]);
   } else if (tab === "supplierreturns") {
     const list = await listAllSupplierReturns();
     headers = ["Return", "GRN", "Supplier", "Reason", "Value", "Date"];

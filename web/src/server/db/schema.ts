@@ -546,6 +546,11 @@ export const grns = pgTable(
     // later) isn't mistaken for a Tax Invoice (billable now) in AP review.
     documentType: text("document_type"),
     attachmentUrl: text("attachment_url"),
+    // Direct GRN only — a petty-cash purchase has no formal supplier
+    // invoice, so the attachment-required posting gate is skipped for it
+    // (see postGRN/postDraftGrn) and it's marked PAID immediately on insert
+    // since cash is paid on the spot, not owed.
+    paymentMethod: text("payment_method").notNull().default("INVOICE"),
     status: text("status").notNull().default("DRAFT"),
     postedAt: timestamp("posted_at", { withTimezone: true }),
     postedBy: uuid("posted_by").references(() => profiles.id),
@@ -562,6 +567,7 @@ export const grns = pgTable(
     check("grns_status_check", sql`${t.status} in ('DRAFT','POSTED')`),
     check("grns_document_type_check", sql`${t.documentType} is null or ${t.documentType} in ('TAX_INVOICE','DELIVERY_NOTE')`),
     check("grns_payment_status_check", sql`${t.paymentStatus} in ('OUTSTANDING','PAID')`),
+    check("grns_payment_method_check", sql`${t.paymentMethod} in ('INVOICE','PETTY_CASH')`),
   ]
 );
 

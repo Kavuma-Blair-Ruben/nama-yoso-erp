@@ -37,6 +37,7 @@ export async function listGrns(filters: { q?: string; costCenterId?: string }) {
       receivedDate: grns.receivedDate,
       invoiceNumber: grns.invoiceNumber,
       status: grns.status,
+      paymentMethod: grns.paymentMethod,
       // This query joins suppliers and purchaseOrders, both of which have their own "id"
       // column — interpolating ${grns.id} inside the subquery renders as a bare "id",
       // which Postgres silently resolves to the LOCAL grn_lines.id instead of the outer
@@ -130,6 +131,7 @@ export async function getGrnDetail(id: string) {
       attachmentUrl: grns.attachmentUrl,
       status: grns.status,
       purchaseOrderId: grns.purchaseOrderId,
+      paymentMethod: grns.paymentMethod,
       paymentStatus: grns.paymentStatus,
       paidAt: grns.paidAt,
     })

@@ -5,17 +5,19 @@ import { GRNBuilder } from "@/components/grn/GRNBuilder";
 import { getGrnForEdit } from "@/server/db/queries/grn";
 import { listPurchasableProductsForPicker, listAllSuppliers, listBranches } from "@/server/db/queries/purchaseOrders";
 import { listAllActiveCostCenters } from "@/server/db/queries/costCenters";
+import { getOrCreateCashSupplierId } from "@/server/db/queries/suppliers";
 
 export default async function EditGrnPage({ params }: PageProps<"/grn/[id]/edit">) {
   await requireSection("grn", "edit");
   const { id } = await params;
 
-  const [data, products, suppliers, branches, costCenters] = await Promise.all([
+  const [data, products, suppliers, branches, costCenters, cashSupplierId] = await Promise.all([
     getGrnForEdit(id),
     listPurchasableProductsForPicker(),
     listAllSuppliers(),
     listBranches(),
     listAllActiveCostCenters(),
+    getOrCreateCashSupplierId(),
   ]);
   if (!data) notFound();
   const { grn, lines } = data;
@@ -62,6 +64,8 @@ export default async function EditGrnPage({ params }: PageProps<"/grn/[id]/edit"
         initialInvoiceDueDate={grn.invoiceDueDate ?? ""}
         initialAttachmentUrl={grn.attachmentUrl ?? ""}
         initialDocumentType={grn.documentType === "TAX_INVOICE" || grn.documentType === "DELIVERY_NOTE" ? grn.documentType : ""}
+        cashSupplierId={cashSupplierId}
+        initialPaymentMethod={grn.paymentMethod === "PETTY_CASH" ? "PETTY_CASH" : "INVOICE"}
       />
     </>
   );

@@ -41,6 +41,18 @@ export async function listSuppliers(q?: string) {
   }));
 }
 
+// Petty-cash Direct GRNs still need a real supplier row (grns.supplier_id
+// is NOT NULL, and there's no walk-in concept in the schema) — this
+// resolves a single shared "Petty Cash" supplier, creating it once if it
+// doesn't exist yet. It behaves like any other supplier for reporting
+// (its spend just shows up as its own line), so no filtering elsewhere.
+export async function getOrCreateCashSupplierId(): Promise<string> {
+  const [existing] = await db.select({ id: suppliers.id }).from(suppliers).where(eq(suppliers.name, "Petty Cash"));
+  if (existing) return existing.id;
+  const [created] = await db.insert(suppliers).values({ name: "Petty Cash", notes: "System supplier for petty-cash purchases with no formal invoice." }).returning({ id: suppliers.id });
+  return created.id;
+}
+
 export async function getSupplierDetail(id: string) {
   const [supplier] = await db.select().from(suppliers).where(eq(suppliers.id, id));
   if (!supplier) return null;

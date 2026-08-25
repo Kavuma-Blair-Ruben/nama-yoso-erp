@@ -4,6 +4,7 @@ import { GRNBuilder } from "@/components/grn/GRNBuilder";
 import { getPOLinesForReceiving } from "@/server/db/queries/grn";
 import { listPurchasableProductsForPicker, listAllSuppliers, listBranches } from "@/server/db/queries/purchaseOrders";
 import { listAllActiveCostCenters } from "@/server/db/queries/costCenters";
+import { getOrCreateCashSupplierId } from "@/server/db/queries/suppliers";
 import { notFound } from "next/navigation";
 
 export default async function NewGrnPage({ searchParams }: PageProps<"/grn/new">) {
@@ -51,16 +52,26 @@ export default async function NewGrnPage({ searchParams }: PageProps<"/grn/new">
     );
   }
 
-  const [products, suppliers, branches, costCenters] = await Promise.all([
+  const [products, suppliers, branches, costCenters, cashSupplierId] = await Promise.all([
     listPurchasableProductsForPicker(),
     listAllSuppliers(),
     listBranches(),
     listAllActiveCostCenters(),
+    getOrCreateCashSupplierId(),
   ]);
   return (
     <>
       <PageHeader title="Receive Stock — Direct GRN" subtitle="Record stock that arrived without a purchase order." />
-      <GRNBuilder mode="direct" poId={null} initialLines={[]} suppliers={suppliers} products={products} branches={branches} costCenters={costCenters} />
+      <GRNBuilder
+        mode="direct"
+        poId={null}
+        initialLines={[]}
+        suppliers={suppliers}
+        products={products}
+        branches={branches}
+        costCenters={costCenters}
+        cashSupplierId={cashSupplierId}
+      />
     </>
   );
 }

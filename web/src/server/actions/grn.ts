@@ -45,6 +45,10 @@ const grnInputSchema = z.object({
   invoiceDueDate: z.string().optional(),
   documentType: z.enum(["TAX_INVOICE", "DELIVERY_NOTE"]).optional(),
   attachmentUrl: z.string().optional(),
+  // Direct GRN only — a petty-cash purchase has no formal supplier
+  // invoice, so the receipt/attachment is optional for it (see the
+  // attachment gates in postGRN/postDraftGrn below).
+  paymentMethod: z.enum(["INVOICE", "PETTY_CASH"]).default("INVOICE"),
   lines: z.array(lineSchema).min(1),
 });
 
@@ -112,6 +116,11 @@ async function insertGrn(tx: Db, input: z.infer<typeof grnInputSchema>, status: 
       invoiceDueDate: input.invoiceDueDate || undefined,
       documentType: input.documentType,
       attachmentUrl: input.attachmentUrl,
+      paymentMethod: input.paymentMethod,
+      // Cash is paid on the spot — there's no outstanding-payable concept
+      // for a petty-cash purchase, unlike an invoice GRN which defaults to
+      // OUTSTANDING until markGrnPaymentStatus marks it PAID later.
+      paymentStatus: input.paymentMethod === "PETTY_CASH" ? "PAID" : "OUTSTANDING",
       status,
       postedAt: status === "POSTED" ? new Date() : undefined,
       postedBy: status === "POSTED" ? actorId : undefined,
@@ -219,7 +228,7 @@ export async function postGRN(input: z.infer<typeof grnInputSchema>): Promise<Gr
   const session = await assertPermission("grn", "edit");
   const parsed = grnInputSchema.safeParse(input);
   if (!parsed.success) return { error: "Add at least one valid item line." };
-  if (!parsed.data.attachmentUrl?.trim()) {
+  if (parsed.data.paymentMethod !== "PETTY_CASH" && !parsed.data.attachmentUrl?.trim()) {
     return { error: "Upload or scan the supplier invoice before posting — a GRN can't be closed without it." };
   }
   const roleCapBreach = await checkRoleGrnCap(session.role.id, grnTotal(parsed.data));
@@ -270,7 +279,7 @@ export async function postDraftGrn(id: string): Promise<GrnActionResult> {
   const result = await db.transaction(async (tx) => {
     const [grn] = await tx.select().from(grns).where(and(eq(grns.id, id), eq(grns.status, "DRAFT")));
     if (!grn) return { error: "GRN not found or already posted." as const };
-    if (!grn.attachmentUrl?.trim()) {
+    if (grn.paymentMethod !== "PETTY_CASH" && !grn.attachmentUrl?.trim()) {
       return { error: "Upload or scan the supplier invoice before posting — a GRN can't be closed without it." as const };
     }
 
@@ -280,6 +289,7 @@ export async function postDraftGrn(id: string): Promise<GrnActionResult> {
       supplierId: grn.supplierId,
       branchId: grn.branchId,
       receivedDate: grn.receivedDate,
+      paymentMethod: grn.paymentMethod as "INVOICE" | "PETTY_CASH",
       lines: lines.map((l) => ({
         stockItemId: l.stockItemId,
         purchaseOrderLineId: l.purchaseOrderLineId,
@@ -363,6 +373,8 @@ export async function updateGrnDraft(id: string, input: z.infer<typeof grnInputS
         invoiceDueDate: parsed.data.invoiceDueDate || undefined,
         documentType: parsed.data.documentType,
         attachmentUrl: parsed.data.attachmentUrl,
+        paymentMethod: parsed.data.paymentMethod,
+        paymentStatus: parsed.data.paymentMethod === "PETTY_CASH" ? "PAID" : "OUTSTANDING",
       })
       .where(eq(grns.id, id));
 

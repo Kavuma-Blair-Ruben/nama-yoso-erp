@@ -477,7 +477,7 @@ async function GrnsTab({ q }: { q?: string }) {
       <div className="panel">
         <div className="table-wrap" style={{ maxHeight: 560 }}>
           <table className="data">
-            <thead><tr><th>GRN Number</th><th>LPO Number</th><th>Supplier</th><th>Received Date</th><th>Invoice #</th><th className="right">Net</th><th className="right">VAT</th><th className="right">Total</th><th>Status</th></tr></thead>
+            <thead><tr><th>GRN Number</th><th>LPO Number</th><th>Supplier</th><th>Received Date</th><th>Invoice #</th><th className="right">Net</th><th className="right">VAT</th><th className="right">Total</th><th>Status</th><th>Payment</th></tr></thead>
             <tbody>
               {rows.length ? (
                 rows.map((r) => (
@@ -491,10 +491,11 @@ async function GrnsTab({ q }: { q?: string }) {
                     <td className="mono-r">{fmt(r.vat, 2)}</td>
                     <td className="mono-r">{money(r.total, 2)}</td>
                     <td><span className="tag neutral">{r.status}</span></td>
+                    <td>{r.paymentMethod === "PETTY_CASH" ? <span className="tag neutral">Petty Cash</span> : "Invoice"}</td>
                   </tr>
                 ))
               ) : (
-                <tr className="empty-row"><td colSpan={9}>No GRNs match this filter.</td></tr>
+                <tr className="empty-row"><td colSpan={10}>No GRNs match this filter.</td></tr>
               )}
             </tbody>
           </table>

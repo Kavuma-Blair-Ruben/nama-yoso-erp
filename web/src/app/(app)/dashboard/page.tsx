@@ -5,6 +5,7 @@ import { getDashboardData } from "@/server/db/queries/dashboard";
 import { getPurchasingStats, getCostCenterStats, listCostAdjustmentEvents } from "@/server/db/queries/reports";
 import { listSuppliers } from "@/server/db/queries/suppliers";
 import { getMenuEngineeringData } from "@/server/db/queries/sales";
+import { loadCostingGraph } from "@/server/costing/recipeCost";
 import { fmt, money, pct } from "@/lib/format";
 import { CategoryBarChart } from "@/components/dashboard/CategoryBarChart";
 import { TopCostBarChart } from "@/components/dashboard/TopCostBarChart";
@@ -297,7 +298,8 @@ async function SupplierDashboardTab() {
 }
 
 async function CostDashboardTab() {
-  const [d, adjustments] = await Promise.all([getDashboardData(), listCostAdjustmentEvents({})]);
+  const graph = await loadCostingGraph();
+  const [d, adjustments] = await Promise.all([getDashboardData(graph), listCostAdjustmentEvents({}, graph)]);
   const totalDrift = adjustments.reduce((s, e) => s + e.affected.reduce((s2, a) => s2 + a.impact, 0), 0);
   const increases = adjustments.filter((e) => e.pctChange > 0).length;
   const decreases = adjustments.filter((e) => e.pctChange < 0).length;

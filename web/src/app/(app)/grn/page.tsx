@@ -76,7 +76,10 @@ export default async function GrnPage({ searchParams }: PageProps<"/grn">) {
                     <td className="mono-r">{fmt(g.net, 2)}</td>
                     <td className="mono-r">{fmt(g.vat, 2)}</td>
                     <td className="mono-r">{money(g.total, 2)}</td>
-                    <td><span className={`status-badge ${g.status === "DRAFT" ? "status-draft" : "status-received"}`}>{g.status}</span></td>
+                    <td>
+                      <span className={`status-badge ${g.status === "DRAFT" ? "status-draft" : "status-received"}`}>{g.status}</span>
+                      {g.paymentMethod === "PETTY_CASH" && <span className="tag neutral" style={{ marginLeft: 4 }}>Petty Cash</span>}
+                    </td>
                   </tr>
                 ))
               ) : (

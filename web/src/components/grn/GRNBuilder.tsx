@@ -84,6 +84,8 @@ export function GRNBuilder({
   initialInvoiceDueDate,
   initialAttachmentUrl,
   initialDocumentType,
+  cashSupplierId,
+  initialPaymentMethod,
 }: {
   mode: "po" | "direct";
   poId: string | null;
@@ -106,10 +108,26 @@ export function GRNBuilder({
   initialInvoiceDueDate?: string;
   initialAttachmentUrl?: string;
   initialDocumentType?: "TAX_INVOICE" | "DELIVERY_NOTE" | "";
+  // mode "direct" only — the resolved id of the shared "Petty Cash" system
+  // supplier, auto-used (in place of a real supplier pick) when Payment
+  // Method is set to Petty Cash.
+  cashSupplierId?: string;
+  initialPaymentMethod?: "INVOICE" | "PETTY_CASH";
 }) {
   const router = useRouter();
   const [lines, setLines] = useState<EditLine[]>(() => initialLines.map(toEditLine));
-  const [directSupplierId, setDirectSupplierId] = useState(supplierId ?? suppliers[0]?.id ?? "");
+  const [paymentMethod, setPaymentMethod] = useState<"INVOICE" | "PETTY_CASH">(initialPaymentMethod ?? "INVOICE");
+  const [directSupplierId, setDirectSupplierId] = useState(
+    paymentMethod === "PETTY_CASH" ? cashSupplierId ?? "" : supplierId ?? suppliers[0]?.id ?? ""
+  );
+  function changePaymentMethod(next: "INVOICE" | "PETTY_CASH") {
+    setPaymentMethod(next);
+    if (next === "PETTY_CASH") {
+      if (cashSupplierId) setDirectSupplierId(cashSupplierId);
+    } else if (directSupplierId === cashSupplierId) {
+      setDirectSupplierId(suppliers[0]?.id ?? "");
+    }
+  }
   const [directBranchId, setDirectBranchId] = useState(branchId ?? branches?.[0]?.id ?? "");
   const directCostCentersForBranch = costCenters.filter((c) => c.branchId === directBranchId);
   const [directCostCenterId, setDirectCostCenterId] = useState(initialCostCenterId ?? directCostCentersForBranch[0]?.id ?? "");
@@ -282,6 +300,7 @@ export function GRNBuilder({
       invoiceDueDate,
       documentType: documentType || undefined,
       attachmentUrl,
+      paymentMethod: mode === "direct" ? paymentMethod : "INVOICE",
       lines: lines
         .filter((l) => num(l.receivedQty) > 0 || l.isFoc)
         .map((l) => ({
@@ -336,19 +355,37 @@ export function GRNBuilder({
         {mode === "direct" && (
           <>
             <div className="callout">No Purchase Order behind this receipt — use this when stock genuinely arrived without one.</div>
-            <div className="line-builder-row head" style={{ gridTemplateColumns: "1fr 1fr 1fr" }}>
-              <div>Supplier</div>
+            <div className="form-row">
+              <label>Payment Method</label>
+              <div className="pill-tabs" style={{ marginTop: 4 }}>
+                <button type="button" className={`btn ${paymentMethod === "INVOICE" ? "" : "ghost"}`} style={{ borderRadius: 20 }} onClick={() => changePaymentMethod("INVOICE")}>
+                  Supplier Invoice
+                </button>
+                <button type="button" className={`btn ${paymentMethod === "PETTY_CASH" ? "" : "ghost"}`} style={{ borderRadius: 20 }} onClick={() => changePaymentMethod("PETTY_CASH")}>
+                  Petty Cash
+                </button>
+              </div>
+              {paymentMethod === "PETTY_CASH" && (
+                <div style={{ fontSize: 11, color: "var(--ink-faint)", marginTop: 4 }}>
+                  For an informal cash purchase with no formal supplier invoice — a receipt photo is optional, and this is marked paid immediately.
+                </div>
+              )}
+            </div>
+            <div className="line-builder-row head" style={{ gridTemplateColumns: paymentMethod === "PETTY_CASH" ? "1fr 1fr" : "1fr 1fr 1fr" }}>
+              {paymentMethod === "INVOICE" && <div>Supplier</div>}
               <div>Receiving branch</div>
               <div>Sector</div>
             </div>
-            <div className="line-builder-row" style={{ gridTemplateColumns: "1fr 1fr 1fr", marginBottom: 10 }}>
-              <select value={directSupplierId} onChange={(e) => setDirectSupplierId(e.target.value)}>
-                {suppliers.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
+            <div className="line-builder-row" style={{ gridTemplateColumns: paymentMethod === "PETTY_CASH" ? "1fr 1fr" : "1fr 1fr 1fr", marginBottom: 10 }}>
+              {paymentMethod === "INVOICE" && (
+                <select value={directSupplierId} onChange={(e) => setDirectSupplierId(e.target.value)}>
+                  {suppliers.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              )}
               <select value={directBranchId} onChange={(e) => changeDirectBranch(e.target.value)}>
                 {(branches ?? []).map((b) => (
                   <option key={b.id} value={b.id}>
@@ -371,27 +408,39 @@ export function GRNBuilder({
           </div>
         )}
 
-        <div className="line-builder-row head" style={{ gridTemplateColumns: "1fr 1fr 1fr 1fr" }}>
-          <div>Document type</div>
-          <div>Supplier invoice / document number</div>
-          <div>Received date</div>
-          <div>Invoice due date</div>
-        </div>
-        <div className="line-builder-row" style={{ gridTemplateColumns: "1fr 1fr 1fr 1fr", marginBottom: 10 }}>
-          <select value={documentType} onChange={(e) => setDocumentType(e.target.value as "TAX_INVOICE" | "DELIVERY_NOTE" | "")}>
-            <option value="">Unspecified</option>
-            <option value="TAX_INVOICE">Tax Invoice</option>
-            <option value="DELIVERY_NOTE">Delivery Note</option>
-          </select>
-          <input type="text" value={invoiceNumber} onChange={(e) => setInvoiceNumber(e.target.value)} placeholder="Number printed on the document..." />
-          <input type="date" value={receivedDate} onChange={(e) => setReceivedDate(e.target.value)} />
-          <input type="date" value={invoiceDueDate} onChange={(e) => setInvoiceDueDate(e.target.value)} />
-        </div>
-        <div style={{ fontSize: 11, color: "var(--ink-faint)", marginTop: -6, marginBottom: 10 }}>
-          Use the exact number printed on the supplier&apos;s document — this is what shows on the printed GRN and in AP reconciliation, not a system-generated number.
-        </div>
+        {!(mode === "direct" && paymentMethod === "PETTY_CASH") && (
+          <>
+            <div className="line-builder-row head" style={{ gridTemplateColumns: "1fr 1fr 1fr 1fr" }}>
+              <div>Document type</div>
+              <div>Supplier invoice / document number</div>
+              <div>Received date</div>
+              <div>Invoice due date</div>
+            </div>
+            <div className="line-builder-row" style={{ gridTemplateColumns: "1fr 1fr 1fr 1fr", marginBottom: 10 }}>
+              <select value={documentType} onChange={(e) => setDocumentType(e.target.value as "TAX_INVOICE" | "DELIVERY_NOTE" | "")}>
+                <option value="">Unspecified</option>
+                <option value="TAX_INVOICE">Tax Invoice</option>
+                <option value="DELIVERY_NOTE">Delivery Note</option>
+              </select>
+              <input type="text" value={invoiceNumber} onChange={(e) => setInvoiceNumber(e.target.value)} placeholder="Number printed on the document..." />
+              <input type="date" value={receivedDate} onChange={(e) => setReceivedDate(e.target.value)} />
+              <input type="date" value={invoiceDueDate} onChange={(e) => setInvoiceDueDate(e.target.value)} />
+            </div>
+            <div style={{ fontSize: 11, color: "var(--ink-faint)", marginTop: -6, marginBottom: 10 }}>
+              Use the exact number printed on the supplier&apos;s document — this is what shows on the printed GRN and in AP reconciliation, not a system-generated number.
+            </div>
+          </>
+        )}
+        {mode === "direct" && paymentMethod === "PETTY_CASH" && (
+          <div className="form-row">
+            <label>Received date</label>
+            <input type="date" value={receivedDate} onChange={(e) => setReceivedDate(e.target.value)} />
+          </div>
+        )}
         <div className="form-row">
-          <label>Supplier invoice — upload or scan (required to post)</label>
+          <label>
+            {mode === "direct" && paymentMethod === "PETTY_CASH" ? "Receipt photo — optional" : "Supplier invoice — upload or scan (required to post)"}
+          </label>
           {attachmentUrl ? (
             <div>
               <InvoicePreview url={attachmentUrl} />
@@ -406,7 +455,9 @@ export function GRNBuilder({
             </>
           )}
           <div style={{ fontSize: 11, color: "var(--ink-faint)", marginTop: 4 }}>
-            A photo or scan of the physical/emailed invoice. A GRN cannot be posted (stock updated) without one.
+            {mode === "direct" && paymentMethod === "PETTY_CASH"
+              ? "A cash receipt has no formal invoice — this is optional, but attach a photo if you have one."
+              : "A photo or scan of the physical/emailed invoice. A GRN cannot be posted (stock updated) without one."}
           </div>
           {mode === "direct" && attachmentUrl && (
             <div style={{ marginTop: 8 }}>
