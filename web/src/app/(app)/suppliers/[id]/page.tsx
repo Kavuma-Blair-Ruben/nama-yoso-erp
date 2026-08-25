@@ -17,7 +17,7 @@ export default async function SupplierDetailPage({ params }: PageProps<"/supplie
 
   return (
     <>
-      <PageHeader title={supplier.name} subtitle={`${invoiceCount} invoice(s) on file`} />
+      <PageHeader title={supplier.name} subtitle={`${invoiceCount} invoice(s) on file`} backHref="/suppliers" backLabel="Suppliers" />
       <div className="grid-2">
         <div>
           {canEdit ? (

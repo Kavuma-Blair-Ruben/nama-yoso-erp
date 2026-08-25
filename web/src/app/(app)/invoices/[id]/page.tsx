@@ -17,6 +17,8 @@ export default async function InvoiceDetailPage({ params }: PageProps<"/invoices
       <PageHeader
         title={invoice.invoiceNumber ?? "(no invoice number)"}
         subtitle={`${invoice.supplier ?? "Unknown supplier"} · ${invoice.invoiceDate ?? "-"}`}
+        backHref="/invoices"
+        backLabel="Invoices"
         action={invoice.supplierId ? <Link href={`/suppliers/${invoice.supplierId}`} className="btn ghost">View Supplier</Link> : undefined}
       />
 

@@ -13,7 +13,7 @@ export default async function ProductLabelsPage({ params }: PageProps<"/products
 
   return (
     <>
-      <PageHeader title={`Barcode Labels — ${item.name}`} subtitle={`${item.legacyCode} · CODE128 barcode sheet, sized for standard label stock`} />
+      <PageHeader title={`Barcode Labels — ${item.name}`} subtitle={`${item.legacyCode} · CODE128 barcode sheet, sized for standard label stock`} backHref={`/products/${code}`} />
       <LabelSheet product={{ legacyCode: item.legacyCode, name: item.name, purchaseRate: item.purchaseRate, purchaseUnit: item.purchaseUnit }} />
     </>
   );

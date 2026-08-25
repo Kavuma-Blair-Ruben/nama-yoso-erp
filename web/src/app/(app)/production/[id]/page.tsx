@@ -43,6 +43,8 @@ export default async function ProductionDetailPage({ params }: PageProps<"/produ
       <PageHeader
         title={batch.batchNo}
         subtitle={`${batch.subRecipeCode} — ${batch.subRecipeName} · ${batch.branchName ?? "-"} · ${batch.producedDate}`}
+        backHref="/production"
+        backLabel="Production"
         action={
           <div style={{ display: "flex", gap: 8 }}>
             <Link href={`/production/${batch.id}/labels`} className="btn ghost">Print Batch/Lot Labels</Link>

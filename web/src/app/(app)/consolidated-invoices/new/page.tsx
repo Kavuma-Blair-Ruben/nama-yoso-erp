@@ -9,7 +9,7 @@ export default async function NewConsolidatedInvoicePage() {
 
   return (
     <>
-      <PageHeader title="New Consolidated Invoice" subtitle="Combine multiple GRNs for the same supplier into a single consolidated invoice." />
+      <PageHeader title="New Consolidated Invoice" subtitle="Combine multiple GRNs for the same supplier into a single consolidated invoice." backHref="/consolidated-invoices" backLabel="Consolidated Invoices" />
       <ConsolidateBuilder groups={groups} />
     </>
   );

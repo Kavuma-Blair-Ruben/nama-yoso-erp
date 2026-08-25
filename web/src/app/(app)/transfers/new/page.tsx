@@ -11,7 +11,7 @@ export default async function NewTransferPage() {
 
   return (
     <>
-      <PageHeader title="New Stock Transfer" subtitle="Move stock between branches — updates both sides of the ledger." />
+      <PageHeader title="New Stock Transfer" subtitle="Move stock between branches — updates both sides of the ledger." backHref="/transfers" backLabel="Stock Transfers" />
       <TransferBuilder items={items} branches={branches} costCenters={costCenters} />
     </>
   );

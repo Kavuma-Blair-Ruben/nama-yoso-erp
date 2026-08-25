@@ -39,6 +39,8 @@ export default async function PurchaseOrderDetailPage({ params }: PageProps<"/pu
       <PageHeader
         title={po.poNumber}
         subtitle={`${po.supplier} · ${po.createdDate}${po.deliverTo ? " · Deliver to " + po.deliverTo : ""}`}
+        backHref="/purchase-orders"
+        backLabel="Purchase Orders"
         action={
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
             {canEdit && (

@@ -21,7 +21,7 @@ export default async function NewStockCountPage() {
 
   return (
     <>
-      <PageHeader title="New Stock Count" subtitle="Count what's physically on the shelf, compare to system stock." />
+      <PageHeader title="New Stock Count" subtitle="Count what's physically on the shelf, compare to system stock." backHref="/stock-count" backLabel="Stock Count" />
       <StockCountBuilder
         items={items}
         branches={branches}

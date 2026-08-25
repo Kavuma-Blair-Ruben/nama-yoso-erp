@@ -14,7 +14,7 @@ export default async function NewSupplierReturnPage({ params }: PageProps<"/grn/
 
   return (
     <>
-      <PageHeader title={`Return to Supplier — ${grn.grnNumber}`} subtitle="Select which lines are being physically returned, and how much." />
+      <PageHeader title={`Return to Supplier — ${grn.grnNumber}`} subtitle="Select which lines are being physically returned, and how much." backHref={`/grn/${id}`} />
       <SupplierReturnBuilder
         grnId={grn.id}
         grnNumber={grn.grnNumber}

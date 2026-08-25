@@ -33,6 +33,8 @@ export default async function GrnDetailPage({ params, searchParams }: PageProps<
       <PageHeader
         title={grn.grnNumber}
         subtitle={`${grn.supplier} · ${grn.receivedDate}${grn.poNumber ? " · LPO " + grn.poNumber : " · Direct GRN"}`}
+        backHref="/grn"
+        backLabel="GRN"
         action={
           <div style={{ display: "flex", gap: 8 }}>
             <Link href={`/grn/${grn.id}/print`} className="btn ghost">Print GRN</Link>

@@ -16,7 +16,7 @@ export default async function NewPurchaseOrderPage() {
   ]);
   return (
     <>
-      <PageHeader title="New Purchase Order" subtitle="Pick items from any category, from any supplier — grouped by designated supplier automatically." />
+      <PageHeader title="New Purchase Order" subtitle="Pick items from any category, from any supplier — grouped by designated supplier automatically." backHref="/purchase-orders" backLabel="Purchase Orders" />
       <POBuilder products={products} branches={branches} costCenters={costCenters} suppliers={suppliers} stockBalances={stockBalances} />
     </>
   );

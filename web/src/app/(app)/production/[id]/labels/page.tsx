@@ -13,7 +13,7 @@ export default async function ProductionLabelsPage({ params }: PageProps<"/produ
 
   return (
     <>
-      <PageHeader title={`Receipt of Production — ${batch.batchNo}`} subtitle={`${batch.subRecipeCode} — ${batch.subRecipeName}`} />
+      <PageHeader title={`Receipt of Production — ${batch.batchNo}`} subtitle={`${batch.subRecipeCode} — ${batch.subRecipeName}`} backHref={`/production/${id}`} />
       <ProductionLabelSheet
         batch={{
           id: batch.id,

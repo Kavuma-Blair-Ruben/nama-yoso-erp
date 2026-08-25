@@ -20,6 +20,8 @@ export default async function WastageDetailPage({ params }: PageProps<"/wastage/
       <PageHeader
         title={event.wastageNo}
         subtitle={`${event.costCenter} · ${event.branchName ?? "-"} · ${event.eventDate}`}
+        backHref="/wastage"
+        backLabel="Wastage Tracking"
         action={
           <div style={{ display: "flex", gap: 8 }}>
             {canEdit && <Link href={`/wastage/${event.id}/clone`} className="btn ghost">Repeat</Link>}

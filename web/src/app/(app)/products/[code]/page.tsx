@@ -29,6 +29,8 @@ export default async function ProductDetailPage({ params }: PageProps<"/products
       <PageHeader
         title={item.name}
         subtitle={`${item.legacyCode} · ${item.category ?? "-"}${item.subcategory ? " · " + item.subcategory : ""}`}
+        backHref="/products"
+        backLabel="Product Master"
         action={<Link href={`/products/${item.legacyCode}/labels`} className="btn ghost">Print Barcode / Labels</Link>}
       />
 

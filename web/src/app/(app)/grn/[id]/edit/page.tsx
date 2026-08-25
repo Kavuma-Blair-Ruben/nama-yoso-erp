@@ -44,7 +44,7 @@ export default async function EditGrnPage({ params }: PageProps<"/grn/[id]/edit"
 
   return (
     <>
-      <PageHeader title={`Edit Draft — ${grn.grnNumber}`} subtitle="Fix any details before posting. Nothing here has updated stock yet." />
+      <PageHeader title={`Edit Draft — ${grn.grnNumber}`} subtitle="Fix any details before posting. Nothing here has updated stock yet." backHref={`/grn/${id}`} />
       <GRNBuilder
         mode={mode}
         poId={grn.purchaseOrderId}

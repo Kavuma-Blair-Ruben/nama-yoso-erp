@@ -23,7 +23,7 @@ export default async function EditWastageDraftPage({ params }: PageProps<"/wasta
 
   return (
     <>
-      <PageHeader title={`Edit Draft — ${event.wastageNo}`} subtitle="Stock hasn't been updated yet — safe to adjust." />
+      <PageHeader title={`Edit Draft — ${event.wastageNo}`} subtitle="Stock hasn't been updated yet — safe to adjust." backHref={`/wastage/${id}`} />
       <WastageBuilder
         items={items}
         mainRecipes={mainRecipes}

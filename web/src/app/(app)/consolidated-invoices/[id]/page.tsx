@@ -14,7 +14,7 @@ export default async function ConsolidatedInvoiceDetailPage({ params }: PageProp
 
   return (
     <>
-      <PageHeader title={ci.number} subtitle={`${ci.supplierName} · ${ci.invoiceDate}`} />
+      <PageHeader title={ci.number} subtitle={`${ci.supplierName} · ${ci.invoiceDate}`} backHref="/consolidated-invoices" backLabel="Consolidated Invoices" />
       <div className="section-title">GRNs Combined ({grns.length})</div>
       {grns.map((g) => (
         <div className="field-row" key={g.grnId}>

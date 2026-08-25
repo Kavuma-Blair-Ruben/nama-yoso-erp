@@ -30,6 +30,8 @@ export default async function CkSaleDetailPage({ params }: PageProps<"/ck-sales/
       <PageHeader
         title={dn.number}
         subtitle={`${docLabel} · ${dn.customerName} · ${dn.branchName} · ${dn.deliveryDate}`}
+        backHref="/ck-sales"
+        backLabel="CK Sales"
         action={
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
             {canEdit && (

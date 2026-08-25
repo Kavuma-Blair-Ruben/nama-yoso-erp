@@ -16,7 +16,7 @@ export default async function EditTransferDraftPage({ params }: PageProps<"/tran
 
   return (
     <>
-      <PageHeader title={`Edit Draft — ${transfer.transferNo}`} subtitle="Stock hasn't been updated yet — safe to adjust." />
+      <PageHeader title={`Edit Draft — ${transfer.transferNo}`} subtitle="Stock hasn't been updated yet — safe to adjust." backHref={`/transfers/${id}`} />
       <TransferBuilder
         items={items}
         branches={branches}

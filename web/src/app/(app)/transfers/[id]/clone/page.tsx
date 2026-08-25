@@ -16,7 +16,7 @@ export default async function CloneTransferPage({ params }: PageProps<"/transfer
 
   return (
     <>
-      <PageHeader title={`Repeat — ${transfer.transferNo}`} subtitle="Same route and items, dated today — review and adjust before transferring." />
+      <PageHeader title={`Repeat — ${transfer.transferNo}`} subtitle="Same route and items, dated today — review and adjust before transferring." backHref="/transfers" backLabel="Stock Transfers" />
       <TransferBuilder
         items={items}
         branches={branches}

@@ -13,7 +13,7 @@ export default async function NewReturnPage({ params }: PageProps<"/ck-sales/[id
 
   return (
     <>
-      <PageHeader title={`Customer Return — ${dn.number}`} subtitle="Select which lines the customer is returning or rejecting." />
+      <PageHeader title={`Customer Return — ${dn.number}`} subtitle="Select which lines the customer is returning or rejecting." backHref={`/ck-sales/${id}`} />
       <ReturnBuilder
         deliveryNoteId={dn.id}
         dnNumber={dn.number}

@@ -10,7 +10,7 @@ export default async function NewMaterialRequestPage() {
 
   return (
     <>
-      <PageHeader title="New Material Request" subtitle="Request stock from another location — routes for approval, then fulfillment." />
+      <PageHeader title="New Material Request" subtitle="Request stock from another location — routes for approval, then fulfillment." backHref="/material-requests" backLabel="Material Requests" />
       <MaterialRequestBuilder items={items} locations={MR_LOCATIONS} />
     </>
   );

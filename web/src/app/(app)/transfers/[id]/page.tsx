@@ -23,6 +23,8 @@ export default async function TransferDetailPage({ params }: PageProps<"/transfe
       <PageHeader
         title={transfer.transferNo}
         subtitle={`${transfer.fromBranchName} → ${transfer.toBranchName} · ${transfer.transferDate}`}
+        backHref="/transfers"
+        backLabel="Stock Transfers"
         action={
           <div style={{ display: "flex", gap: 8 }}>
             {canEdit && <Link href={`/transfers/${transfer.id}/clone`} className="btn ghost">Repeat</Link>}

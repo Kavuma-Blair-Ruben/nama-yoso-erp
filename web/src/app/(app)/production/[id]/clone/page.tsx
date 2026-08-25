@@ -20,7 +20,7 @@ export default async function CloneProductionPage({ params }: PageProps<"/produc
 
   return (
     <>
-      <PageHeader title={`Repeat — ${batch.batchNo}`} subtitle="Same sub-recipe and scale, dated today — ingredients recompute from current recipe costs." />
+      <PageHeader title={`Repeat — ${batch.batchNo}`} subtitle="Same sub-recipe and scale, dated today — ingredients recompute from current recipe costs." backHref="/production" backLabel="Production" />
       <ProductionBuilder
         subRecipes={subRecipes}
         branches={branches}

@@ -34,7 +34,7 @@ export default async function NewGrnPage({ searchParams }: PageProps<"/grn/new">
     }));
     return (
       <>
-        <PageHeader title="Receive Stock" subtitle={`${po.poNumber} — ${po.supplier}`} />
+        <PageHeader title="Receive Stock" subtitle={`${po.poNumber} — ${po.supplier}`} backHref="/grn" backLabel="GRN" />
         <GRNBuilder
           mode="po"
           poId={po.id}
@@ -61,7 +61,7 @@ export default async function NewGrnPage({ searchParams }: PageProps<"/grn/new">
   ]);
   return (
     <>
-      <PageHeader title="Receive Stock — Direct GRN" subtitle="Record stock that arrived without a purchase order." />
+      <PageHeader title="Receive Stock — Direct GRN" subtitle="Record stock that arrived without a purchase order." backHref="/grn" backLabel="GRN" />
       <GRNBuilder
         mode="direct"
         poId={null}

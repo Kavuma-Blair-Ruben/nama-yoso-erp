@@ -13,7 +13,7 @@ export default async function GrnLotLabelsPage({ params }: PageProps<"/grn/[id]/
 
   return (
     <>
-      <PageHeader title={`Batch/Lot Labels — ${grn.grnNumber}`} subtitle={`${grn.supplier} · ${grn.receivedDate} · ${lines.length} line(s)`} />
+      <PageHeader title={`Batch/Lot Labels — ${grn.grnNumber}`} subtitle={`${grn.supplier} · ${grn.receivedDate} · ${lines.length} line(s)`} backHref={`/grn/${id}`} />
       <LotLabelSheet lines={lines} />
     </>
   );

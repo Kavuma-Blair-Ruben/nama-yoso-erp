@@ -11,7 +11,7 @@ export default async function NewCkSalePage() {
 
   return (
     <>
-      <PageHeader title="New Delivery Note / Invoice" subtitle="Sell to a branch or external customer — deducts stock immediately." />
+      <PageHeader title="New Delivery Note / Invoice" subtitle="Sell to a branch or external customer — deducts stock immediately." backHref="/ck-sales" backLabel="CK Sales" />
       {customers.length === 0 ? (
         <div className="callout">No customers yet — add one in Customers first.</div>
       ) : (

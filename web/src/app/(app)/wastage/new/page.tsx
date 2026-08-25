@@ -18,7 +18,7 @@ export default async function NewWastagePage() {
 
   return (
     <>
-      <PageHeader title="Log Wastage" subtitle="Open one log for the day/section, then add every item that was wasted." />
+      <PageHeader title="Log Wastage" subtitle="Open one log for the day/section, then add every item that was wasted." backHref="/wastage" backLabel="Wastage Tracking" />
       <WastageBuilder items={items} mainRecipes={mainRecipes} costCenters={costCenters} branches={branches} reasons={reasons.map((r) => r.name)} />
     </>
   );

@@ -22,7 +22,7 @@ export default async function MaterialRequestDetailPage({ params }: PageProps<"/
 
   return (
     <>
-      <PageHeader title={request.mrNumber} subtitle={`${request.fromLocation} → ${request.toLocation} · ${request.createdAt.toISOString().slice(0, 10)}`} />
+      <PageHeader title={request.mrNumber} subtitle={`${request.fromLocation} → ${request.toLocation} · ${request.createdAt.toISOString().slice(0, 10)}`} backHref="/material-requests" backLabel="Material Requests" />
 
       <div style={{ marginBottom: 14 }}>
         <span className={`status-badge ${STATUS_CLASS[request.status] ?? "status-draft"}`}>{request.status}</span>

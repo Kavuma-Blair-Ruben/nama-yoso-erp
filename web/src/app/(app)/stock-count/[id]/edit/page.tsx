@@ -26,7 +26,7 @@ export default async function EditStockCountDraftPage({ params }: PageProps<"/st
 
   return (
     <>
-      <PageHeader title={`Edit Draft — ${stockCount.countNo}`} subtitle="Stock hasn't been adjusted yet — safe to adjust." />
+      <PageHeader title={`Edit Draft — ${stockCount.countNo}`} subtitle="Stock hasn't been adjusted yet — safe to adjust." backHref={`/stock-count/${id}`} />
       <StockCountBuilder
         items={items}
         branches={branches}

@@ -12,7 +12,7 @@ export default async function NewProductPage() {
   ]);
   return (
     <>
-      <PageHeader title="Add Product" subtitle="Add a new purchasable item to the product master. Its code continues the existing SKU sequence automatically." />
+      <PageHeader title="Add Product" subtitle="Add a new purchasable item to the product master. Its code continues the existing SKU sequence automatically." backHref="/products" backLabel="Product Master" />
       <NewProductForm categories={categories.map((c) => c.name)} subcategories={subcategories.map((s) => s.name)} suppliers={suppliers.map((s) => s.name)} />
     </>
   );

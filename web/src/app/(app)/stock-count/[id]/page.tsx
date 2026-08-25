@@ -20,6 +20,8 @@ export default async function StockCountDetailPage({ params }: PageProps<"/stock
       <PageHeader
         title={stockCount.countNo}
         subtitle={`${stockCount.costCenter ?? "-"} · ${stockCount.branchName ?? "-"} · ${stockCount.countDate}`}
+        backHref="/stock-count"
+        backLabel="Stock Count"
         action={canEdit && stockCount.status === "DRAFT" ? <Link href={`/stock-count/${stockCount.id}/edit`} className="btn accent">Edit Draft</Link> : undefined}
       />
 

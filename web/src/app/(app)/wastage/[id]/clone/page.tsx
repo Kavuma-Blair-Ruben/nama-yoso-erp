@@ -23,7 +23,7 @@ export default async function CloneWastagePage({ params }: PageProps<"/wastage/[
 
   return (
     <>
-      <PageHeader title={`Repeat — ${event.wastageNo}`} subtitle="Same items and reasons, dated today — review and adjust before logging." />
+      <PageHeader title={`Repeat — ${event.wastageNo}`} subtitle="Same items and reasons, dated today — review and adjust before logging." backHref="/wastage" backLabel="Wastage Tracking" />
       <WastageBuilder
         items={items}
         mainRecipes={mainRecipes}
