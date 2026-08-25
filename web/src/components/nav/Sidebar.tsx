@@ -95,15 +95,21 @@ export async function Sidebar() {
         </div>
       </div>
       <div className="nav">
-        {NAV.map((group) => (
-          <NavGroup key={group.id} id={group.id} label={group.label}>
-            {group.items.map((item) => {
-              const locked = !!(session && item.section && !hasAccess(session, item.section, "view"));
-              const viewOnly = !!(session && item.section && session.permissions[item.section] === "view");
-              return <NavLink key={item.href} href={item.href} label={item.label} ico={item.ico} locked={locked} viewOnly={viewOnly} />;
-            })}
-          </NavGroup>
-        ))}
+        {NAV.map((group) => {
+          // Sections the user has no access to are left out of their
+          // sidebar entirely rather than shown locked — a role's nav should
+          // only ever list what it can actually open.
+          const visibleItems = group.items.filter((item) => !item.section || !session || hasAccess(session, item.section, "view"));
+          if (visibleItems.length === 0) return null;
+          return (
+            <NavGroup key={group.id} id={group.id} label={group.label}>
+              {visibleItems.map((item) => {
+                const viewOnly = !!(session && item.section && session.permissions[item.section] === "view");
+                return <NavLink key={item.href} href={item.href} label={item.label} ico={item.ico} viewOnly={viewOnly} />;
+              })}
+            </NavGroup>
+          );
+        })}
       </div>
       <div className="sidebar-foot">
         {session && (
