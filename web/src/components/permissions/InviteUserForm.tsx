@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { inviteUser, createUserWithPassword } from "@/server/actions/permissions";
 
-const BRANCHES = ["NAMAYOSO", "THG"] as const;
+const BRANCHES = ["NAMAYOSO MIRDIFF", "NAMAYOSO MARSA"] as const;
 
 type Role = { id: string; name: string };
 type Mode = "email" | "password";

@@ -72,7 +72,7 @@ export function ProductionReceipt({ batch }: { batch: Batch }) {
       <div className="lrow"><span>STAFF</span><span>{batch.staffName || "-"}</span></div>
       <div style={{ height: 6 }} />
       <div className="lrow"><span>STORAGE</span><span>{batch.storageInstructions || "-"}</span></div>
-      <div className="rfoot">MADE IN {(batch.branchName || "NAMAYOSO").toUpperCase()}</div>
+      <div className="rfoot">MADE IN {(batch.branchName || "NAMAYOSO MIRDIFF").toUpperCase()}</div>
     </div>
   );
 }

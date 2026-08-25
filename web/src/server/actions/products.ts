@@ -206,8 +206,8 @@ export async function updateItemSetup(_prev: ItemSetupState, formData: FormData)
   if (!item) return { error: "Product not found." };
 
   const branches: string[] = [];
-  if (f.branchNamayoso) branches.push("NAMAYOSO");
-  if (f.branchThg) branches.push("THG");
+  if (f.branchNamayoso) branches.push("NAMAYOSO MIRDIFF");
+  if (f.branchThg) branches.push("NAMAYOSO MARSA");
 
   await db
     .update(stockItems)

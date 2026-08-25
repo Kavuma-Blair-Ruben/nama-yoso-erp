@@ -19,7 +19,7 @@ export default async function TransfersPage({ searchParams }: PageProps<"/transf
     <>
       <PageHeader
         title="Stock Transfers"
-        subtitle="Inter-branch stock movement between NAMAYOSO and THG — deducts and credits the real stock ledger."
+        subtitle="Inter-branch stock movement between NAMAYOSO MIRDIFF and NAMAYOSO MARSA — deducts and credits the real stock ledger."
         action={canEdit ? <Link href="/transfers/new" className="btn accent">+ New Transfer</Link> : undefined}
       />
       {draftCount > 0 && (

@@ -82,10 +82,10 @@ export function ItemSetupPanel({ item, accountingCategories, canEdit }: { item: 
             <label>Assign to branch</label>
             <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
               <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12.5, fontWeight: 500 }}>
-                <input type="checkbox" name="branchNamayoso" defaultChecked={item.branches.includes("NAMAYOSO")} /> NAMAYOSO
+                <input type="checkbox" name="branchNamayoso" defaultChecked={item.branches.includes("NAMAYOSO MIRDIFF")} /> NAMAYOSO MIRDIFF
               </label>
               <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12.5, fontWeight: 500 }}>
-                <input type="checkbox" name="branchThg" defaultChecked={item.branches.includes("THG")} /> THG
+                <input type="checkbox" name="branchThg" defaultChecked={item.branches.includes("NAMAYOSO MARSA")} /> NAMAYOSO MARSA
               </label>
             </div>
             <div style={{ fontSize: 11, color: "var(--ink-faint)", marginTop: 4 }}>Leave both unchecked to make this item available to all branches.</div>

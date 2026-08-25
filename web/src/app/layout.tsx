@@ -22,7 +22,7 @@ const plexMono = IBM_Plex_Mono({
 
 export const metadata: Metadata = {
   title: "NAMA YOSO — Inventory Management",
-  description: "Inventory, purchasing, and recipe costing for NAMA YOSO / THG.",
+  description: "Inventory, purchasing, and recipe costing for NAMAYOSO MIRDIFF / NAMAYOSO MARSA.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

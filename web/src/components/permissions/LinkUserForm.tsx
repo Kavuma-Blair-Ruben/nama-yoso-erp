@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { linkAuthUser } from "@/server/actions/permissions";
 
-const BRANCHES = ["NAMAYOSO", "THG"] as const;
+const BRANCHES = ["NAMAYOSO MIRDIFF", "NAMAYOSO MARSA"] as const;
 
 type UnlinkedUser = { id: string; email: string };
 type Role = { id: string; name: string };

@@ -100,7 +100,7 @@ export function CostCenterSettings({ branches, costCenters }: { branches: Branch
       <div className="panel-body">
         <div className="callout">
           Sectors like Kitchen and Bar hold their own stock, purchase orders, and cost totals within each branch — a
-          NAMAYOSO Kitchen sector is entirely separate from a THG Kitchen sector. Deactivate a sector no longer in use
+          NAMAYOSO MIRDIFF Kitchen sector is entirely separate from a NAMAYOSO MARSA Kitchen sector. Deactivate a sector no longer in use
           instead of deleting it if it has any transaction history.
         </div>
         {branches.map((b) => (

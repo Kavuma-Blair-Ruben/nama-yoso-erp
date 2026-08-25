@@ -37,7 +37,7 @@ export function CustomerSettings({ customers, priceLists }: { customers: Custome
         <div className="panel" style={{ border: "2px solid var(--accent)", marginBottom: 16, maxWidth: 560 }}>
           <div className="panel-head"><h3>New Price List</h3></div>
           <div className="panel-body">
-            <div className="form-row"><label>Name</label><input type="text" value={plName} onChange={(e) => setPlName(e.target.value)} placeholder="e.g. THG Branch Pricing" /></div>
+            <div className="form-row"><label>Name</label><input type="text" value={plName} onChange={(e) => setPlName(e.target.value)} placeholder="e.g. NAMAYOSO MARSA Branch Pricing" /></div>
             <div className="line-builder-row head" style={{ gridTemplateColumns: "1fr 1fr" }}><div>Mode</div><div>Margin %</div></div>
             <div className="line-builder-row" style={{ gridTemplateColumns: "1fr 1fr", marginBottom: 10 }}>
               <select value={plMode} onChange={(e) => setPlMode(e.target.value as "cost" | "margin")}>
@@ -75,7 +75,7 @@ export function CustomerSettings({ customers, priceLists }: { customers: Custome
         <div className="panel" style={{ border: "2px solid var(--accent)", marginBottom: 16, maxWidth: 600 }}>
           <div className="panel-head"><h3>New Customer</h3></div>
           <div className="panel-body">
-            <div className="form-row"><label>Name</label><input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. THG Branch, or an external client" /></div>
+            <div className="form-row"><label>Name</label><input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. NAMAYOSO MARSA Branch, or an external client" /></div>
             <div className="line-builder-row head" style={{ gridTemplateColumns: "1fr 1fr" }}><div>Group</div><div>Price List</div></div>
             <div className="line-builder-row" style={{ gridTemplateColumns: "1fr 1fr", marginBottom: 10 }}>
               <input type="text" value={group} onChange={(e) => setGroup(e.target.value)} />

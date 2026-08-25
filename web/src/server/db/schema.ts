@@ -34,7 +34,7 @@ const money = (name: string) => numeric(name, { precision: 14, scale: 4, mode: "
    ============================================================ */
 export const branches = pgTable("branches", {
   id: uuid("id").primaryKey().defaultRandom(),
-  code: text("code").notNull().unique(), // NAMAYOSO, THG, plus any added by an admin
+  code: text("code").notNull().unique(), // NAMAYOSO MIRDIFF, NAMAYOSO MARSA, plus any added by an admin
   name: text("name").notNull(),
   isActive: boolean("is_active").notNull().default(true),
 });
@@ -87,8 +87,8 @@ export const subcategories = pgTable(
 export const storageTypeEnum = pgEnum("storage_type", ["DRY", "CHILLED", "FROZEN"]);
 
 // A "sector" within a branch (Kitchen, Bar, General, Central Warehouse) —
-// each branch gets its own independent set (NAMAYOSO's Kitchen is a
-// different row, and a different stock ledger, from THG's Kitchen).
+// each branch gets its own independent set (NAMAYOSO MIRDIFF's Kitchen is a
+// different row, and a different stock ledger, from NAMAYOSO MARSA's Kitchen).
 export const costCenters = pgTable(
   "cost_centers",
   {
@@ -178,7 +178,7 @@ export const systemSettings = pgTable(
 // Location-level order limits + global policy toggles ported from
 // index.html's Policies & Approvals page — all warn-only at PO/GRN creation
 // except internalOnlyLocations, which hard-blocks (matches old app exactly).
-export const POLICY_LOCATIONS = ["NAMAYOSO", "THG", "Kitchen", "Bar", "Central Warehouse"] as const;
+export const POLICY_LOCATIONS = ["NAMAYOSO MIRDIFF", "NAMAYOSO MARSA", "Kitchen", "Bar", "Central Warehouse"] as const;
 
 export const locationOrderLimits = pgTable(
   "location_order_limits",
@@ -966,7 +966,7 @@ export const stockCountTemplateItems = pgTable("stock_count_template_items", {
    recorded here but never calls into the stock ledger; the actual physical
    move happens as its own GRN/Transfer). fromLocation/toLocation are free
    text rather than a branches FK because index.html's MR_LOCATIONS mixes
-   real branches (NAMAYOSO, THG) with cost centers (Kitchen, Bar, Central
+   real branches (NAMAYOSO MIRDIFF, NAMAYOSO MARSA) with cost centers (Kitchen, Bar, Central
    Warehouse) — there's no single table that already models that list.
    ============================================================ */
 export const mrNumberSeq = pgSequence("mr_number_seq", { startWith: 1, minValue: 1 });

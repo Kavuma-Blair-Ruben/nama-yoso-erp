@@ -3,7 +3,7 @@ import { db } from "@/server/db";
 import { materialRequests, materialRequestLines, stockItems, profiles } from "@/server/db/schema";
 import { and, eq, or, ilike, desc } from "drizzle-orm";
 
-export const MR_LOCATIONS = ["Central Warehouse", "NAMAYOSO", "THG", "Kitchen", "Bar"] as const;
+export const MR_LOCATIONS = ["Central Warehouse", "NAMAYOSO MIRDIFF", "NAMAYOSO MARSA", "Kitchen", "Bar"] as const;
 export const MR_STATUSES = ["PENDING APPROVAL", "APPROVED", "REJECTED", "FULFILLED"] as const;
 export type MrStatus = (typeof MR_STATUSES)[number];
 
