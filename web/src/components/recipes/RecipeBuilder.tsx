@@ -3,6 +3,7 @@
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createRecipe, updateRecipe, uploadRecipePhoto, type RecipeInput } from "@/server/actions/recipes";
+import { createMenuCategory } from "@/server/actions/menuCategories";
 import type { RecipeType } from "@/server/db/queries/recipes";
 import { fmt, money, num } from "@/lib/format";
 import { canonicalUnitLabel } from "@/lib/unitMath";
@@ -41,12 +42,19 @@ export function RecipeBuilder({
   code,
   items,
   branchOptions,
+  menuCategories,
   initial,
+  defaultKind,
 }: {
   type: RecipeType;
   code?: string; // present in edit mode
   items: PickerItem[];
   branchOptions: BranchOption[];
+  menuCategories: { id: string; name: string }[];
+  // Pre-checks the Modifier/Combo box on a brand-new (non-clone) recipe —
+  // e.g. clicking "+ New Modifier" from the Modifiers tab. Ignored once
+  // `initial` is set (editing/cloning already carries its own real value).
+  defaultKind?: "modifier" | "combo";
   initial?: {
     name: string;
     section: string;
@@ -59,6 +67,8 @@ export function RecipeBuilder({
     stockable: boolean;
     shelfLifeDays: number | null;
     storageInstructions: string | null;
+    isModifier: boolean;
+    isCombo: boolean;
     branches: string[];
     branchPrices: { branchId: string; sellingPrice: number }[];
     lines: { stockItemId: string | null; ingredientMainRecipeId: string | null; unitLabel: string; qty: number; wastagePct: number }[];
@@ -68,12 +78,39 @@ export function RecipeBuilder({
   const isEdit = !!code;
   const [name, setName] = useState(initial?.name ?? "");
   const [section, setSection] = useState(initial?.section ?? "");
+  const [categoryOptions, setCategoryOptions] = useState(menuCategories);
+  const [addingCategory, setAddingCategory] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [categoryPending, startCategoryTransition] = useTransition();
+
+  function handleSectionSelect(value: string) {
+    if (value === "__new__") {
+      setAddingCategory(true);
+      return;
+    }
+    setSection(value);
+  }
+  function addCategory() {
+    const trimmed = newCategoryName.trim();
+    if (!trimmed) return;
+    startCategoryTransition(async () => {
+      const result = await createMenuCategory(trimmed);
+      if (!result.error) {
+        setCategoryOptions((cs) => [...cs, { id: trimmed, name: trimmed }].sort((a, b) => a.name.localeCompare(b.name)));
+        setSection(trimmed);
+        setNewCategoryName("");
+        setAddingCategory(false);
+      }
+    });
+  }
   const [yieldQty, setYieldQty] = useState(initial?.yieldQty != null ? String(initial.yieldQty) : "");
   const [yieldUnit, setYieldUnit] = useState(initial?.yieldUnit ?? "");
   const [cookBookText, setCookBookText] = useState(initial?.cookBookText ?? "");
   const [sellingPrice, setSellingPrice] = useState(initial?.sellingPrice != null ? String(initial.sellingPrice) : "");
   const [targetFoodCostPct, setTargetFoodCostPct] = useState(initial?.targetFoodCostPct != null ? String(initial.targetFoodCostPct) : "");
   const [stockable, setStockable] = useState(initial?.stockable ?? true);
+  const [isModifier, setIsModifier] = useState(initial?.isModifier ?? defaultKind === "modifier");
+  const [isCombo, setIsCombo] = useState(initial?.isCombo ?? defaultKind === "combo");
   const [shelfLifeDays, setShelfLifeDays] = useState(initial?.shelfLifeDays != null ? String(initial.shelfLifeDays) : "");
   const [storageInstructions, setStorageInstructions] = useState(initial?.storageInstructions ?? "");
   const [branches, setBranches] = useState<string[]>(initial?.branches ?? []);
@@ -172,6 +209,8 @@ export function RecipeBuilder({
       stockable: type === "sub" ? stockable : undefined,
       shelfLifeDays: type === "sub" && stockable && shelfLifeDays ? Number(shelfLifeDays) : null,
       storageInstructions: type === "sub" && stockable ? storageInstructions.trim() || null : null,
+      isModifier: type === "sub" ? isModifier : undefined,
+      isCombo: type === "main" ? isCombo : undefined,
       branches,
       branchPrices:
         type === "main"
@@ -200,10 +239,23 @@ export function RecipeBuilder({
           <div>Name</div>
           <div>Section</div>
         </div>
-        <div className="line-builder-row" style={{ gridTemplateColumns: "1fr 1fr", marginBottom: 10 }}>
+        <div className="line-builder-row" style={{ gridTemplateColumns: "1fr 1fr", marginBottom: addingCategory ? 6 : 10 }}>
           <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Avocado Toast" />
-          <input type="text" value={section} onChange={(e) => setSection(e.target.value)} placeholder="e.g. Breakfast" />
+          <select value={addingCategory ? "__new__" : section} onChange={(e) => handleSectionSelect(e.target.value)}>
+            <option value="">— Pick category —</option>
+            {categoryOptions.map((c) => (
+              <option key={c.name} value={c.name}>{c.name}</option>
+            ))}
+            <option value="__new__">+ Add new category…</option>
+          </select>
         </div>
+        {addingCategory && (
+          <div className="line-builder-row" style={{ gridTemplateColumns: "1fr auto auto", marginBottom: 10 }}>
+            <input type="text" value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} placeholder="e.g. Breakfast" autoFocus />
+            <button type="button" className="btn ghost" disabled={categoryPending} onClick={addCategory}>{categoryPending ? "Adding…" : "Add"}</button>
+            <button type="button" className="btn ghost" onClick={() => { setAddingCategory(false); setNewCategoryName(""); }}>Cancel</button>
+          </div>
+        )}
         <div className="line-builder-row head" style={{ gridTemplateColumns: "1fr 1fr" }}>
           <div>Yield qty</div>
           <div>Yield unit</div>
@@ -212,6 +264,16 @@ export function RecipeBuilder({
           <input type="text" inputMode="decimal" value={yieldQty} onChange={(e) => setYieldQty(e.target.value)} placeholder="e.g. 1" />
           <input type="text" value={yieldUnit} onChange={(e) => setYieldUnit(e.target.value)} placeholder="e.g. kg, ltr, portion" />
         </div>
+        {type === "sub" && (
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 600, margin: "0 0 16px" }}>
+            <input type="checkbox" checked={isModifier} onChange={(e) => setIsModifier(e.target.checked)} /> This is a Modifier (order-time add-on, e.g. Extra Cheese)
+          </label>
+        )}
+        {type === "main" && (
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 600, margin: "0 0 16px" }}>
+            <input type="checkbox" checked={isCombo} onChange={(e) => setIsCombo(e.target.checked)} /> This is a Combo (bundles other dishes)
+          </label>
+        )}
 
         <div className="section-title">Branches</div>
         <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 4 }}>

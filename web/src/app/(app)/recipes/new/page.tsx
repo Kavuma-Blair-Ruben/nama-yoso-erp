@@ -3,17 +3,20 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { RecipeBuilder } from "@/components/recipes/RecipeBuilder";
 import { getRecipeForEdit, listRecipeIngredientPickerItems, type RecipeType } from "@/server/db/queries/recipes";
 import { listActiveBranches } from "@/server/db/queries/branches";
+import { listMenuCategories } from "@/server/db/queries/menuCategories";
 
 export default async function NewRecipePage({ searchParams }: PageProps<"/recipes/new">) {
   const sp = await searchParams;
   const type: RecipeType = sp.type === "sub" ? "sub" : "main";
   await requireSection(type === "main" ? "recipes" : "subrecipes", "edit");
   const cloneFrom = typeof sp.cloneFrom === "string" ? sp.cloneFrom : null;
+  const kind = sp.kind === "modifier" || sp.kind === "combo" ? sp.kind : undefined;
 
-  const [items, cloneData, branchOptions] = await Promise.all([
+  const [items, cloneData, branchOptions, menuCategories] = await Promise.all([
     listRecipeIngredientPickerItems(type),
     cloneFrom ? getRecipeForEdit(type, cloneFrom) : null,
     listActiveBranches(),
+    listMenuCategories(),
   ]);
 
   const initial = cloneData
@@ -29,6 +32,8 @@ export default async function NewRecipePage({ searchParams }: PageProps<"/recipe
         stockable: "stockable" in cloneData.recipe ? cloneData.recipe.stockable : true,
         shelfLifeDays: "shelfLifeDays" in cloneData.recipe ? cloneData.recipe.shelfLifeDays : null,
         storageInstructions: "storageInstructions" in cloneData.recipe ? cloneData.recipe.storageInstructions : null,
+        isModifier: "isModifier" in cloneData.recipe ? cloneData.recipe.isModifier : false,
+        isCombo: "isCombo" in cloneData.recipe ? cloneData.recipe.isCombo : false,
         branches: cloneData.recipe.branches,
         branchPrices: cloneData.branchPrices,
         lines: cloneData.ingredients.map((i) => ({ stockItemId: i.stockItemId, ingredientMainRecipeId: i.ingredientMainRecipeId, unitLabel: i.unitLabel ?? "", qty: i.qty, wastagePct: i.wastagePct })),
@@ -40,8 +45,10 @@ export default async function NewRecipePage({ searchParams }: PageProps<"/recipe
       <PageHeader
         title={cloneData ? `Clone: ${cloneData.recipe.name}` : type === "main" ? "New Main Recipe" : "New Sub-Recipe"}
         subtitle="Its code continues the existing recipe SKU sequence automatically."
+        backHref={`/recipes?tab=${type}`}
+        backLabel="Recipe Costing"
       />
-      <RecipeBuilder type={type} items={items} branchOptions={branchOptions} initial={initial} />
+      <RecipeBuilder type={type} items={items} branchOptions={branchOptions} menuCategories={menuCategories} initial={initial} defaultKind={kind} />
     </>
   );
 }

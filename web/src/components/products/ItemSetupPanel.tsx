@@ -16,6 +16,7 @@ type Item = {
   defaultPrepWastagePct: number | null;
   itemTaxRate: number | null;
   nonCogs: boolean;
+  isPackaging: boolean;
   issueUnit: string | null;
   purchaseUnit: string | null;
 };
@@ -31,7 +32,7 @@ export function ItemSetupPanel({ item, accountingCategories, canEdit }: { item: 
           <h3>Item Setup</h3>
         </div>
         <div className="panel-body">
-          <div className="field-row"><span className="k">Accounting category</span><span className="v">{item.accountingCategory ?? "-"} {item.nonCogs ? <span className="tag neutral">Expense</span> : <span className="tag good">COGS</span>}</span></div>
+          <div className="field-row"><span className="k">Accounting category</span><span className="v">{item.accountingCategory ?? "-"} {item.nonCogs ? <span className="tag neutral">Expense</span> : <span className="tag good">COGS</span>} {item.isPackaging && <span className="tag neutral">Packaging</span>}</span></div>
           <div className="field-row"><span className="k">Secondary language name</span><span className="v">{item.secondaryName ?? "-"}</span></div>
           <div className="field-row"><span className="k">Assigned branches</span><span className="v">{item.branches.length ? item.branches.join(", ") : "All"}</span></div>
           <div className="field-row"><span className="k">Min level</span><span className="v">{item.minLevel != null ? fmt(item.minLevel, 2) : "Not set"}</span></div>
@@ -75,8 +76,11 @@ export function ItemSetupPanel({ item, accountingCategories, canEdit }: { item: 
             </datalist>
             <input type="text" name="secondaryName" defaultValue={item.secondaryName ?? ""} placeholder="e.g. Arabic name" />
           </div>
-          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 600, marginBottom: 12 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 600, marginBottom: 8 }}>
             <input type="checkbox" name="nonCogs" defaultChecked={item.nonCogs} /> Non-COGS item (flag as Expense instead of Cost of Goods Sold)
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 600, marginBottom: 12 }}>
+            <input type="checkbox" name="isPackaging" defaultChecked={item.isPackaging} /> This is packaging (box, bag, cutlery — not food). Recipe costing reports it separately from Food Cost.
           </label>
           <div className="form-row">
             <label>Assign to branch</label>

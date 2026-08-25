@@ -57,11 +57,16 @@ export type CostingGraph = {
   subRecipesById: Map<string, SubRecipeNode>;
   subRecipeIdByStockItemId: Map<string, string>;
   rateByStockItemId: Map<string, number | null>;
+  // Stock items flagged as packaging (box/bag/cutlery, not food) — lets
+  // recipe costing report a separate Food Cost / Packaging Cost split
+  // instead of one blended total, without a new ingredient-line concept
+  // (a packaging item is added as a completely ordinary ingredient line).
+  packagingStockItemIds: Set<string>;
 };
 
 export async function loadCostingGraph(): Promise<CostingGraph> {
   const [items, subs, mains, ingredients] = await Promise.all([
-    db.select({ id: stockItems.id, legacyCode: stockItems.legacyCode, name: stockItems.name, ratePerKgL: stockItems.ratePerKgL, issueUnit: stockItems.issueUnit }).from(stockItems),
+    db.select({ id: stockItems.id, legacyCode: stockItems.legacyCode, name: stockItems.name, ratePerKgL: stockItems.ratePerKgL, issueUnit: stockItems.issueUnit, isPackaging: stockItems.isPackaging }).from(stockItems),
     db
       .select({
         id: subRecipes.id,
@@ -102,6 +107,7 @@ export async function loadCostingGraph(): Promise<CostingGraph> {
   const mainById = new Map(mains.map((m) => [m.id, m]));
   const rateByStockItemId = new Map(items.map((i) => [i.id, i.ratePerKgL]));
   const subRecipeIdByStockItemId = new Map(subs.map((s) => [s.stockItemId, s.id]));
+  const packagingStockItemIds = new Set(items.filter((i) => i.isPackaging).map((i) => i.id));
 
   function toIngredient(row: (typeof ingredients)[number]): Ingredient {
     if (row.ingredientMainRecipeId) {
@@ -155,12 +161,14 @@ export async function loadCostingGraph(): Promise<CostingGraph> {
   const mainRecipeNodes: MainRecipeNode[] = mains.map((m) => ({ ...m, ingredients: ingredientsByMain.get(m.id) ?? [] }));
   const mainRecipesById = new Map<string, MainRecipeNode>(mainRecipeNodes.map((m) => [m.id, m]));
 
-  return { mainRecipes: mainRecipeNodes, mainRecipesById, subRecipesById, subRecipeIdByStockItemId, rateByStockItemId };
+  return { mainRecipes: mainRecipeNodes, mainRecipesById, subRecipesById, subRecipeIdByStockItemId, rateByStockItemId, packagingStockItemIds };
 }
 
-export type IngredientCostResult = { cost: number; missing: MissingIngredient[]; sub?: SubRecipeCostResult };
+export type IngredientCostResult = { cost: number; packagingCost: number; missing: MissingIngredient[]; sub?: SubRecipeCostResult };
 export type SubRecipeCostResult = {
   total: number;
+  foodCost: number;
+  packagingCost: number;
   perUnit: number;
   yieldQty: number;
   yieldUnit: string | null;
@@ -173,25 +181,50 @@ export type SubRecipeCostResult = {
 };
 export type RecipeCostResult = {
   total: number;
+  foodCost: number;
+  packagingCost: number;
   perUnit: number;
   missing: MissingIngredient[];
   lines: { ing: Ingredient; result: IngredientCostResult }[];
 };
 
+// Proportional split — applies a nested recipe's own packaging fraction to
+// however much of it this line contributes, regardless of unit conversion
+// (per-KG/L rate vs. per-portion), rather than re-deriving packaging qty
+// from scratch for every possible nesting shape.
+function packagingShareOf(cost: number, innerTotal: number, innerPackagingCost: number): number {
+  return innerTotal > 0 ? cost * (innerPackagingCost / innerTotal) : 0;
+}
+
 function ingredientCost(graph: CostingGraph, ing: Ingredient, visited: Set<string>): IngredientCostResult {
   if (ing.ingredientMainRecipeId) {
     const mainNode = graph.mainRecipesById.get(ing.ingredientMainRecipeId);
     if (!mainNode) {
-      return { cost: ing.qty * (ing.rateAtBuild ?? 0), missing: [{ code: ing.legacyCode, name: ing.name }] };
+      return { cost: ing.qty * (ing.rateAtBuild ?? 0), packagingCost: 0, missing: [{ code: ing.legacyCode, name: ing.name }] };
     }
     const inner = recipeCurrentCost(graph, mainNode, visited);
+    const cost = ing.qty * inner.perUnit;
     // Reported through the same `sub` shape sub-recipes use, so the ledger
     // UI can expand/drill into an embedded main recipe's own lines too —
     // yieldQty/yieldUnit are portion-based (no batch yield to normalize).
     return {
-      cost: ing.qty * inner.perUnit,
+      cost,
+      packagingCost: ing.qty * inner.packagingCost,
       missing: inner.missing,
-      sub: { total: inner.total, perUnit: inner.perUnit, yieldQty: 1, yieldUnit: null, unreliableYield: false, missing: inner.missing, lines: inner.lines, name: mainNode.name, code: mainNode.legacyCode, section: mainNode.section },
+      sub: {
+        total: inner.total,
+        foodCost: inner.foodCost,
+        packagingCost: inner.packagingCost,
+        perUnit: inner.perUnit,
+        yieldQty: 1,
+        yieldUnit: null,
+        unreliableYield: false,
+        missing: inner.missing,
+        lines: inner.lines,
+        name: mainNode.name,
+        code: mainNode.legacyCode,
+        section: mainNode.section,
+      },
     };
   }
   const subRecipeId = ing.stockItemId ? graph.subRecipeIdByStockItemId.get(ing.stockItemId) : undefined;
@@ -199,30 +232,35 @@ function ingredientCost(graph: CostingGraph, ing: Ingredient, visited: Set<strin
     const sub = subRecipeCost(graph, subRecipeId, visited);
     const perKgLtr = normalizeToKgLtr(sub.perUnit, sub.yieldUnit);
     const rate = perKgLtr != null ? perKgLtr : sub.perUnit;
-    return { cost: ing.qty * rate, missing: sub.missing, sub };
+    const cost = ing.qty * rate;
+    return { cost, packagingCost: packagingShareOf(cost, sub.total, sub.packagingCost), missing: sub.missing, sub };
   }
   const rate = ing.stockItemId ? graph.rateByStockItemId.get(ing.stockItemId) : null;
   if (rate == null) {
-    return { cost: ing.qty * (ing.rateAtBuild ?? 0), missing: [{ code: ing.legacyCode, name: ing.name }] };
+    return { cost: ing.qty * (ing.rateAtBuild ?? 0), packagingCost: 0, missing: [{ code: ing.legacyCode, name: ing.name }] };
   }
-  return { cost: ing.qty * rate, missing: [] };
+  const cost = ing.qty * rate;
+  const isPackaging = !!ing.stockItemId && graph.packagingStockItemIds.has(ing.stockItemId);
+  return { cost, packagingCost: isPackaging ? cost : 0, missing: [] };
 }
 
 function subRecipeCost(graph: CostingGraph, subRecipeId: string, visited: Set<string>): SubRecipeCostResult {
   if (visited.has(subRecipeId)) {
-    return { total: 0, perUnit: 0, yieldQty: 1, yieldUnit: "", unreliableYield: false, missing: [{ code: subRecipeId, name: "circular reference" }], lines: [], name: "", code: "", section: null };
+    return { total: 0, foodCost: 0, packagingCost: 0, perUnit: 0, yieldQty: 1, yieldUnit: "", unreliableYield: false, missing: [{ code: subRecipeId, name: "circular reference" }], lines: [], name: "", code: "", section: null };
   }
   const sr = graph.subRecipesById.get(subRecipeId);
   if (!sr) {
-    return { total: 0, perUnit: 0, yieldQty: 1, yieldUnit: "", unreliableYield: false, missing: [{ code: subRecipeId, name: "sub-recipe not found" }], lines: [], name: "", code: "", section: null };
+    return { total: 0, foodCost: 0, packagingCost: 0, perUnit: 0, yieldQty: 1, yieldUnit: "", unreliableYield: false, missing: [{ code: subRecipeId, name: "sub-recipe not found" }], lines: [], name: "", code: "", section: null };
   }
   const nextVisited = new Set(visited);
   nextVisited.add(subRecipeId);
   let total = 0;
+  let packagingCost = 0;
   let missing: MissingIngredient[] = [];
   const lines = sr.ingredients.map((ing) => {
     const r = ingredientCost(graph, ing, nextVisited);
     total += r.cost;
+    packagingCost += r.packagingCost;
     missing = missing.concat(r.missing);
     return { ing, result: r };
   });
@@ -234,6 +272,8 @@ function subRecipeCost(graph: CostingGraph, subRecipeId: string, visited: Set<st
   const yieldQty = isUnreliablePieceYield ? 1 : sr.yieldQty || 1;
   return {
     total,
+    foodCost: total - packagingCost,
+    packagingCost,
     perUnit: total / yieldQty,
     yieldQty,
     yieldUnit: sr.yieldUnit,
@@ -257,18 +297,20 @@ function subRecipeCost(graph: CostingGraph, subRecipeId: string, visited: Set<st
 // across both recipe types since their UUIDs never collide.
 export function recipeCurrentCost(graph: CostingGraph, recipe: { id?: string; ingredients: Ingredient[] }, visited: Set<string> = new Set()): RecipeCostResult {
   if (recipe.id && visited.has(recipe.id)) {
-    return { total: 0, perUnit: 0, missing: [{ code: recipe.id, name: "circular reference" }], lines: [] };
+    return { total: 0, foodCost: 0, packagingCost: 0, perUnit: 0, missing: [{ code: recipe.id, name: "circular reference" }], lines: [] };
   }
   const nextVisited = recipe.id ? new Set(visited).add(recipe.id) : visited;
   let total = 0;
+  let packagingCost = 0;
   let missing: MissingIngredient[] = [];
   const lines = recipe.ingredients.map((ing) => {
     const r = ingredientCost(graph, ing, nextVisited);
     total += r.cost;
+    packagingCost += r.packagingCost;
     missing = missing.concat(r.missing);
     return { ing, result: r };
   });
-  return { total, perUnit: total, missing, lines };
+  return { total, foodCost: total - packagingCost, packagingCost, perUnit: total, missing, lines };
 }
 
 export function recipeOriginalCost(recipe: { ingredients: Ingredient[]; yieldQty?: number | null }, divisor?: number) {

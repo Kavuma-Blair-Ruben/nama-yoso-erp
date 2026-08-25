@@ -295,6 +295,20 @@
       "when": 1787687148646,
       "tag": "0041_awesome_warstar",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1787689286740,
+      "tag": "0042_legal_jack_flag",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1787692653359,
+      "tag": "0043_panoramic_jubilee",
+      "breakpoints": true
     }
   ]
 }

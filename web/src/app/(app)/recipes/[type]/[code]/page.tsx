@@ -34,6 +34,8 @@ export default async function RecipeDetailPage({ params }: PageProps<"/recipes/[
       <PageHeader
         title={recipe.name}
         subtitle={`${recipe.legacyCode} · ${type === "main" ? "Main Recipe" : "Sub-Recipe"}${recipe.section ? " · " + recipe.section : ""}`}
+        backHref={`/recipes?tab=${type}`}
+        backLabel="Recipe Costing"
         action={
           <div style={{ display: "flex", gap: 8 }}>
             <Link href={`/recipes/${type}/${code}/print`} className="btn ghost">Print / Cook Book</Link>
@@ -111,6 +113,12 @@ export default async function RecipeDetailPage({ params }: PageProps<"/recipes/[
           <div className="panel-body">
             <div className="field-row"><span className="k">Assigned branches</span><span className="v">{recipeBranches.length ? recipeBranches.join(", ") : "All"}</span></div>
             <div className="field-row"><span className="k">Cost per Batch</span><span className="v tabular">{money(cur.total, 2)}</span></div>
+            {cur.packagingCost > 0 && (
+              <>
+                <div className="field-row"><span className="k" style={{ paddingLeft: 12 }}>— Food Cost</span><span className="v tabular">{money(cur.foodCost, 2)}</span></div>
+                <div className="field-row"><span className="k" style={{ paddingLeft: 12 }}>— Packaging Cost</span><span className="v tabular">{money(cur.packagingCost, 2)}</span></div>
+              </>
+            )}
             <div className="field-row"><span className="k">Cost per {type === "main" ? "portion" : recipe.yieldUnit ?? "unit"}</span><span className="v tabular">{money(cur.perUnit, 3)}</span></div>
             {perKg != null && (
               <div className="field-row"><span className="k"><b>Cost per KG / LTR</b></span><span className="v tabular"><b>{money(perKg, 2)}</b></span></div>

@@ -84,6 +84,19 @@ export const subcategories = pgTable(
   (t) => [unique().on(t.categoryId, t.name)]
 );
 
+// A separate taxonomy from `categories` above on purpose — that table is
+// ingredient categorization (Dairy & Eggs, Fresh Produce); this is menu
+// categorization (Breakfast, Mains, Desserts) for Main/Sub Recipes. Not a
+// foreign key from recipes — recipes still store the category name as
+// free text in their own `section` column (unchanged, every existing
+// reader of that column keeps working) — this table only backs a managed
+// dropdown of names instead of freehand typing.
+export const menuCategories = pgTable("menu_categories", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull().unique(),
+  sortOrder: integer("sort_order").notNull().default(0),
+});
+
 export const storageTypeEnum = pgEnum("storage_type", ["DRY", "CHILLED", "FROZEN"]);
 
 // A "sector" within a branch (Kitchen, Bar, General, Central Warehouse) —
@@ -364,6 +377,11 @@ export const stockItems = pgTable(
     defaultPrepWastagePct: numeric("default_prep_wastage_pct", { precision: 5, scale: 2, mode: "number" }),
     itemTaxRate: numeric("item_tax_rate", { precision: 5, scale: 2, mode: "number" }), // null = use system default
     nonCogs: boolean("non_cogs").notNull().default(false),
+    // A box/bag/cutlery-set, not food — added to a recipe as a normal
+    // ingredient line like any other item (see recipeIngredients), but
+    // flagged here so recipe costing can report it as its own subtotal
+    // (Food Cost vs. Packaging Cost) instead of blending it into one number.
+    isPackaging: boolean("is_packaging").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -395,6 +413,13 @@ export const mainRecipes = pgTable("main_recipes", {
   cookBookText: text("cook_book_text"),
   photoUrl: text("photo_url"),
   branches: text("branches").array().notNull().default(sql`'{}'::text[]`), // empty = all branches, same convention as stock_items.branches
+  // A bundle of other dishes (e.g. "Burger + Fries + Drink") rather than a
+  // single dish — built the same way as any other main recipe, typically
+  // with ingredient lines that reference other main recipes via
+  // recipeIngredients.ingredientMainRecipeId (already-existing mechanism).
+  // This flag only controls which view (Recipe Costing / Menu panel) a
+  // recipe shows up under.
+  isCombo: boolean("is_combo").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -439,6 +464,11 @@ export const subRecipes = pgTable("sub_recipes", {
   shelfLifeDays: integer("shelf_life_days"),
   storageInstructions: text("storage_instructions"),
   branches: text("branches").array().notNull().default(sql`'{}'::text[]`), // empty = all branches, same convention as stock_items.branches
+  // An order-time add-on (e.g. "Extra Cheese") rather than an internal
+  // batch-prep component — same recipe/costing/production mechanism
+  // either way, this just flags it for the Modifiers view in Recipe
+  // Costing and the Menu panel.
+  isModifier: boolean("is_modifier").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

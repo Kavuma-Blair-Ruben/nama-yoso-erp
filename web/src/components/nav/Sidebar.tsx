@@ -47,6 +47,17 @@ const NAV: NavGroupDef[] = [
     ],
   },
   {
+    id: "menu",
+    label: "Menu",
+    items: [
+      { href: "/menu/categories", label: "Categories", ico: "🗂", section: "recipes" },
+      { href: "/menu/products", label: "Products", ico: "🍽", section: "recipes" },
+      { href: "/menu/modifiers", label: "Modifiers", ico: "➕", section: "recipes" },
+      { href: "/menu/combos", label: "Combos", ico: "🍱", section: "recipes" },
+      { href: "/menu/coming-soon?feature=groups", label: "Groups", ico: "📁", section: "recipes" },
+    ],
+  },
+  {
     id: "recipes-production",
     label: "Recipes & Production",
     items: [

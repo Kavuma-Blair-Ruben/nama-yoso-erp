@@ -4,24 +4,31 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { RecipeBuilder } from "@/components/recipes/RecipeBuilder";
 import { getRecipeForEdit, listRecipeIngredientPickerItems, type RecipeType } from "@/server/db/queries/recipes";
 import { listActiveBranches } from "@/server/db/queries/branches";
+import { listMenuCategories } from "@/server/db/queries/menuCategories";
 
 export default async function EditRecipePage({ params }: PageProps<"/recipes/[type]/[code]/edit">) {
   const { type: typeParam, code } = await params;
   const type: RecipeType = typeParam === "sub" ? "sub" : "main";
   await requireSection(type === "main" ? "recipes" : "subrecipes", "edit");
 
-  const [data, items, branchOptions] = await Promise.all([getRecipeForEdit(type, code), listRecipeIngredientPickerItems(type, code), listActiveBranches()]);
+  const [data, items, branchOptions, menuCategories] = await Promise.all([
+    getRecipeForEdit(type, code),
+    listRecipeIngredientPickerItems(type, code),
+    listActiveBranches(),
+    listMenuCategories(),
+  ]);
   if (!data) notFound();
   const { recipe, ingredients, branchPrices } = data;
 
   return (
     <>
-      <PageHeader title={`Edit: ${recipe.name}`} subtitle={`${recipe.legacyCode} · ${type === "main" ? "Main Recipe" : "Sub-Recipe"}`} />
+      <PageHeader title={`Edit: ${recipe.name}`} subtitle={`${recipe.legacyCode} · ${type === "main" ? "Main Recipe" : "Sub-Recipe"}`} backHref={`/recipes/${type}/${code}`} backLabel={recipe.name} />
       <RecipeBuilder
         type={type}
         code={code}
         items={items}
         branchOptions={branchOptions}
+        menuCategories={menuCategories}
         initial={{
           name: recipe.name,
           section: recipe.section ?? "",
@@ -34,6 +41,8 @@ export default async function EditRecipePage({ params }: PageProps<"/recipes/[ty
           stockable: "stockable" in recipe ? recipe.stockable : true,
           shelfLifeDays: "shelfLifeDays" in recipe ? recipe.shelfLifeDays : null,
           storageInstructions: "storageInstructions" in recipe ? recipe.storageInstructions : null,
+          isModifier: "isModifier" in recipe ? recipe.isModifier : false,
+          isCombo: "isCombo" in recipe ? recipe.isCombo : false,
           branches: recipe.branches,
           branchPrices,
           lines: ingredients.map((i) => ({ stockItemId: i.stockItemId, ingredientMainRecipeId: i.ingredientMainRecipeId, unitLabel: i.unitLabel ?? "", qty: i.qty, wastagePct: i.wastagePct })),

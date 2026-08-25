@@ -40,14 +40,26 @@ export async function listRecipesForPrintCenter(q?: string): Promise<{ type: Rec
   return [...mains.map((r) => ({ type: "main" as const, ...r })), ...subs.map((r) => ({ type: "sub" as const, ...r }))];
 }
 
-export async function listRecipesWithCost(type: RecipeType, filters: { q?: string; section?: string }) {
+export async function listRecipesWithCost(type: RecipeType, filters: { q?: string; section?: string; onlyFlagged?: boolean }) {
   const graph = await loadCostingGraph();
   const source = type === "main" ? graph.mainRecipes : [...graph.subRecipesById.values()];
+
+  // isCombo/isModifier aren't part of the shared costing graph (they're
+  // presentational, not costing-relevant) — a small separate lookup keeps
+  // loadCostingGraph()'s shape untouched for its ~15 other call sites.
+  const flaggedIds = filters.onlyFlagged
+    ? new Set(
+        type === "main"
+          ? (await db.select({ id: mainRecipes.id }).from(mainRecipes).where(eq(mainRecipes.isCombo, true))).map((r) => r.id)
+          : (await db.select({ id: subRecipes.id }).from(subRecipes).where(eq(subRecipes.isModifier, true))).map((r) => r.id)
+      )
+    : null;
 
   const q = filters.q?.trim().toLowerCase();
   const filtered = source.filter((r) => {
     if (q && !(r.name.toLowerCase().includes(q) || r.legacyCode.toLowerCase().includes(q))) return false;
     if (filters.section && r.section !== filters.section) return false;
+    if (flaggedIds && !flaggedIds.has((r as { id: string }).id)) return false;
     return true;
   });
 
@@ -86,6 +98,67 @@ export async function listRecipesWithCost(type: RecipeType, filters: { q?: strin
   return { rows, totalCount: source.length, sections };
 }
 
+// Menu > Products — a card-grid, menu-like view of Main Recipes grouped
+// by category (photo/price up front), rather than Recipe Costing's
+// spreadsheet-style table. Reuses the same costing graph as
+// listRecipesWithCost — no new costing logic — plus one bulk join for
+// photoUrl/sellingPrice (avoids an N+1 per-recipe fetch for a grid page).
+export async function listMenuProducts() {
+  const graph = await loadCostingGraph();
+  const extras = await db.select({ id: mainRecipes.id, photoUrl: mainRecipes.photoUrl, sellingPrice: mainRecipes.sellingPrice }).from(mainRecipes);
+  const extraById = new Map(extras.map((e) => [e.id, e]));
+
+  const products = graph.mainRecipes.map((r) => {
+    const cur = recipeCurrentCost(graph, r);
+    const extra = extraById.get(r.id);
+    return {
+      code: r.legacyCode,
+      name: r.name,
+      section: r.section ?? "Uncategorized",
+      perUnit: cur.perUnit,
+      photoUrl: extra?.photoUrl ?? null,
+      sellingPrice: extra?.sellingPrice ?? null,
+    };
+  });
+
+  const byCategory = new Map<string, typeof products>();
+  for (const p of products) byCategory.set(p.section, [...(byCategory.get(p.section) ?? []), p]);
+
+  return [...byCategory.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([category, items]) => ({ category, items }));
+}
+
+// Menu > Modifiers — the same card-grid treatment as listMenuProducts,
+// scoped to sub-recipes flagged as order-time add-ons rather than every
+// production component.
+export async function listMenuModifiers() {
+  const graph = await loadCostingGraph();
+  const flagged = await db.select({ id: subRecipes.id }).from(subRecipes).where(eq(subRecipes.isModifier, true));
+  const flaggedIds = new Set(flagged.map((f) => f.id));
+
+  return [...graph.subRecipesById.values()]
+    .filter((r) => flaggedIds.has(r.id))
+    .map((r) => {
+      const cur = getSubRecipeCost(graph, r.id);
+      return { code: r.legacyCode, name: r.name, section: r.section ?? "Uncategorized", perUnit: cur.perUnit };
+    });
+}
+
+// Menu > Combos — same treatment, scoped to main recipes flagged as
+// bundles of other dishes.
+export async function listMenuCombos() {
+  const graph = await loadCostingGraph();
+  const extras = await db.select({ id: mainRecipes.id, photoUrl: mainRecipes.photoUrl, sellingPrice: mainRecipes.sellingPrice }).from(mainRecipes).where(eq(mainRecipes.isCombo, true));
+  const extraById = new Map(extras.map((e) => [e.id, e]));
+
+  return graph.mainRecipes
+    .filter((r) => extraById.has(r.id))
+    .map((r) => {
+      const cur = recipeCurrentCost(graph, r);
+      const extra = extraById.get(r.id);
+      return { code: r.legacyCode, name: r.name, section: r.section ?? "Uncategorized", perUnit: cur.perUnit, photoUrl: extra?.photoUrl ?? null, sellingPrice: extra?.sellingPrice ?? null };
+    });
+}
+
 export async function getRecipeDetail(type: RecipeType, code: string) {
   const graph = await loadCostingGraph();
   if (type === "main") {
@@ -103,6 +176,7 @@ export async function getRecipeDetail(type: RecipeType, code: string) {
         cookBookText: mainRecipes.cookBookText,
         photoUrl: mainRecipes.photoUrl,
         branches: mainRecipes.branches,
+        isCombo: mainRecipes.isCombo,
       })
       .from(mainRecipes)
       .where(eq(mainRecipes.legacyCode, code));
@@ -127,6 +201,7 @@ export async function getRecipeDetail(type: RecipeType, code: string) {
       shelfLifeDays: subRecipes.shelfLifeDays,
       storageInstructions: subRecipes.storageInstructions,
       branches: subRecipes.branches,
+      isModifier: subRecipes.isModifier,
     })
     .from(subRecipes)
     .where(eq(subRecipes.legacyCode, code));

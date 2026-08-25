@@ -109,6 +109,7 @@ export async function getProductByCode(code: string) {
       defaultPrepWastagePct: stockItems.defaultPrepWastagePct,
       itemTaxRate: stockItems.itemTaxRate,
       nonCogs: stockItems.nonCogs,
+      isPackaging: stockItems.isPackaging,
     })
     .from(stockItems)
     .leftJoin(categories, eq(stockItems.categoryId, categories.id))

@@ -5,16 +5,28 @@ import { listRecipesWithCost, type RecipeType } from "@/server/db/queries/recipe
 import { RecipesCsvImport } from "@/components/recipes/RecipesCsvImport";
 import { fmt, money, pct } from "@/lib/format";
 
+type PageTab = "main" | "sub" | "modifier" | "combo";
+const TAB_LABELS: Record<PageTab, string> = { main: "Main Recipes", sub: "Sub-Recipes", modifier: "Modifiers", combo: "Combos" };
+// Modifiers/Combos aren't new recipe types — they're existing Main/Sub
+// Recipes flagged as order-time add-ons/bundles (see schema.ts isModifier/
+// isCombo comments) — this just maps the page's 4 tabs onto the 2 real
+// underlying RecipeType values plus the onlyFlagged filter.
+function underlyingType(tab: PageTab): RecipeType {
+  return tab === "sub" || tab === "modifier" ? "sub" : "main";
+}
+
 export default async function RecipesPage({ searchParams }: PageProps<"/recipes">) {
   const session = await requireSection("recipes", "view");
   const sp = await searchParams;
-  const tab: RecipeType = sp.tab === "sub" ? "sub" : "main";
+  const tab: PageTab = sp.tab === "sub" || sp.tab === "modifier" || sp.tab === "combo" ? sp.tab : "main";
+  const type = underlyingType(tab);
+  const onlyFlagged = tab === "modifier" || tab === "combo";
   const q = typeof sp.q === "string" ? sp.q : undefined;
   const section = typeof sp.section === "string" ? sp.section : undefined;
 
-  const { rows, totalCount, sections } = await listRecipesWithCost(tab, { q, section });
+  const { rows, totalCount, sections } = await listRecipesWithCost(type, { q, section, onlyFlagged });
   const unreliableCount = rows.filter((r) => r.unreliableYield).length;
-  const canEdit = hasAccess(session, tab === "main" ? "recipes" : "subrecipes", "edit");
+  const canEdit = hasAccess(session, type === "main" ? "recipes" : "subrecipes", "edit");
 
   return (
     <>
@@ -25,19 +37,20 @@ export default async function RecipesPage({ searchParams }: PageProps<"/recipes"
           canEdit ? (
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
               <RecipesCsvImport />
-              <Link href={`/recipes/new?type=${tab}`} className="btn accent">+ New {tab === "main" ? "Main Recipe" : "Sub-Recipe"}</Link>
+              <Link href={`/recipes/new?type=${type}${onlyFlagged ? `&kind=${tab}` : ""}`} className="btn accent">
+                + New {tab === "modifier" ? "Modifier" : tab === "combo" ? "Combo" : tab === "main" ? "Main Recipe" : "Sub-Recipe"}
+              </Link>
             </div>
           ) : undefined
         }
       />
 
       <div className="pill-tabs">
-        <Link href="/recipes?tab=main" className={`btn ${tab === "main" ? "" : "ghost"}`} style={{ borderRadius: 20 }}>
-          Main Recipes
-        </Link>
-        <Link href="/recipes?tab=sub" className={`btn ${tab === "sub" ? "" : "ghost"}`} style={{ borderRadius: 20 }}>
-          Sub-Recipes
-        </Link>
+        {(Object.keys(TAB_LABELS) as PageTab[]).map((t) => (
+          <Link key={t} href={`/recipes?tab=${t}`} className={`btn ${tab === t ? "" : "ghost"}`} style={{ borderRadius: 20 }}>
+            {TAB_LABELS[t]}
+          </Link>
+        ))}
       </div>
 
       <form className="filterbar" method="get">
@@ -74,7 +87,7 @@ export default async function RecipesPage({ searchParams }: PageProps<"/recipes"
                 <th>Section</th>
                 <th className="right">Final Yield</th>
                 <th className="right">Cost / Unit (live)</th>
-                {tab === "sub" && <th className="right">Cost / KG-LTR</th>}
+                {type === "sub" && <th className="right">Cost / KG-LTR</th>}
                 <th className="right">Original Cost</th>
                 <th className="right">Variance</th>
                 <th></th>
@@ -85,16 +98,16 @@ export default async function RecipesPage({ searchParams }: PageProps<"/recipes"
                 rows.map((r) => (
                   <tr key={r.code}>
                     <td className="mono-r" style={{ textAlign: "left" }}>
-                      <Link href={`/recipes/${tab}/${r.code}`}>{r.code}</Link>
+                      <Link href={`/recipes/${type}/${r.code}`}>{r.code}</Link>
                     </td>
                     <td>
-                      <Link href={`/recipes/${tab}/${r.code}`}>{r.name}</Link>
+                      <Link href={`/recipes/${type}/${r.code}`}>{r.name}</Link>
                       {r.unreliableYield && <span className="tag bad" style={{ marginLeft: 4 }}>yield?</span>}
                     </td>
                     <td>{r.section ?? "-"}</td>
-                    <td className="mono-r">{tab === "main" ? "1 portion" : r.unreliableYield ? "1 prep" : `${fmt(r.yieldQty, 3)} ${r.yieldUnit ?? ""}`}</td>
+                    <td className="mono-r">{type === "main" ? "1 portion" : r.unreliableYield ? "1 prep" : `${fmt(r.yieldQty, 3)} ${r.yieldUnit ?? ""}`}</td>
                     <td className="mono-r">{money(r.perUnit)}</td>
-                    {tab === "sub" && <td className="mono-r">{r.perKgLtr != null ? money(r.perKgLtr, 2) : "—"}</td>}
+                    {type === "sub" && <td className="mono-r">{r.perKgLtr != null ? money(r.perKgLtr, 2) : "—"}</td>}
                     <td className="mono-r">{money(r.origPerUnit)}</td>
                     <td className="right">
                       {Math.abs(r.variancePct) > 0.01 ? (

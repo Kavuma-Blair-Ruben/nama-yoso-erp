@@ -30,10 +30,19 @@ export type RecipeInput = {
   stockable?: boolean;
   shelfLifeDays?: number | null;
   storageInstructions?: string | null;
+  // An order-time add-on (e.g. "Extra Cheese") rather than an internal
+  // batch-prep component — same recipe/costing/production mechanism
+  // either way, just flags which view it shows up under.
+  isModifier?: boolean;
   branches: string[];
   // Main recipe only — per-branch selling-price overrides; a branch not
   // listed here falls back to sellingPrice.
   branchPrices?: { branchId: string; sellingPrice: number }[];
+  // A bundle of other dishes rather than a single dish — same recipe
+  // mechanism either way (its ingredient lines typically reference other
+  // main recipes via ingredientMainRecipeId), just flags which view it
+  // shows up under.
+  isCombo?: boolean;
   lines: RecipeLineInput[];
 };
 
@@ -107,6 +116,7 @@ export async function createRecipe(input: RecipeInput): Promise<RecipeActionResu
           sellingPrice: input.sellingPrice ?? undefined,
           targetFoodCostPct: input.targetFoodCostPct ?? undefined,
           branches: input.branches,
+          isCombo: input.isCombo ?? false,
         })
         .returning({ id: mainRecipes.id });
       recipeId = created.id;
@@ -136,6 +146,7 @@ export async function createRecipe(input: RecipeInput): Promise<RecipeActionResu
           shelfLifeDays: input.shelfLifeDays ?? undefined,
           storageInstructions: input.storageInstructions || undefined,
           branches: input.branches,
+          isModifier: input.isModifier ?? false,
         })
         .returning({ id: subRecipes.id });
       recipeId = created.id;
@@ -184,6 +195,7 @@ export async function updateRecipe(code: string, input: RecipeInput): Promise<Re
           sellingPrice: input.sellingPrice,
           targetFoodCostPct: input.targetFoodCostPct,
           branches: input.branches,
+          isCombo: input.isCombo ?? false,
           updatedAt: new Date(),
         })
         .where(eq(mainRecipes.id, existing.id));
@@ -205,6 +217,7 @@ export async function updateRecipe(code: string, input: RecipeInput): Promise<Re
           shelfLifeDays: input.shelfLifeDays ?? null,
           storageInstructions: input.storageInstructions || null,
           branches: input.branches,
+          isModifier: input.isModifier ?? false,
           updatedAt: new Date(),
         })
         .where(eq(subRecipes.id, existing.id));

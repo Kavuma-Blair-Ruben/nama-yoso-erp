@@ -264,6 +264,7 @@ const itemSetupSchema = z.object({
   defaultPrepWastagePct: z.string().optional(),
   itemTaxRate: z.string().optional(),
   nonCogs: z.string().optional(),
+  isPackaging: z.string().optional(),
 });
 
 export type ItemSetupState = { error?: string } | undefined;
@@ -293,6 +294,7 @@ export async function updateItemSetup(_prev: ItemSetupState, formData: FormData)
       defaultPrepWastagePct: f.defaultPrepWastagePct ? Number(f.defaultPrepWastagePct) : undefined,
       itemTaxRate: f.itemTaxRate ? Number(f.itemTaxRate) : undefined,
       nonCogs: f.nonCogs === "on",
+      isPackaging: f.isPackaging === "on",
       updatedAt: new Date(),
     })
     .where(eq(stockItems.id, item.id));
