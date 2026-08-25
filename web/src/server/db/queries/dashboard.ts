@@ -2,9 +2,12 @@ import "server-only";
 import { db } from "@/server/db";
 import { stockItems, mainRecipes, subRecipes, categories, suppliers, invoicesHistorical, priceHistory } from "@/server/db/schema";
 import { eq, sql, count, sum, isNotNull } from "drizzle-orm";
-import { loadCostingGraph, recipeCurrentCost, recipeOriginalCost } from "@/server/costing/recipeCost";
+import { loadCostingGraph, recipeCurrentCost, recipeOriginalCost, type CostingGraph } from "@/server/costing/recipeCost";
 
-export async function getDashboardData() {
+// Accepts an optional pre-loaded costing graph so callers that already need
+// one for the same request (e.g. the Cost Dashboard tab) don't trigger a
+// second, fully redundant loadCostingGraph() round trip.
+export async function getDashboardData(preloadedGraph?: CostingGraph) {
   const [
     [{ value: activeSkuCount }],
     [{ value: categoryCount }],
@@ -53,7 +56,7 @@ export async function getDashboardData() {
     .groupBy(categories.name)
     .orderBy(sql`count(*) desc`);
 
-  const graph = await loadCostingGraph();
+  const graph = preloadedGraph ?? (await loadCostingGraph());
   const costed = graph.mainRecipes.map((r) => {
     const cur = recipeCurrentCost(graph, r);
     const orig = recipeOriginalCost(r, 1);

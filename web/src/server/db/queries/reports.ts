@@ -20,7 +20,7 @@ import {
   wastageLines,
 } from "@/server/db/schema";
 import { and, eq, isNotNull, ne, sql } from "drizzle-orm";
-import { loadCostingGraph, recipeCurrentCost, getSubRecipeCost } from "@/server/costing/recipeCost";
+import { loadCostingGraph, recipeCurrentCost, getSubRecipeCost, type CostingGraph } from "@/server/costing/recipeCost";
 import { todayStr } from "@/lib/format";
 
 function daysBetween(a: string, b: string): number {
@@ -114,13 +114,16 @@ export async function listPriceChangeEvents() {
 }
 
 // Every ingredient price change and which recipes it moved the cost of.
-export async function listCostAdjustmentEvents(filters: { q?: string }) {
+// Accepts an optional pre-loaded costing graph so callers that already need
+// one for the same request (e.g. the Cost Dashboard tab) don't trigger a
+// second, fully redundant loadCostingGraph() round trip.
+export async function listCostAdjustmentEvents(filters: { q?: string }, preloadedGraph?: CostingGraph) {
   const [history, graph, ingredientRows] = await Promise.all([
     db
       .select({ stockItemId: priceHistory.stockItemId, oldRate: priceHistory.oldRate, newRate: priceHistory.newRate, changedAt: priceHistory.changedAt, legacyCode: stockItems.legacyCode, name: stockItems.name })
       .from(priceHistory)
       .innerJoin(stockItems, eq(priceHistory.stockItemId, stockItems.id)),
-    loadCostingGraph(),
+    preloadedGraph ?? loadCostingGraph(),
     db.select({ mainRecipeId: recipeIngredients.mainRecipeId, subRecipeId: recipeIngredients.subRecipeId, stockItemId: recipeIngredients.stockItemId }).from(recipeIngredients),
   ]);
 
