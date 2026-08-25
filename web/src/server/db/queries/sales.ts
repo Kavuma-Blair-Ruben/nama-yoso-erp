@@ -1,6 +1,7 @@
 import "server-only";
 import { db } from "@/server/db";
 import { recipeSales } from "@/server/db/schema";
+import { eq, sql, count } from "drizzle-orm";
 import { loadCostingGraph, recipeCurrentCost } from "@/server/costing/recipeCost";
 
 export type RecipeSalesRow = {
@@ -87,4 +88,15 @@ export async function getMenuEngineeringData(): Promise<{ items: MenuEngineering
   });
 
   return { items, avgQty, avgMargin };
+}
+
+// Scoped to a single calendar day (unlike getRecipeSalesReport, which is a
+// deliberate all-time aggregate used elsewhere) — the Dashboard's "Sales
+// Today" digest card needs a real daily figure, not a lifetime total.
+export async function getSalesTodayStats(date: string): Promise<{ qty: number; revenue: number; orderCount: number }> {
+  const [row] = await db
+    .select({ qty: sql<number>`coalesce(sum(${recipeSales.qty}), 0)`, revenue: sql<number>`coalesce(sum(${recipeSales.revenue}), 0)`, orderCount: count() })
+    .from(recipeSales)
+    .where(eq(recipeSales.saleDate, date));
+  return { qty: Number(row?.qty ?? 0), revenue: Number(row?.revenue ?? 0), orderCount: row?.orderCount ?? 0 };
 }
