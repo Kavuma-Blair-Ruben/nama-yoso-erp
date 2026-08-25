@@ -14,7 +14,7 @@ export async function login(_prevState: LoginState, formData: FormData): Promise
   const { error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) return { error: "Invalid email or password." };
 
-  redirect("/dashboard");
+  redirect("/apps");
 }
 
 export async function logout() {
@@ -41,5 +41,5 @@ export async function setInitialPassword(_prevState: SetPasswordState, formData:
   const { error } = await supabase.auth.updateUser({ password });
   if (error) return { error: error.message };
 
-  redirect("/dashboard");
+  redirect("/apps");
 }

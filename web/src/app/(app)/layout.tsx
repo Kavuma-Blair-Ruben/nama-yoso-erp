@@ -12,8 +12,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <Sidebar />
       <div className="main">
         {session && (
-          <div className="topbar" style={{ padding: "10px 28px" }}>
-            <div />
+          <div className="topbar">
             <NotificationBell notifications={notifications} />
           </div>
         )}
