@@ -10,17 +10,22 @@ import { nextCreditNoteNumber, nextConsolidatedInvoiceNumber } from "@/server/db
 
 export type CreditNoteResult = { error?: string; id?: string };
 
-export async function requestCreditNote(grnId: string, reason: string): Promise<CreditNoteResult> {
+export async function requestCreditNote(grnId: string, reason: string, amount: number): Promise<CreditNoteResult> {
   const session = await assertPermission("grn", "edit");
   const trimmedReason = reason.trim();
   if (!trimmedReason) return { error: "Enter a reason for the credit/return request." };
+  if (!(amount > 0)) return { error: "Enter the amount being credited/returned." };
 
   const [grn] = await db.select({ grnNumber: grns.grnNumber, supplierId: grns.supplierId, status: grns.status }).from(grns).where(eq(grns.id, grnId));
   if (!grn) return { error: "GRN not found." };
   if (grn.status !== "POSTED") return { error: "Only a posted GRN can have a credit/return requested against it." };
 
+  // Full GRN value is the ceiling, not the fixed amount — the user can
+  // request a credit for any partial amount up to it (e.g. one spoiled
+  // item out of a multi-line delivery), not just the whole invoice.
   const lines = await db.select({ lineAmount: grnLines.lineAmount, taxRate: grnLines.taxRate }).from(grnLines).where(eq(grnLines.grnId, grnId));
-  const amount = lines.reduce((s, l) => s + l.lineAmount * (1 + l.taxRate / 100), 0);
+  const maxAmount = lines.reduce((s, l) => s + l.lineAmount * (1 + l.taxRate / 100), 0);
+  if (amount > maxAmount + 0.01) return { error: `Amount can't exceed the GRN's total value (${maxAmount.toFixed(2)}).` };
 
   const creditNoteNumber = await nextCreditNoteNumber();
   const [created] = await db

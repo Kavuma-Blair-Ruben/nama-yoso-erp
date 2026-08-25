@@ -144,7 +144,7 @@ export default async function GrnDetailPage({ params, searchParams }: PageProps<
       {grn.status === "POSTED" && (
         <>
           <SupplierReturnSection returns={supplierReturns} />
-          <CreditNoteSection grnId={grn.id} notes={creditNotes} canEdit={canEdit} canRequest={canEdit} />
+          <CreditNoteSection grnId={grn.id} notes={creditNotes} canEdit={canEdit} canRequest={canEdit} maxAmount={total} />
         </>
       )}
 
