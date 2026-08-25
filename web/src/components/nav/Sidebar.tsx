@@ -37,6 +37,7 @@ const NAV: NavGroupDef[] = [
     items: [
       { href: "/suppliers", label: "Suppliers", ico: "★", section: "suppliers" },
       { href: "/purchase-orders", label: "Purchase Orders", ico: "▤", section: "orders" },
+      { href: "/predictive-orders", label: "Predictive Orders", ico: "🔮", section: "orders" },
       { href: "/grn", label: "Goods Receiving (GRN)", ico: "▦", section: "grn" },
       { href: "/invoices", label: "Invoices", ico: "🧾", section: "suppliers" },
       { href: "/credit-notes", label: "Credit Notes", ico: "↩", section: "grn" },
