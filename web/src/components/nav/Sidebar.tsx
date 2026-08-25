@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { getSession, hasAccess } from "@/server/auth/session";
 import { logout } from "@/server/actions/auth";
 import { NavLink } from "./NavLink";
@@ -111,6 +112,8 @@ export async function Sidebar() {
               <b>{session.profile.name}</b>
               <br />
               {session.role.name}
+              <br />
+              <Link href="/set-password" style={{ fontSize: 11 }}>Change Password</Link>
             </span>
             <form action={logout}>
               <button type="submit" className="logout-btn">

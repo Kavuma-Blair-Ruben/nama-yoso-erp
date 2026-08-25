@@ -18,7 +18,7 @@ export default async function SetPasswordPage() {
         {user ? (
           <>
             <p style={{ fontSize: 13, color: "var(--ink-soft)", marginBottom: 16, textAlign: "center" }}>
-              Welcome, {user.email}. Set a password to finish setting up your account.
+              Signed in as {user.email}. Set a new password below.
             </p>
             <SetPasswordForm />
           </>

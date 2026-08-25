@@ -185,3 +185,48 @@ export async function inviteUser(input: z.infer<typeof inviteSchema>): Promise<{
   revalidatePath("/permissions");
   return {};
 }
+
+const createUserSchema = z.object({
+  email: z.string().email(),
+  name: z.string().min(1),
+  roleId: z.string().min(1),
+  branches: z.array(z.string()),
+  password: z.string().min(8),
+});
+
+// Fallback path for when email delivery isn't set up or isn't reaching the
+// invitee (Resend's shared sandbox sender only delivers to the account
+// owner's own inbox until a domain is verified) — creates the login with a
+// real password set directly, no email involved. The admin must relay this
+// password to the user out of band; the user can change it themselves
+// afterward from /set-password once logged in.
+export async function createUserWithPassword(input: z.infer<typeof createUserSchema>): Promise<{ error?: string }> {
+  const session = await assertPermission("permissions", "edit");
+  const parsed = createUserSchema.safeParse(input);
+  if (!parsed.success) return { error: "Enter a valid email, name, role, and a password of at least 8 characters." };
+
+  const email = parsed.data.email.trim().toLowerCase();
+
+  const { data, error } = await supabaseAdmin.auth.admin.createUser({
+    email,
+    password: parsed.data.password,
+    email_confirm: true,
+    user_metadata: { name: parsed.data.name.trim() },
+  });
+  if (error) {
+    return { error: error.message.includes("already been registered") ? "That email already has a login — use \"Link an Existing Login\" below instead." : error.message };
+  }
+
+  await db.insert(profiles).values({
+    id: data.user.id,
+    name: parsed.data.name.trim(),
+    email,
+    roleId: parsed.data.roleId,
+    branches: parsed.data.branches,
+    active: true,
+  });
+
+  await db.insert(auditLog).values({ actorId: session.profile.id, action: "Created", entity: "User", entityLabel: parsed.data.name.trim(), detail: `${email} — password set directly, no email sent` });
+  revalidatePath("/permissions");
+  return {};
+}
