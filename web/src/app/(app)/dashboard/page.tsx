@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { requireAuth, hasAccess } from "@/server/auth/permissions";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { getDashboardData } from "@/server/db/queries/dashboard";
+import { getDashboardData, getDashboardDigestStats } from "@/server/db/queries/dashboard";
 import { getPurchasingStats, getCostCenterStats, listCostAdjustmentEvents } from "@/server/db/queries/reports";
 import { listSuppliers } from "@/server/db/queries/suppliers";
 import { getMenuEngineeringData } from "@/server/db/queries/sales";
+import { getSalesDashboardStats } from "@/server/db/queries/posOrders";
 import { loadCostingGraph } from "@/server/costing/recipeCost";
+import { buildDailySummary } from "@/lib/dailySummary";
 import { fmt, money, pct } from "@/lib/format";
 import { CategoryBarChart } from "@/components/dashboard/CategoryBarChart";
 import { TopCostBarChart } from "@/components/dashboard/TopCostBarChart";
@@ -14,13 +16,14 @@ import { HorizontalBarChart } from "@/components/charts/HorizontalBarChart";
 import { TrendLineChart } from "@/components/charts/TrendLineChart";
 import { MenuEngineeringScatter } from "@/components/charts/MenuEngineeringScatter";
 
-type Tab = "overview" | "purchasing" | "suppliers" | "cost" | "menuengineering" | "costcenter";
+type Tab = "overview" | "purchasing" | "suppliers" | "cost" | "menuengineering" | "costcenter" | "salesdashboard";
 const ANALYTICS_TABS: { id: Tab; label: string }[] = [
   { id: "purchasing", label: "Purchasing Dashboard" },
   { id: "suppliers", label: "Supplier Dashboard" },
   { id: "cost", label: "Cost Dashboard" },
   { id: "menuengineering", label: "Menu Engineering" },
   { id: "costcenter", label: "Cost by Sector (Live)" },
+  { id: "salesdashboard", label: "Sales Dashboard" },
 ];
 
 export default async function DashboardPage({ searchParams }: PageProps<"/dashboard">) {
@@ -51,15 +54,51 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
       {canSeeAnalytics && tab === "cost" && <CostDashboardTab />}
       {canSeeAnalytics && tab === "menuengineering" && <MenuEngineeringTab />}
       {canSeeAnalytics && tab === "costcenter" && <CostCenterTab />}
+      {canSeeAnalytics && tab === "salesdashboard" && <SalesDashboardTab />}
     </>
   );
 }
 
 async function OverviewTab() {
+  // Sequential, not Promise.all'd — both of these already run several
+  // queries internally, and running them fully concurrently was enough
+  // combined load to trip the Supabase pooler's statement_timeout.
   const d = await getDashboardData();
+  const digest = await getDashboardDigestStats();
 
   return (
     <>
+      <div className="section-title">Today at a Glance</div>
+      <div className="callout">📋 {buildDailySummary(digest)}</div>
+      <div className="kpi-grid">
+        <Link href="/predictive-orders" className="kpi">
+          <div className="n" style={{ color: digest.reorderAlertCount > 0 ? "var(--bad)" : "inherit" }}>{fmt(digest.reorderAlertCount, 0)}</div>
+          <div className="l">Reorder Alerts</div>
+          <div className="d">{digest.reorderAlertCount ? "Items below safe stock coverage" : "All items on track"}</div>
+        </Link>
+        <Link href="/reports?tab=sales" className="kpi">
+          <div className="n">{money(digest.salesToday.revenue, 0)}</div>
+          <div className="l">Sales Today</div>
+          <div className="d">{fmt(digest.salesToday.orderCount, 0)} recipe(s) sold</div>
+        </Link>
+        <Link href="/purchase-orders?status=ORDERED" className="kpi">
+          <div className="n">{money(digest.upcomingPurchases.value, 0)}</div>
+          <div className="l">Upcoming Purchases</div>
+          <div className="d">{fmt(digest.upcomingPurchases.count, 0)} PO(s) on the way</div>
+        </Link>
+        <Link href="/production?status=OPEN" className="kpi">
+          <div className="n">{fmt(digest.openProductionBatches, 0)}</div>
+          <div className="l">Production In Progress</div>
+          <div className="d">{digest.openProductionBatches ? "Open batch(es) right now" : "Nothing in progress"}</div>
+        </Link>
+        <Link href="/wastage" className="kpi">
+          <div className="n" style={{ color: digest.wastageTodayCost > 0 ? "var(--bad)" : "inherit" }}>{money(digest.wastageTodayCost, 0)}</div>
+          <div className="l">Wastage Today</div>
+          <div className="d">{digest.wastageTodayCost ? "Logged so far today" : "Nothing logged today"}</div>
+        </Link>
+      </div>
+
+      <div className="section-title" style={{ marginTop: 16 }}>Master Data Health</div>
       <div className="kpi-grid">
         <Link href="/products" className="kpi">
           <div className="n">{fmt(d.activeSkuCount, 0)}</div>
@@ -446,6 +485,54 @@ async function CostCenterTab() {
           </div>
         </div>
       ))}
+    </>
+  );
+}
+
+async function SalesDashboardTab() {
+  const stats = await getSalesDashboardStats(30);
+
+  return (
+    <>
+      <div className="callout">
+        <b>What this shows:</b> order-level financial totals from your POS integration (Foodics) — gross revenue before
+        discounts, discounts given, and net collected. Separate from the Recipe Sales Report, which breaks revenue down
+        per dish rather than per order.
+      </div>
+      {!stats.hasData ? (
+        <div className="callout">No POS order data yet for the last {stats.days} days — this fills in automatically once Foodics orders start arriving.</div>
+      ) : (
+        <>
+          <div className="kpi-grid">
+            <div className="kpi">
+              <div className="n">{money(stats.grossRevenue, 0)}</div>
+              <div className="l">Gross Revenue</div>
+              <div className="d">Before discounts, last {stats.days} days</div>
+            </div>
+            <div className="kpi">
+              <div className="n" style={{ color: stats.totalDiscount > 0 ? "var(--bad)" : "inherit" }}>{money(stats.totalDiscount, 0)}</div>
+              <div className="l">Discounts Given</div>
+              <div className="d">{fmt(stats.discountRatePct, 1)}% of gross</div>
+            </div>
+            <div className="kpi">
+              <div className="n">{money(stats.netRevenue, 0)}</div>
+              <div className="l">Net Collected</div>
+              <div className="d">{money(stats.avgOrderValue, 2)} avg order value</div>
+            </div>
+            <div className="kpi">
+              <div className="n">{fmt(stats.orderCount, 0)}</div>
+              <div className="l">Orders</div>
+              <div className="d">Last {stats.days} days</div>
+            </div>
+          </div>
+          <div className="panel">
+            <div className="panel-head"><h3>Net Revenue — Daily</h3></div>
+            <div className="panel-body chart-card">
+              <TrendLineChart data={stats.trend} format="money0" />
+            </div>
+          </div>
+        </>
+      )}
     </>
   );
 }

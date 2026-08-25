@@ -3,6 +3,12 @@ import { db } from "@/server/db";
 import { stockItems, mainRecipes, subRecipes, categories, suppliers, invoicesHistorical, priceHistory } from "@/server/db/schema";
 import { eq, sql, count, sum, isNotNull } from "drizzle-orm";
 import { loadCostingGraph, recipeCurrentCost, recipeOriginalCost, type CostingGraph } from "@/server/costing/recipeCost";
+import { getReorderAlertCount } from "@/server/db/queries/forecasting";
+import { getSalesTodayStats } from "@/server/db/queries/sales";
+import { listPurchaseOrders } from "@/server/db/queries/purchaseOrders";
+import { listProductionBatches } from "@/server/db/queries/production";
+import { listWastageEvents } from "@/server/db/queries/wastage";
+import { todayStr } from "@/lib/format";
 
 // Accepts an optional pre-loaded costing graph so callers that already need
 // one for the same request (e.g. the Cost Dashboard tab) don't trigger a
@@ -89,5 +95,38 @@ export async function getDashboardData(preloadedGraph?: CostingGraph) {
     topCost: topCost.map((x) => ({ code: x.recipe.legacyCode, name: x.recipe.name, section: x.recipe.section, perUnit: x.cur.perUnit })),
     topVariance: topVariance.map((x) => ({ code: x.recipe.legacyCode, name: x.recipe.name, variancePct: x.variancePct })),
     outstandingBySupplier: outstandingBySupplier.map((r) => ({ supplierId: r.supplierId, name: r.supplierName, outstanding: Number(r.outstanding ?? 0) })),
+  };
+}
+
+// Today-at-a-glance numbers for the Dashboard Overview's digest cards —
+// shared with the on-demand AI summary action so both read the exact same
+// figures, never a separately-computed (and potentially inconsistent) set.
+// Sequential, not Promise.all'd — getReorderAlertCount alone already runs
+// several queries per branch, and this Overview tab already runs
+// getDashboardData() alongside it; stacking every query in this function
+// on top, all concurrently, was enough combined load to trip the Supabase
+// pooler's statement_timeout (same class of issue as the earlier Cost
+// Dashboard fix, just from a different cause — too many queries firing at
+// once rather than one redundant duplicate call).
+export async function getDashboardDigestStats() {
+  const today = todayStr();
+  const reorderAlertCount = await getReorderAlertCount();
+  const salesToday = await getSalesTodayStats(today);
+  const approvedPOs = await listPurchaseOrders({ status: "APPROVED" });
+  const orderedPOs = await listPurchaseOrders({ status: "ORDERED" });
+  const openBatches = await listProductionBatches({ status: "OPEN" });
+  const wastageEvents = await listWastageEvents({ status: "POSTED" });
+
+  const upcomingPOs = [...approvedPOs, ...orderedPOs];
+  const upcomingPurchases = { count: upcomingPOs.length, value: upcomingPOs.reduce((s, po) => s + po.net + po.vat, 0) };
+  const wastageToday = wastageEvents.filter((e) => e.eventDate === today);
+  const wastageTodayCost = wastageToday.reduce((s, e) => s + e.totalCost, 0);
+
+  return {
+    reorderAlertCount,
+    salesToday,
+    upcomingPurchases,
+    openProductionBatches: openBatches.length,
+    wastageTodayCost,
   };
 }

@@ -1227,3 +1227,26 @@ export const posItemMappings = pgTable(
   },
   (t) => [unique("pos_item_mappings_provider_product_unique").on(t.provider, t.externalProductId)]
 );
+
+// One row per order, order-level financial totals only — line-item detail
+// (qty/revenue per recipe) stays in recipeSales above; this is the source
+// for the Sales Dashboard's gross/discount/net figures, which aren't
+// derivable from summing line totals (Foodics' discount_amount is an
+// order-level field, not per line). branchId is nullable for the same
+// reason posWebhookEvents tolerates an unmapped branch — the financial
+// totals are still useful before item/branch mapping is complete.
+export const posOrders = pgTable(
+  "pos_orders",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    provider: text("provider").notNull(),
+    externalOrderId: text("external_order_id").notNull(),
+    branchId: uuid("branch_id").references(() => branches.id),
+    saleDate: date("sale_date").notNull(),
+    grossAmount: money("gross_amount").notNull().default(0),
+    discountAmount: money("discount_amount").notNull().default(0),
+    netAmount: money("net_amount").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [unique("pos_orders_provider_order_unique").on(t.provider, t.externalOrderId)]
+);

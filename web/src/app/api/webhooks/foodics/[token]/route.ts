@@ -2,7 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { eq, and } from "drizzle-orm";
 import { db } from "@/server/db";
-import { posIntegrations, posWebhookEvents, posBranchMappings, posItemMappings, recipeSales } from "@/server/db/schema";
+import { posIntegrations, posWebhookEvents, posBranchMappings, posItemMappings, recipeSales, posOrders } from "@/server/db/schema";
 import { recordStockMovement } from "@/server/db/stockLedger";
 import { loadCostingGraph, recipeCurrentCost, flattenRecipeToStockLines } from "@/server/costing/recipeCost";
 import { todayStr } from "@/lib/format";
@@ -29,6 +29,10 @@ type FoodicsOrderPayload = {
   order?: {
     id?: string;
     reference?: string;
+    business_date?: string;
+    subtotal_price?: number;
+    discount_amount?: number;
+    total_price?: number;
     branch?: { id?: string; name?: string };
     products?: { product?: { id?: string; name?: string }; quantity?: number; total_price?: number }[];
   };
@@ -62,7 +66,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
     return NextResponse.json({ ok: true, skipped: "malformed order payload" });
   }
 
-  const saleDate = body.timestamp ? new Date(body.timestamp * 1000).toISOString().slice(0, 10) : todayStr();
+  // business_date (the operating day Foodics itself assigns the order to)
+  // is the more accurate signal when present — falls back to the webhook
+  // delivery timestamp, then today, for payloads that omit it.
+  const saleDate = order.business_date ?? (body.timestamp ? new Date(body.timestamp * 1000).toISOString().slice(0, 10) : todayStr());
 
   await db.transaction(async (tx) => {
     const [inserted] = await tx
@@ -90,6 +97,23 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
           .where(and(eq(posBranchMappings.provider, "foodics"), eq(posBranchMappings.externalBranchId, externalBranchId)));
       }
     }
+
+    // Order-level financial totals — inserted regardless of branch-mapping
+    // status, same tolerance posWebhookEvents already extends to an
+    // unmapped branch, since gross/discount/net reporting is still useful
+    // before item/branch mapping is finished.
+    await tx
+      .insert(posOrders)
+      .values({
+        provider: "foodics",
+        externalOrderId,
+        branchId: branchMap?.branchId ?? null,
+        saleDate,
+        grossAmount: order.subtotal_price ?? order.total_price ?? 0,
+        discountAmount: order.discount_amount ?? 0,
+        netAmount: order.total_price ?? 0,
+      })
+      .onConflictDoNothing({ target: [posOrders.provider, posOrders.externalOrderId] });
 
     if (!branchMap?.branchId || !branchMap?.costCenterId) {
       await tx
