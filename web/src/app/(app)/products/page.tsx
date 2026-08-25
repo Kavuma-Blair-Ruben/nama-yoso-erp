@@ -3,6 +3,7 @@ import { requireSection, hasAccess } from "@/server/auth/permissions";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ProductFilters } from "@/components/products/ProductFilters";
 import { ScanToProduct } from "@/components/products/ScanToProduct";
+import { ProductsCsvImport } from "@/components/products/ProductsCsvImport";
 import { listProducts, listCategoriesForFilter, listSubcategoriesForFilter, listSuppliersForFilter, STORAGE_TYPES } from "@/server/db/queries/products";
 import { fmt } from "@/lib/format";
 import { categorizeUnit } from "@/lib/unitMath";
@@ -34,7 +35,14 @@ export default async function ProductsPage({ searchParams }: PageProps<"/product
       <PageHeader
         title="Product Master"
         subtitle="SKUs from your live inventory master — unit conversions, costing, sourcing."
-        action={canEdit ? <Link href="/products/new" className="btn accent">+ Add Product</Link> : undefined}
+        action={
+          canEdit ? (
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <ProductsCsvImport />
+              <Link href="/products/new" className="btn accent">+ Add Product</Link>
+            </div>
+          ) : undefined
+        }
       />
       <ScanToProduct />
       <ProductFilters

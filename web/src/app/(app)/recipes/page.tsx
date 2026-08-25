@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireSection, hasAccess } from "@/server/auth/permissions";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { listRecipesWithCost, type RecipeType } from "@/server/db/queries/recipes";
+import { RecipesCsvImport } from "@/components/recipes/RecipesCsvImport";
 import { fmt, money, pct } from "@/lib/format";
 
 export default async function RecipesPage({ searchParams }: PageProps<"/recipes">) {
@@ -20,7 +21,14 @@ export default async function RecipesPage({ searchParams }: PageProps<"/recipes"
       <PageHeader
         title="Recipe Costing"
         subtitle="Main recipes and sub-recipes, costed live against current ingredient prices."
-        action={canEdit ? <Link href={`/recipes/new?type=${tab}`} className="btn accent">+ New {tab === "main" ? "Main Recipe" : "Sub-Recipe"}</Link> : undefined}
+        action={
+          canEdit ? (
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <RecipesCsvImport />
+              <Link href={`/recipes/new?type=${tab}`} className="btn accent">+ New {tab === "main" ? "Main Recipe" : "Sub-Recipe"}</Link>
+            </div>
+          ) : undefined
+        }
       />
 
       <div className="pill-tabs">

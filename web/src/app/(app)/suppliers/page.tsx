@@ -3,6 +3,7 @@ import { requireSection, hasAccess } from "@/server/auth/permissions";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { listSuppliers } from "@/server/db/queries/suppliers";
 import { Stars } from "@/components/suppliers/Stars";
+import { SuppliersCsvImport } from "@/components/suppliers/SuppliersCsvImport";
 import { fmt, money } from "@/lib/format";
 
 export default async function SuppliersPage({ searchParams }: PageProps<"/suppliers">) {
@@ -17,7 +18,14 @@ export default async function SuppliersPage({ searchParams }: PageProps<"/suppli
       <PageHeader
         title="Suppliers"
         subtitle="Spend, payables and item history by supplier, from your live purchase ledger."
-        action={canEdit ? <Link href="/suppliers/new" className="btn accent">+ Add Supplier</Link> : undefined}
+        action={
+          canEdit ? (
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <SuppliersCsvImport />
+              <Link href="/suppliers/new" className="btn accent">+ Add Supplier</Link>
+            </div>
+          ) : undefined
+        }
       />
       <form className="filterbar" method="get">
         <input type="text" name="q" placeholder="Search supplier..." defaultValue={q ?? ""} />

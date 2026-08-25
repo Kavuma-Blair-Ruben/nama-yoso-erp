@@ -3,31 +3,7 @@
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { importRecipeSales, clearRecipeSales, type SalesImportRow } from "@/server/actions/sales";
-
-function parseCsv(text: string): Record<string, string>[] {
-  const lines = text.split(/\r?\n/).filter((l) => l.trim() !== "");
-  if (lines.length === 0) return [];
-  const splitRow = (row: string) => row.match(/(?:^|,)("(?:[^"]|"")*"|[^,]*)/g)!.map((c) => c.replace(/^,/, "").replace(/^"|"$/g, "").replace(/""/g, '"'));
-  const header = splitRow(lines[0]);
-  return lines.slice(1).map((row) => {
-    const cells = splitRow(row);
-    const obj: Record<string, string> = {};
-    header.forEach((h, i) => (obj[h] = cells[i] ?? ""));
-    return obj;
-  });
-}
-
-// Accepts loose header spelling (Date/Sale Date, Item/Recipe/Item Name,
-// Qty/Quantity, Revenue/Sales/Amount) since POS exports never agree on
-// column names — case-insensitive match against a few likely aliases.
-function pickField(row: Record<string, string>, aliases: string[]): string {
-  const keys = Object.keys(row);
-  for (const alias of aliases) {
-    const key = keys.find((k) => k.trim().toLowerCase() === alias);
-    if (key) return row[key];
-  }
-  return "";
-}
+import { parseCsv, pickField } from "@/lib/csv";
 
 export function RecipeSalesImport({ hasData, unmatchedCount }: { hasData: boolean; unmatchedCount: number }) {
   const router = useRouter();

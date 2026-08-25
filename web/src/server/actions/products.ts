@@ -2,14 +2,14 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, ilike } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/server/db";
 import { stockItems, categories, subcategories, suppliers, productSupplierPackaging, priceHistory, auditLog } from "@/server/db/schema";
 import { assertPermission } from "@/server/auth/permissions";
 import { nextProductCode } from "@/server/db/sequences";
 
-async function findOrCreateCategory(name: string): Promise<string> {
+export async function findOrCreateCategory(name: string): Promise<string> {
   const trimmed = name.trim();
   const [existing] = await db.select({ id: categories.id }).from(categories).where(eq(categories.name, trimmed));
   if (existing) return existing.id;
@@ -18,7 +18,7 @@ async function findOrCreateCategory(name: string): Promise<string> {
   return created.id;
 }
 
-async function findOrCreateSubcategory(categoryId: string, name: string): Promise<string> {
+export async function findOrCreateSubcategory(categoryId: string, name: string): Promise<string> {
   const trimmed = name.trim();
   const [existing] = await db.select({ id: subcategories.id }).from(subcategories).where(and(eq(subcategories.categoryId, categoryId), eq(subcategories.name, trimmed)));
   if (existing) return existing.id;
@@ -26,7 +26,7 @@ async function findOrCreateSubcategory(categoryId: string, name: string): Promis
   return created.id;
 }
 
-async function findOrCreateSupplier(name: string): Promise<string> {
+export async function findOrCreateSupplier(name: string): Promise<string> {
   const trimmed = name.trim();
   const [existing] = await db.select({ id: suppliers.id }).from(suppliers).where(eq(suppliers.name, trimmed));
   if (existing) return existing.id;
@@ -82,6 +82,78 @@ export async function createProduct(_prev: CreateProductState, formData: FormDat
   await db.insert(auditLog).values({ actorId: session.profile.id, action: "Created", entity: "Product", entityLabel: f.name, detail: `Code ${created.legacyCode}` });
   revalidatePath("/products");
   redirect(`/products/${created.legacyCode}`);
+}
+
+export type ProductImportRow = {
+  name: string;
+  category: string;
+  subcategory?: string;
+  supplier?: string;
+  storageType?: "DRY" | "CHILLED" | "FROZEN";
+  purchaseUnit?: string;
+  issueUnit?: string;
+  unitWeight?: number;
+  purchaseRate: number;
+  branches?: string[];
+  minLevel?: number;
+  parLevel?: number;
+};
+
+export type BulkImportResult = { error?: string; imported?: number; skipped?: { name: string; reason: string }[] };
+
+// Mirrors createProduct's insert shape exactly, minus the per-row redirect
+// (unusable in a batch) — codes are assigned one at a time via
+// nextProductCode() sequentially, not Promise.all'd, since it's a
+// max(existing)+1 lookup rather than a real DB sequence and concurrent
+// calls could collide on the same code.
+export async function bulkImportProducts(rows: ProductImportRow[]): Promise<BulkImportResult> {
+  const session = await assertPermission("items", "edit");
+  const validRows = rows.filter((r) => r.name.trim() && r.category.trim() && r.purchaseRate >= 0);
+  if (validRows.length === 0) return { error: "No valid rows found — Name, Category, and Purchase Rate are required." };
+
+  const skipped: { name: string; reason: string }[] = [];
+  let imported = 0;
+
+  for (const r of validRows) {
+    const [existing] = await db.select({ id: stockItems.id }).from(stockItems).where(ilike(stockItems.name, r.name.trim()));
+    if (existing) {
+      skipped.push({ name: r.name, reason: "A product with this name already exists." });
+      continue;
+    }
+
+    const categoryId = await findOrCreateCategory(r.category);
+    const subcategoryId = r.subcategory?.trim() ? await findOrCreateSubcategory(categoryId, r.subcategory) : undefined;
+    const supplierId = r.supplier?.trim() ? await findOrCreateSupplier(r.supplier) : undefined;
+    const ratePerKgL = r.unitWeight ? (r.purchaseRate / r.unitWeight) * 1000 : r.purchaseRate;
+    const legacyCode = await nextProductCode();
+
+    await db.insert(stockItems).values({
+      legacyCode,
+      sourceType: "purchased",
+      name: r.name.trim(),
+      categoryId,
+      subcategoryId,
+      supplierId,
+      storageType: r.storageType,
+      purchaseUnit: r.purchaseUnit,
+      issueUnit: r.issueUnit,
+      unitWeight: r.unitWeight,
+      purchaseRate: r.purchaseRate,
+      ratePerKgL,
+      ratePerGMl: ratePerKgL / 1000,
+      branches: r.branches?.length ? r.branches : undefined,
+      minLevel: r.minLevel,
+      parLevel: r.parLevel,
+    });
+    imported++;
+  }
+
+  if (imported > 0) {
+    await db.insert(auditLog).values({ actorId: session.profile.id, action: "Bulk Imported", entity: "Product", entityLabel: `${imported} product(s)`, detail: skipped.length ? `${skipped.length} skipped (duplicate name)` : undefined });
+    revalidatePath("/products");
+  }
+
+  return { imported, skipped };
 }
 
 const updateRateSchema = z.object({ code: z.string(), newRate: z.coerce.number().min(0), reason: z.string().optional() });
