@@ -207,18 +207,38 @@ export async function createUserWithPassword(input: z.infer<typeof createUserSch
 
   const email = parsed.data.email.trim().toLowerCase();
 
-  const { data, error } = await supabaseAdmin.auth.admin.createUser({
-    email,
-    password: parsed.data.password,
-    email_confirm: true,
-    user_metadata: { name: parsed.data.name.trim() },
-  });
-  if (error) {
-    return { error: error.message.includes("already been registered") ? "That email already has a login — use \"Link an Existing Login\" below instead." : error.message };
+  // An email may have already been used for an Email Invite attempt (even
+  // one whose invite mail never arrived) — that leaves a real auth.users
+  // row with no password and no profile. Rather than refuse with "already
+  // registered" and point at Link Existing Login (which can't set a
+  // password either), set the password directly on that existing login.
+  const { data: existingList, error: listError } = await supabaseAdmin.auth.admin.listUsers({ perPage: 200 });
+  const existingAuthUser = listError ? undefined : existingList.users.find((u) => u.email?.toLowerCase() === email);
+
+  let userId: string;
+  if (existingAuthUser) {
+    const [existingProfile] = await db.select({ id: profiles.id }).from(profiles).where(eq(profiles.id, existingAuthUser.id));
+    if (existingProfile) return { error: "That email already has a full account set up — edit their existing row in the Users list instead." };
+    const { error } = await supabaseAdmin.auth.admin.updateUserById(existingAuthUser.id, {
+      password: parsed.data.password,
+      email_confirm: true,
+      user_metadata: { name: parsed.data.name.trim() },
+    });
+    if (error) return { error: error.message };
+    userId = existingAuthUser.id;
+  } else {
+    const { data, error } = await supabaseAdmin.auth.admin.createUser({
+      email,
+      password: parsed.data.password,
+      email_confirm: true,
+      user_metadata: { name: parsed.data.name.trim() },
+    });
+    if (error) return { error: error.message };
+    userId = data.user.id;
   }
 
   await db.insert(profiles).values({
-    id: data.user.id,
+    id: userId,
     name: parsed.data.name.trim(),
     email,
     roleId: parsed.data.roleId,
@@ -228,5 +248,25 @@ export async function createUserWithPassword(input: z.infer<typeof createUserSch
 
   await db.insert(auditLog).values({ actorId: session.profile.id, action: "Created", entity: "User", entityLabel: parsed.data.name.trim(), detail: `${email} — password set directly, no email sent` });
   revalidatePath("/permissions");
+  return {};
+}
+
+// Sets/resets a password directly on an EXISTING account — covers the same
+// "email invite never arrived" gap as createUserWithPassword above, but for
+// a user who already has a full profile (so createUserWithPassword's own
+// already-registered check correctly refuses to touch them). The admin
+// relays the new password out of band; the user can change it themselves
+// afterward from /set-password.
+export async function setUserPassword(userId: string, password: string): Promise<{ error?: string }> {
+  const session = await assertPermission("permissions", "edit");
+  if (password.length < 8) return { error: "Password must be at least 8 characters." };
+
+  const [profile] = await db.select({ name: profiles.name }).from(profiles).where(eq(profiles.id, userId));
+  if (!profile) return { error: "User not found." };
+
+  const { error } = await supabaseAdmin.auth.admin.updateUserById(userId, { password, email_confirm: true });
+  if (error) return { error: error.message };
+
+  await db.insert(auditLog).values({ actorId: session.profile.id, action: "Password Set", entity: "User", entityLabel: profile.name, detail: "Set directly by admin" });
   return {};
 }

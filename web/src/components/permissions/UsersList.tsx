@@ -2,9 +2,16 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { updateProfile } from "@/server/actions/permissions";
+import { updateProfile, setUserPassword } from "@/server/actions/permissions";
 
-const BRANCHES = ["NAMAYOSO", "THG"] as const;
+const BRANCHES = ["NAMAYOSO MIRDIFF", "NAMAYOSO MARSA"] as const;
+
+function generatePassword(): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
+  let out = "";
+  for (let i = 0; i < 12; i++) out += chars[Math.floor(Math.random() * chars.length)];
+  return out;
+}
 
 type Profile = { id: string; name: string; email: string; branches: string[]; active: boolean; roleId: string; roleName: string };
 type Role = { id: string; name: string };
@@ -48,7 +55,27 @@ function UserEditor({ profile, roles, onDone }: { profile: Profile; roles: Role[
   const [active, setActive] = useState(profile.active);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const [newPassword, setNewPassword] = useState("");
+  const [passwordSet, setPasswordSet] = useState<string | null>(null);
+  const [passwordPending, startPasswordTransition] = useTransition();
   const router = useRouter();
+
+  function handleSetPassword() {
+    setError(null);
+    setPasswordSet(null);
+    if (newPassword.length < 8) {
+      setError("Password must be at least 8 characters.");
+      return;
+    }
+    startPasswordTransition(async () => {
+      const result = await setUserPassword(profile.id, newPassword);
+      if (result.error) setError(result.error);
+      else {
+        setPasswordSet(newPassword);
+        setNewPassword("");
+      }
+    });
+  }
 
   function toggleBranch(b: string) {
     setBranches((bs) => (bs.includes(b) ? bs.filter((x) => x !== b) : [...bs, b]));
@@ -105,6 +132,27 @@ function UserEditor({ profile, roles, onDone }: { profile: Profile; roles: Role[
           <button className="btn ghost" onClick={onDone} disabled={pending}>
             Cancel
           </button>
+        </div>
+
+        <div className="form-row" style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--line)" }}>
+          <label>Set / Reset Password</label>
+          {passwordSet && (
+            <div className="callout" style={{ borderColor: "var(--good)", color: "var(--good)" }}>
+              Password set: <b style={{ fontFamily: "monospace" }}>{passwordSet}</b> — share this with {profile.name} now, it won&apos;t be shown again.
+            </div>
+          )}
+          <div style={{ fontSize: 11, color: "var(--ink-faint)", marginBottom: 6 }}>
+            Use this if an invite email never arrived — sets a real password on their account directly, no email involved.
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <input type="text" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="At least 8 characters" style={{ flex: 1 }} />
+            <button type="button" className="btn ghost" onClick={() => setNewPassword(generatePassword())}>
+              Generate
+            </button>
+            <button type="button" className="btn accent" disabled={passwordPending || newPassword.length < 8} onClick={handleSetPassword}>
+              {passwordPending ? "Setting…" : "Set Password"}
+            </button>
+          </div>
         </div>
       </div>
     </div>

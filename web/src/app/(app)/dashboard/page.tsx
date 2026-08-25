@@ -33,7 +33,7 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
 
   return (
     <>
-      <PageHeader title="Dashboard" subtitle="Live overview of your product master, recipe costing and data health." />
+      <PageHeader title="Dashboard" subtitle={`Welcome, ${session.profile.name} — live overview of your product master, recipe costing and data health.`} />
 
       {tabs.length > 1 && (
         <div className="pill-tabs">
