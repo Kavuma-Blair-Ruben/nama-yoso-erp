@@ -342,14 +342,26 @@ table.data tbody tr:hover{background:var(--bg-panel-alt);}
   .content{padding:14px 10px 40px;}
 }
 
+/* ---------- Print documents (on-screen preview, before actual printing) ---------- */
+.print-doc{padding:36px;}
+/* The line-items table on a GRN/LPO printout has 8-11 columns of real
+   business data (batch/lot, expiry, per-line tax) — on a phone that's wider
+   than the screen even after .print-doc's own padding shrinks, so it scrolls
+   within its own box instead of silently clipping columns off-screen. */
+.print-table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+@media(max-width:640px){
+  .print-doc{padding:16px;}
+}
+
 /* Shared print stylesheet for printable views (recipe cook book, PO/GRN
    documents, barcode/label sheets): hide the app chrome and any element
    marked .no-print, and let the printable document fill the page. */
 @media print{
   .sidebar,.no-print{display:none !important;}
   .app-shell,.main,.content{display:block !important;margin:0 !important;padding:0 !important;}
-  body{background:#fff !important;}
+  body{background:#fff !important;overflow-x:visible !important;}
   .print-doc{box-shadow:none !important;border:none !important;max-width:none !important;margin:0 !important;}
+  .print-table-wrap{overflow-x:visible !important;} /* the on-screen horizontal scroll is a mobile-viewing aid only — real paper is wide enough that every column should just render, never get clipped */
   a[href]:after{content:"";}
 }
 .print-only{display:none;}

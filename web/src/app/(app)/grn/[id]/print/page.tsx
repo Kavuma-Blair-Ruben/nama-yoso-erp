@@ -20,7 +20,7 @@ export default async function GrnPrintPage({ params }: PageProps<"/grn/[id]/prin
         <PrintButton label="Print GRN" />
       </div>
 
-      <div className="print-doc" style={{ background: "#fff", border: "1px solid var(--line)", borderRadius: 10, padding: 36, boxShadow: "0 1px 3px rgba(0,0,0,.08)" }}>
+      <div className="print-doc" style={{ background: "#fff", border: "1px solid var(--line)", borderRadius: 10, boxShadow: "0 1px 3px rgba(0,0,0,.08)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: "2px solid #111", paddingBottom: 16, marginBottom: 20 }}>
           <Logo height={48} />
           <div style={{ textAlign: "right" }}>
@@ -58,7 +58,8 @@ export default async function GrnPrintPage({ params }: PageProps<"/grn/[id]/prin
           </div>
         </div>
 
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10.5, marginBottom: 16 }}>
+        <div className="print-table-wrap">
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10.5, marginBottom: 16, minWidth: 640 }}>
           <thead>
             <tr style={{ borderBottom: "1.5px solid #111" }}>
               <th style={{ textAlign: "left", padding: "6px 3px", width: 20 }}>#</th>
@@ -95,6 +96,7 @@ export default async function GrnPrintPage({ params }: PageProps<"/grn/[id]/prin
             })}
           </tbody>
         </table>
+        </div>
 
         <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 24 }}>
           <table style={{ fontSize: 12.5, minWidth: 240 }}>
