@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import JsBarcode from "jsbarcode";
 import QRCode from "qrcode";
 import { fmt } from "@/lib/format";
+import { sendGrnLabelsToRoutedPrinter } from "@/server/actions/grn";
 
 export type Line = {
   id: string;
@@ -61,9 +62,26 @@ const LABEL_SIZES = {
 } as const;
 type PrintMode = keyof typeof LABEL_SIZES;
 
-export function LotLabelSheet({ lines }: { lines: Line[] }) {
+export function LotLabelSheet({ lines, grnId }: { lines: Line[]; grnId: string }) {
   const [printMode, setPrintMode] = useState<PrintMode>("sheet");
   const rollSize = LABEL_SIZES[printMode];
+  const [pending, startTransition] = useTransition();
+  const [message, setMessage] = useState<string | null>(null);
+  const [isError, setIsError] = useState(false);
+
+  function handleSendToPrinter() {
+    setMessage(null);
+    startTransition(async () => {
+      const result = await sendGrnLabelsToRoutedPrinter(grnId);
+      if (result.error) {
+        setIsError(true);
+        setMessage(result.error);
+      } else {
+        setIsError(false);
+        setMessage(result.message ?? "Sent");
+      }
+    });
+  }
 
   return (
     <>
@@ -76,8 +94,12 @@ export function LotLabelSheet({ lines }: { lines: Line[] }) {
           <option value="4x6">Label/sticker printer — 4×6in</option>
         </select>
         <button className="btn accent" onClick={() => window.print()}>Print Labels</button>
+        <button className="btn ghost" disabled={pending} onClick={handleSendToPrinter}>
+          {pending ? "Sending…" : "Send to Printer (via Devices)"}
+        </button>
         <span style={{ fontSize: 11.5, color: "var(--ink-faint)" }}>One label per received line — barcode encodes the lot number, QR code opens its traceability page.</span>
       </div>
+      {message && <div className={`no-print callout ${isError ? "" : ""}`} style={{ marginBottom: 12, borderColor: isError ? "var(--bad)" : undefined, color: isError ? "var(--bad)" : undefined }}>{message}</div>}
       {rollSize && <style>{`@media print { @page { size: ${rollSize.width} ${rollSize.height}; margin: 0; } }`}</style>}
       <div className={rollSize ? "label-sheet roll" : "label-sheet"} style={rollSize ? { ["--label-w" as string]: rollSize.width, ["--label-h" as string]: rollSize.height } : undefined}>
         {lines.map((l) => (

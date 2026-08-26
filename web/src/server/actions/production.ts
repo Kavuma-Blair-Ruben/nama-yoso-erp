@@ -10,6 +10,8 @@ import { nextProductionBatchNo, nextLotNumber } from "@/server/db/sequences";
 import { recordStockMovement } from "@/server/db/stockLedger";
 import { getDefaultCostCenterId } from "@/server/db/costCenterDefaults";
 import { convertQtyToCanonical } from "@/lib/unitMath";
+import { sendToRoutedPrinter } from "@/lib/printRouting";
+import { buildProductionLabelEscPos } from "@/lib/escpos";
 
 const ingredientSchema = z.object({
   stockItemId: z.string().min(1),
@@ -86,7 +88,7 @@ async function insertProductionBatch(tx: Db, input: z.infer<typeof productionInp
     await tx.insert(productionBatchIngredients).values({ productionBatchId: batch.id, ...row });
   }
 
-  return { batchId: batch.id, batchNo, subRecipe };
+  return { batchId: batch.id, batchNo, lotNo, subRecipe };
 }
 
 // Consumes each ingredient's own stock balance and credits the sub-recipe's
@@ -143,11 +145,27 @@ export async function openProductionBatch(input: z.infer<typeof productionInputS
   const parsed = productionInputSchema.safeParse(input);
   if (!parsed.success) return { error: "Add a valid yield and at least one ingredient line." };
 
-  const { batchId } = await db.transaction(async (tx) => {
+  const { batchId, batchNo, lotNo, subRecipe } = await db.transaction(async (tx) => {
     const created = await insertProductionBatch(tx, parsed.data, session.profile.id);
     await tx.insert(auditLog).values({ actorId: session.profile.id, action: "Production Opened", entity: "Production Batch", entityLabel: created.batchNo, detail: "Stock not yet updated" });
     return created;
   });
+
+  // Best-effort — run after the transaction commits so a missing/offline
+  // printer never undoes a real production ticket that already exists.
+  await sendToRoutedPrinter(
+    parsed.data.branchId,
+    "production_label",
+    buildProductionLabelEscPos({
+      batchNo,
+      lotNo,
+      subRecipeName: subRecipe.name,
+      yieldQty: parsed.data.yieldQty,
+      yieldUnit: parsed.data.yieldUnit ?? "",
+      producedDate: parsed.data.producedDate,
+      expiryDate: parsed.data.expiryDate ?? null,
+    })
+  );
 
   revalidatePath("/production");
   return { id: batchId };

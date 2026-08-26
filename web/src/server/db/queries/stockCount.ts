@@ -1,11 +1,13 @@
 import "server-only";
 import { db } from "@/server/db";
 import { stockCounts, stockCountLines, stockItems, branches, profiles, stockCountTemplates, stockCountTemplateItems } from "@/server/db/schema";
-import { and, eq, desc, count } from "drizzle-orm";
+import { and, eq, desc, count, gte, lte } from "drizzle-orm";
 
-export async function listStockCounts(filters: { status?: string }) {
+export async function listStockCounts(filters: { status?: string; from?: string; to?: string }) {
   const conditions = [];
   if (filters.status) conditions.push(eq(stockCounts.status, filters.status));
+  if (filters.from) conditions.push(gte(stockCounts.countDate, filters.from));
+  if (filters.to) conditions.push(lte(stockCounts.countDate, filters.to));
 
   const rows = await db
     .select({
@@ -80,7 +82,16 @@ export async function getStockCountForEdit(id: string) {
   const [stockCount] = await db.select().from(stockCounts).where(and(eq(stockCounts.id, id), eq(stockCounts.status, "DRAFT")));
   if (!stockCount) return null;
 
-  const lines = await db
+  const lines = await getStockCountDraftLines(id);
+  return { stockCount, lines };
+}
+
+// Split out from getStockCountForEdit so the "pull in others' counts"
+// refresh action (see updateStockCountDraft's upsert-not-replace save,
+// which lets concurrent counters' additions survive each other's saves)
+// can re-fetch just the lines without a second full page load.
+export async function getStockCountDraftLines(id: string) {
+  return db
     .select({
       stockItemId: stockCountLines.stockItemId,
       legacyCode: stockItems.legacyCode,
@@ -89,10 +100,10 @@ export async function getStockCountForEdit(id: string) {
       countedQty: stockCountLines.countedQty,
       unitLabel: stockCountLines.unitLabel,
       rateAtCount: stockCountLines.rateAtCount,
+      countedByName: profiles.name,
     })
     .from(stockCountLines)
     .innerJoin(stockItems, eq(stockCountLines.stockItemId, stockItems.id))
+    .leftJoin(profiles, eq(stockCountLines.countedBy, profiles.id))
     .where(eq(stockCountLines.stockCountId, id));
-
-  return { stockCount, lines };
 }

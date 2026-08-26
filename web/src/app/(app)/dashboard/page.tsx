@@ -4,11 +4,12 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { getDashboardData, getDashboardDigestStats } from "@/server/db/queries/dashboard";
 import { getPurchasingStats, getCostCenterStats, listCostAdjustmentEvents } from "@/server/db/queries/reports";
 import { listSuppliers } from "@/server/db/queries/suppliers";
-import { getMenuEngineeringData } from "@/server/db/queries/sales";
+import { getMenuEngineeringData, getCogsAnalysis } from "@/server/db/queries/sales";
 import { getSalesDashboardStats } from "@/server/db/queries/posOrders";
 import { loadCostingGraph } from "@/server/costing/recipeCost";
 import { buildDailySummary } from "@/lib/dailySummary";
-import { fmt, money, pct } from "@/lib/format";
+import { fmt, money, pct, todayStr } from "@/lib/format";
+import { DateRangeBar } from "@/components/dashboard/DateRangeBar";
 import { CategoryBarChart } from "@/components/dashboard/CategoryBarChart";
 import { TopCostBarChart } from "@/components/dashboard/TopCostBarChart";
 import { DonutChart } from "@/components/charts/DonutChart";
@@ -17,45 +18,28 @@ import { TrendLineChart } from "@/components/charts/TrendLineChart";
 import { MenuEngineeringScatter } from "@/components/charts/MenuEngineeringScatter";
 import { Sparkline } from "@/components/charts/Sparkline";
 
-type Tab = "overview" | "purchasing" | "suppliers" | "cost" | "menuengineering" | "costcenter" | "salesdashboard";
-const ANALYTICS_TABS: { id: Tab; label: string }[] = [
-  { id: "purchasing", label: "Purchasing Dashboard" },
-  { id: "suppliers", label: "Supplier Dashboard" },
-  { id: "cost", label: "Cost Dashboard" },
-  { id: "menuengineering", label: "Menu Engineering" },
-  { id: "costcenter", label: "Cost by Sector (Live)" },
-  { id: "salesdashboard", label: "Sales Dashboard" },
-];
+type Tab = "overview" | "purchasing" | "suppliers" | "cost" | "cogs" | "menuengineering" | "costcenter" | "salesdashboard";
 
 export default async function DashboardPage({ searchParams }: PageProps<"/dashboard">) {
   const session = await requireAuth(); // dashboard itself has no section gate, matching index.html
   const canSeeAnalytics = hasAccess(session, "reports", "view");
   const sp = await searchParams;
   const tab: Tab = typeof sp.tab === "string" ? (sp.tab as Tab) : "overview";
-
-  const tabs: { id: Tab; label: string }[] = [{ id: "overview", label: "Overview" }, ...(canSeeAnalytics ? ANALYTICS_TABS : [])];
+  const to = typeof sp.to === "string" ? sp.to : todayStr();
+  const from = typeof sp.from === "string" ? sp.from : new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
 
   return (
     <>
       <PageHeader title="Dashboard" subtitle={`Welcome, ${session.profile.name} — live overview of your product master, recipe costing and data health.`} />
 
-      {tabs.length > 1 && (
-        <div className="pill-tabs">
-          {tabs.map((t) => (
-            <Link key={t.id} href={`/dashboard?tab=${t.id}`} className={`btn ${tab === t.id ? "" : "ghost"}`} style={{ borderRadius: 20 }}>
-              {t.label}
-            </Link>
-          ))}
-        </div>
-      )}
-
       {tab === "overview" && <OverviewTab />}
       {canSeeAnalytics && tab === "purchasing" && <PurchasingTab />}
       {canSeeAnalytics && tab === "suppliers" && <SupplierDashboardTab />}
       {canSeeAnalytics && tab === "cost" && <CostDashboardTab />}
-      {canSeeAnalytics && tab === "menuengineering" && <MenuEngineeringTab />}
-      {canSeeAnalytics && tab === "costcenter" && <CostCenterTab />}
-      {canSeeAnalytics && tab === "salesdashboard" && <SalesDashboardTab />}
+      {canSeeAnalytics && tab === "cogs" && <CogsAnalysisTab from={from} to={to} />}
+      {canSeeAnalytics && tab === "menuengineering" && <MenuEngineeringTab from={from} to={to} />}
+      {canSeeAnalytics && tab === "costcenter" && <CostCenterTab from={from} to={to} />}
+      {canSeeAnalytics && tab === "salesdashboard" && <SalesDashboardTab from={from} to={to} />}
     </>
   );
 }
@@ -281,6 +265,15 @@ async function PurchasingTab() {
   );
 }
 
+const GRADE_COLOR: Record<string, string> = {
+  A: "var(--good)",
+  B: "var(--good)",
+  C: "var(--accent)",
+  D: "var(--ink-faint)",
+  E: "var(--bad)",
+  F: "var(--bad)",
+};
+
 async function SupplierDashboardTab() {
   const suppliers = await listSuppliers();
   const bySpend = [...suppliers].sort((a, b) => b.totalSpend - a.totalSpend).filter((s) => s.totalSpend > 0);
@@ -290,6 +283,9 @@ async function SupplierDashboardTab() {
   const flaggedSuppliers = suppliers.filter((s) => s.qualityPct != null && s.qualityPct < 90);
   const suppliersWithLeadTime = suppliers.filter((s) => s.avgLeadTimeDays != null);
   const avgLeadTime = suppliersWithLeadTime.length ? suppliersWithLeadTime.reduce((s, x) => s + (x.avgLeadTimeDays ?? 0), 0) / suppliersWithLeadTime.length : null;
+  const ranked = [...suppliers].filter((s) => s.gradeScore != null).sort((a, b) => (b.gradeScore ?? 0) - (a.gradeScore ?? 0));
+  const gradedCount = ranked.length;
+  const poorGrades = ranked.filter((s) => s.grade === "E" || s.grade === "F").length;
 
   return (
     <>
@@ -315,22 +311,62 @@ async function SupplierDashboardTab() {
           </div>
         </div>
         <div className="panel">
-          <div className="panel-head"><h3>Top Suppliers by Spend</h3></div>
-          <div className="panel-body chart-card">
-            {bySpend.length ? (
-              <HorizontalBarChart data={bySpend.slice(0, 8).map((s) => ({ label: s.name, value: s.totalSpend, href: `/suppliers/${s.id}` }))} format="money0" color="var(--chart-1)" />
+          <div className="panel-head">
+            <h3>Supplier Scorecard</h3>
+            <span style={{ fontSize: 11, color: "var(--ink-faint)" }}>
+              {gradedCount ? `${gradedCount} graded · ranked A (best) to F` : "No graded suppliers yet"}
+            </span>
+          </div>
+          <div className="table-wrap" style={{ maxHeight: 280 }}>
+            {ranked.length ? (
+              <table className="data">
+                <thead><tr><th>#</th><th>Supplier</th><th className="right">Quality</th><th className="right">Lead Time</th><th className="right">Grade</th></tr></thead>
+                <tbody>
+                  {ranked.slice(0, 8).map((s, i) => (
+                    <tr key={s.id}>
+                      <td className="mono-r">{i + 1}</td>
+                      <td><Link href={`/suppliers/${s.id}`}>{s.name}</Link></td>
+                      <td className="mono-r">{s.qualityPct != null ? `${fmt(s.qualityPct, 0)}%` : "-"}</td>
+                      <td className="mono-r">{s.avgLeadTimeDays != null ? `${fmt(s.avgLeadTimeDays, 1)}d` : "-"}</td>
+                      <td className="right">
+                        <span
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            width: 22,
+                            height: 22,
+                            borderRadius: 6,
+                            fontWeight: 800,
+                            fontSize: 12.5,
+                            color: "#fff",
+                            background: GRADE_COLOR[s.grade!],
+                          }}
+                        >
+                          {s.grade}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             ) : (
-              <div style={{ color: "var(--ink-faint)", fontSize: 12.5 }}>No purchase history yet.</div>
+              <div style={{ color: "var(--ink-faint)", fontSize: 12.5, padding: 12 }}>Not enough GRN/lead-time history to grade suppliers yet.</div>
             )}
           </div>
         </div>
       </div>
+      {poorGrades > 0 && (
+        <div className="callout" style={{ marginTop: 12 }}>
+          ⚠️ {poorGrades} supplier{poorGrades === 1 ? "" : "s"} graded E or F on quality/lead-time — review before placing new orders.
+        </div>
+      )}
       <div style={{ height: 16 }} />
       <div className="panel">
         <div className="panel-head"><h3>Supplier Quality &amp; Delivery</h3></div>
         <div className="table-wrap" style={{ maxHeight: 420 }}>
           <table className="data">
-            <thead><tr><th>Supplier</th><th className="right">Total Spend</th><th className="right">Outstanding</th><th className="right">Deliveries</th><th className="right">Quality</th><th className="right">Avg Lead Time</th></tr></thead>
+            <thead><tr><th>Supplier</th><th className="right">Total Spend</th><th className="right">Outstanding</th><th className="right">Deliveries</th><th className="right">Quality</th><th className="right">Avg Lead Time</th><th className="right">Grade</th></tr></thead>
             <tbody>
               {suppliers.length ? (
                 [...suppliers].sort((a, b) => b.totalSpend - a.totalSpend).map((s) => (
@@ -341,10 +377,32 @@ async function SupplierDashboardTab() {
                     <td className="mono-r">{s.deliveryCount}</td>
                     <td className="right">{s.qualityPct != null ? <span className={`tag ${s.qualityPct < 90 ? "bad" : "good"}`}>{fmt(s.qualityPct, 0)}%</span> : "-"}</td>
                     <td className="mono-r">{s.avgLeadTimeDays != null ? `${fmt(s.avgLeadTimeDays, 1)}d` : "-"}</td>
+                    <td className="right">
+                      {s.grade ? (
+                        <span
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            width: 20,
+                            height: 20,
+                            borderRadius: 5,
+                            fontWeight: 800,
+                            fontSize: 11.5,
+                            color: "#fff",
+                            background: GRADE_COLOR[s.grade],
+                          }}
+                        >
+                          {s.grade}
+                        </span>
+                      ) : (
+                        "-"
+                      )}
+                    </td>
                   </tr>
                 ))
               ) : (
-                <tr className="empty-row"><td colSpan={6}>No suppliers yet.</td></tr>
+                <tr className="empty-row"><td colSpan={7}>No suppliers yet.</td></tr>
               )}
             </tbody>
           </table>
@@ -435,13 +493,118 @@ async function CostDashboardTab() {
   );
 }
 
-async function MenuEngineeringTab() {
-  const { items, avgQty, avgMargin } = await getMenuEngineeringData();
+async function CogsAnalysisTab({ from, to }: { from: string; to: string }) {
+  const data = await getCogsAnalysis({ from, to });
+  const overTarget = data.targetCogsPct != null && data.cogsPct != null && data.cogsPct > data.targetCogsPct;
+
+  return (
+    <>
+      <DateRangeBar tab="cogs" from={from} to={to} />
+      <div className="callout">
+        <b>What this shows:</b> real Cost of Goods Sold — every recipe actually sold in this range, priced at its live
+        ingredient cost, against the revenue it brought in. This is the same underlying numbers as the Recipe Sales
+        Report, rolled up into a trend, a by-section breakdown, and a target comparison instead of a flat table.
+      </div>
+      {!data.hasData ? (
+        <div className="callout">No recipe sales in this date range — import sales data on the Recipe Sales report first.</div>
+      ) : (
+        <>
+          <div className="kpi-grid">
+            <div className="kpi">
+              <div className="kpi-icon">💵</div>
+              <div className="n">{money(data.totalRevenue, 0)}</div>
+              <div className="l">Revenue</div>
+            </div>
+            <div className={`kpi${overTarget ? " accent-bad" : " accent-good"}`}>
+              <div className="kpi-icon">🍳</div>
+              <div className="n">{money(data.totalCogs, 0)}</div>
+              <div className="l">COGS (Food Cost)</div>
+            </div>
+            <div className={`kpi${overTarget ? " accent-bad" : ""}`}>
+              <div className="kpi-icon">🎯</div>
+              <div className="n" style={{ color: overTarget ? "var(--bad)" : "inherit" }}>{data.cogsPct != null ? `${fmt(data.cogsPct, 1)}%` : "—"}</div>
+              <div className="l">COGS %</div>
+              <div className="d">{data.targetCogsPct != null ? `Target ${fmt(data.targetCogsPct, 1)}%` : "No target set on sold recipes"}</div>
+            </div>
+            <div className="kpi accent-good">
+              <div className="kpi-icon">📈</div>
+              <div className="n">{money(data.grossProfit, 0)}</div>
+              <div className="l">Gross Profit</div>
+            </div>
+          </div>
+
+          {data.byCategory.length > 0 && (
+            <>
+              <div className="panel">
+                <div className="panel-head"><h3>Food vs. Beverage Cost</h3></div>
+                <div className="table-wrap">
+                  <table className="data">
+                    <thead><tr><th>Category</th><th className="right">Revenue</th><th className="right">COGS</th><th className="right">COGS %</th></tr></thead>
+                    <tbody>
+                      {data.byCategory.map((c) => (
+                        <tr key={c.category}>
+                          <td style={{ textTransform: "capitalize" }}>{c.category === "food" ? "🍽 Food" : "🍹 Beverage"}</td>
+                          <td className="mono-r">{money(c.revenue, 0)}</td>
+                          <td className="mono-r">{money(c.cogs, 0)}</td>
+                          <td className="right">{c.cogsPct != null ? <span className={`tag ${c.cogsPct > 35 ? "bad" : "good"}`}>{fmt(c.cogsPct, 1)}%</span> : "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <div style={{ height: 16 }} />
+            </>
+          )}
+
+          <div className="panel">
+            <div className="panel-head"><h3>COGS % Trend</h3></div>
+            <div className="panel-body chart-card">
+              <TrendLineChart data={data.trend.map((t) => ({ label: t.label, value: t.cogsPct ?? 0 }))} format="percent" color={overTarget ? "var(--bad)" : "var(--good)"} />
+            </div>
+          </div>
+
+          <div style={{ height: 16 }} />
+
+          <div className="grid-2">
+            <div className="panel">
+              <div className="panel-head"><h3>COGS by Section</h3></div>
+              <div className="panel-body chart-card">
+                <HorizontalBarChart data={data.bySection.map((s) => ({ label: s.section, value: s.cogs }))} format="money0" color="var(--chart-4)" />
+              </div>
+            </div>
+            <div className="panel">
+              <div className="panel-head"><h3>Top Recipes by COGS $</h3></div>
+              <div className="table-wrap" style={{ maxHeight: 320 }}>
+                <table className="data">
+                  <thead><tr><th>Recipe</th><th className="right">COGS</th><th className="right">COGS %</th></tr></thead>
+                  <tbody>
+                    {data.topByCogs.map((r, i) => (
+                      <tr key={i}>
+                        <td>{r.code ? <Link href={`/recipes/main/${r.code}`}>{r.name}</Link> : r.name}</td>
+                        <td className="mono-r">{money(r.cogs, 0)}</td>
+                        <td className="right">{r.cogsPct != null ? <span className={`tag ${r.cogsPct > 35 ? "bad" : "good"}`}>{fmt(r.cogsPct, 1)}%</span> : "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
+async function MenuEngineeringTab({ from, to }: { from: string; to: string }) {
+  const { items, avgQty, avgMargin } = await getMenuEngineeringData({ from, to });
   const byClass = { Star: 0, "Plow-Horse": 0, Puzzle: 0, Dog: 0 } as Record<string, number>;
   for (const it of items) byClass[it.classification]++;
 
   return (
     <>
+      <DateRangeBar tab="menuengineering" from={from} to={to} />
       <div className="callout">
         <b>Stars</b> (top-right): popular and profitable — protect these. <b>Plow-Horses</b> (bottom-right): popular but thin margin — consider a price nudge.{" "}
         <b>Puzzles</b> (top-left): profitable but rarely ordered — promote or reposition on the menu. <b>Dogs</b> (bottom-left): neither — candidates to cut or rework.
@@ -468,8 +631,8 @@ async function MenuEngineeringTab() {
   );
 }
 
-async function CostCenterTab() {
-  const rows = await getCostCenterStats();
+async function CostCenterTab({ from, to }: { from: string; to: string }) {
+  const rows = await getCostCenterStats({ from, to });
   const totalGrnSpend = rows.reduce((s, r) => s + r.grnSpend, 0);
   const totalWastage = rows.reduce((s, r) => s + r.wastageCost, 0);
   const byBranch = new Map<string, typeof rows>();
@@ -477,6 +640,7 @@ async function CostCenterTab() {
 
   return (
     <>
+      <DateRangeBar tab="costcenter" from={from} to={to} />
       <div className="callout">
         <b>What this shows:</b> real GRN receipts and wastage posted against each branch&apos;s sectors — a Kitchen sector&apos;s
         spend reads as your food cost, a Bar sector&apos;s as your beverage cost. Unlike &quot;Cost by Brand &amp; Section&quot;,
@@ -513,11 +677,12 @@ async function CostCenterTab() {
   );
 }
 
-async function SalesDashboardTab() {
-  const stats = await getSalesDashboardStats(30);
+async function SalesDashboardTab({ from, to }: { from: string; to: string }) {
+  const stats = await getSalesDashboardStats({ from, to });
 
   return (
     <>
+      <DateRangeBar tab="salesdashboard" from={from} to={to} />
       <div className="callout">
         <b>What this shows:</b> order-level financial totals from your POS integration (Foodics) — gross revenue before
         discounts, discounts given, and net collected. Separate from the Recipe Sales Report, which breaks revenue down

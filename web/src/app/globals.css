@@ -165,6 +165,7 @@ table.data thead th{
   text-align:left;font:700 10.5px var(--sans);text-transform:uppercase;letter-spacing:.06em;
   color:var(--ink-soft);padding:8px 10px;border-bottom:2px solid var(--line);white-space:nowrap;position:sticky;top:0;background:var(--bg-card);
 }
+table.data thead th.right{text-align:right;} /* .right alone loses to the rule above on specificity, silently staying left-aligned */
 table.data tbody td{padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:middle;}
 table.data tbody tr{cursor:pointer;transition:background .1s;}
 table.data tbody tr:hover{background:var(--bg-panel-alt);}

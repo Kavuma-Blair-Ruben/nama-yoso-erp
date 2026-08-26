@@ -1,7 +1,7 @@
 import "server-only";
 import { db } from "@/server/db";
 import { productionBatches, productionBatchIngredients, subRecipes, stockItems, recipeIngredients, branches, profiles, stockBalances } from "@/server/db/schema";
-import { and, eq, ilike, or, desc, inArray, sql } from "drizzle-orm";
+import { and, eq, ilike, or, desc, inArray, sql, gte, lte } from "drizzle-orm";
 
 // One round trip for the New Production Batch builder: every stockable,
 // non-archived sub-recipe plus its flat ingredient list (at live rate),
@@ -62,7 +62,7 @@ export async function listEligibleSubRecipesWithIngredients() {
 // sector-scoped view see listStockBalancesBySector().
 export async function listAllStockBalances() {
   return db
-    .select({ stockItemId: stockBalances.stockItemId, branchId: stockBalances.branchId, qtyOnHand: sql<number>`sum(${stockBalances.qtyOnHand})` })
+    .select({ stockItemId: stockBalances.stockItemId, branchId: stockBalances.branchId, qtyOnHand: sql<number>`sum(${stockBalances.qtyOnHand})::float8` })
     .from(stockBalances)
     .groupBy(stockBalances.stockItemId, stockBalances.branchId);
 }
@@ -76,7 +76,7 @@ export async function listStockBalancesBySector() {
     .from(stockBalances);
 }
 
-export async function listProductionBatches(filters: { status?: string; q?: string }) {
+export async function listProductionBatches(filters: { status?: string; q?: string; from?: string; to?: string }) {
   const conditions = [];
   if (filters.status) conditions.push(eq(productionBatches.status, filters.status));
   if (filters.q) {
@@ -84,6 +84,8 @@ export async function listProductionBatches(filters: { status?: string; q?: stri
       or(ilike(subRecipes.name, `%${filters.q}%`), ilike(subRecipes.legacyCode, `%${filters.q}%`), ilike(productionBatches.batchNo, `%${filters.q}%`))!
     );
   }
+  if (filters.from) conditions.push(gte(productionBatches.producedDate, filters.from));
+  if (filters.to) conditions.push(lte(productionBatches.producedDate, filters.to));
 
   return db
     .select({

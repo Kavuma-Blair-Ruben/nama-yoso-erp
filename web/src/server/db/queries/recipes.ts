@@ -211,6 +211,7 @@ export async function getRecipeDetail(type: RecipeType, code: string) {
         photoUrl: mainRecipes.photoUrl,
         branches: mainRecipes.branches,
         isCombo: mainRecipes.isCombo,
+        costCategory: mainRecipes.costCategory,
       })
       .from(mainRecipes)
       .where(eq(mainRecipes.legacyCode, code));

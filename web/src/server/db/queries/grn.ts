@@ -18,9 +18,9 @@ import {
   profiles,
   costCenters,
 } from "@/server/db/schema";
-import { and, eq, ilike, or, sql, desc, inArray, notInArray } from "drizzle-orm";
+import { and, eq, ilike, or, sql, desc, inArray, notInArray, gte, lte } from "drizzle-orm";
 
-export async function listGrns(filters: { q?: string; costCenterId?: string }) {
+export async function listGrns(filters: { q?: string; costCenterId?: string; from?: string; to?: string }) {
   const conditions = [];
   if (filters.q) {
     conditions.push(
@@ -28,6 +28,8 @@ export async function listGrns(filters: { q?: string; costCenterId?: string }) {
     );
   }
   if (filters.costCenterId) conditions.push(eq(grns.costCenterId, filters.costCenterId));
+  if (filters.from) conditions.push(gte(grns.receivedDate, filters.from));
+  if (filters.to) conditions.push(lte(grns.receivedDate, filters.to));
   const rows = await db
     .select({
       id: grns.id,
@@ -325,7 +327,10 @@ export async function listSupplierReturnsForGrn(grnId: string) {
     .orderBy(desc(supplierReturns.createdAt));
 }
 
-export async function listAllSupplierReturns() {
+export async function listAllSupplierReturns(filters: { from?: string; to?: string } = {}) {
+  const conditions = [];
+  if (filters.from) conditions.push(gte(supplierReturns.createdAt, new Date(filters.from + "T00:00:00")));
+  if (filters.to) conditions.push(lte(supplierReturns.createdAt, new Date(filters.to + "T23:59:59")));
   return db
     .select({
       id: supplierReturns.id,
@@ -340,6 +345,7 @@ export async function listAllSupplierReturns() {
     .from(supplierReturns)
     .innerJoin(grns, eq(supplierReturns.grnId, grns.id))
     .innerJoin(suppliers, eq(supplierReturns.supplierId, suppliers.id))
+    .where(conditions.length ? and(...conditions) : undefined)
     .orderBy(desc(supplierReturns.createdAt));
 }
 

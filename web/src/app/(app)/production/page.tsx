@@ -18,7 +18,14 @@ export default async function ProductionPage({ searchParams }: PageProps<"/produ
       <PageHeader
         title="Production"
         subtitle="Batch-produce stockable sub-recipes — consumes ingredient stock, credits the finished item's stock."
-        action={canEdit ? <Link href="/production/new" className="btn accent">+ New Production Ticket</Link> : undefined}
+        action={
+          canEdit ? (
+            <div style={{ display: "flex", gap: 8 }}>
+              <Link href="/production/suggestions" className="btn ghost">🍳 Auto Production</Link>
+              <Link href="/production/new" className="btn accent">+ New Production Ticket</Link>
+            </div>
+          ) : undefined
+        }
       />
       {openCount > 0 && (
         <div className="callout" style={{ borderColor: "var(--accent)" }}>

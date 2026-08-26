@@ -1,12 +1,14 @@
 import "server-only";
 import { db } from "@/server/db";
 import { purchaseOrders, purchaseOrderLines, suppliers, stockItems, branches, policySettings, poApprovalSteps, purchaseOrderApprovals, roles, profiles } from "@/server/db/schema";
-import { and, eq, ilike, or, sql, desc } from "drizzle-orm";
+import { and, eq, ilike, or, sql, desc, gte, lte } from "drizzle-orm";
 
-export async function listPurchaseOrders(filters: { q?: string; status?: string }) {
+export async function listPurchaseOrders(filters: { q?: string; status?: string; from?: string; to?: string }) {
   const conditions = [];
   if (filters.q) conditions.push(or(ilike(purchaseOrders.poNumber, `%${filters.q}%`), ilike(suppliers.name, `%${filters.q}%`))!);
   if (filters.status) conditions.push(eq(purchaseOrders.status, filters.status));
+  if (filters.from) conditions.push(gte(purchaseOrders.createdDate, filters.from));
+  if (filters.to) conditions.push(lte(purchaseOrders.createdDate, filters.to));
 
   const rows = await db
     .select({

@@ -1,0 +1,2 @@
+ALTER TABLE "print_routes" DROP CONSTRAINT "print_routes_document_type_check";--> statement-breakpoint
+ALTER TABLE "print_routes" ADD CONSTRAINT "print_routes_document_type_check" CHECK ("print_routes"."document_type" in ('expiry_ticket','production_label','wastage_ticket','grn_label','product_label'));

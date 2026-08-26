@@ -1,7 +1,7 @@
 import "server-only";
 import { db } from "@/server/db";
 import { invoicesHistorical, purchaseLinesHistorical, suppliers, grns } from "@/server/db/schema";
-import { and, eq, ilike, or, desc, isNotNull, ne, sql } from "drizzle-orm";
+import { and, eq, ilike, or, desc, isNotNull, ne, sql, gte, lte } from "drizzle-orm";
 
 export type InvoiceRow = {
   id: string;
@@ -19,11 +19,13 @@ export type InvoiceRow = {
 // A GRN with a real Tax Invoice/Delivery Note attached doubles as its own AP
 // record — this merges it into the same list as the imported historical
 // ledger so there's one place to see everything owed, regardless of source.
-export async function listInvoices(filters: { q?: string; status?: string; limit?: number }): Promise<InvoiceRow[]> {
+export async function listInvoices(filters: { q?: string; status?: string; limit?: number; from?: string; to?: string }): Promise<InvoiceRow[]> {
   const limit = filters.limit ?? 500;
   const historicalConditions = [];
   if (filters.q) historicalConditions.push(or(ilike(invoicesHistorical.invoiceNumber, `%${filters.q}%`), ilike(suppliers.name, `%${filters.q}%`))!);
   if (filters.status) historicalConditions.push(eq(invoicesHistorical.status, filters.status));
+  if (filters.from) historicalConditions.push(gte(invoicesHistorical.invoiceDate, filters.from));
+  if (filters.to) historicalConditions.push(lte(invoicesHistorical.invoiceDate, filters.to));
 
   const historicalRows = await db
     .select({
@@ -50,6 +52,8 @@ export async function listInvoices(filters: { q?: string; status?: string; limit
     const grnConditions = [eq(grns.status, "POSTED"), isNotNull(grns.invoiceNumber), ne(grns.invoiceNumber, "")];
     if (filters.q) grnConditions.push(or(ilike(grns.invoiceNumber, `%${filters.q}%`), ilike(suppliers.name, `%${filters.q}%`))!);
     if (filters.status) grnConditions.push(eq(grns.paymentStatus, filters.status));
+    if (filters.from) grnConditions.push(gte(grns.receivedDate, filters.from));
+    if (filters.to) grnConditions.push(lte(grns.receivedDate, filters.to));
 
     const rawGrnRows = await db
       .select({

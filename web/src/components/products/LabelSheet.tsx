@@ -1,11 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import JsBarcode from "jsbarcode";
 import QRCode from "qrcode";
 import { money } from "@/lib/format";
+import { sendProductLabelToRoutedPrinter } from "@/server/actions/products";
 
-type Product = { legacyCode: string; name: string; purchaseRate: number | null; purchaseUnit: string | null };
+type Product = { id: string; legacyCode: string; name: string; purchaseRate: number | null; purchaseUnit: string | null };
+type Branch = { id: string; name: string };
 
 function Label({ product, qrDataUrl }: { product: Product; qrDataUrl: string | null }) {
   const ref = useRef<SVGSVGElement>(null);
@@ -38,10 +40,14 @@ const LABEL_SIZES = {
 } as const;
 type PrintMode = keyof typeof LABEL_SIZES;
 
-export function LabelSheet({ product }: { product: Product }) {
+export function LabelSheet({ product, branches }: { product: Product; branches: Branch[] }) {
   const [copies, setCopies] = useState(12);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [printMode, setPrintMode] = useState<PrintMode>("sheet");
+  const [branchId, setBranchId] = useState(branches[0]?.id ?? "");
+  const [pending, startTransition] = useTransition();
+  const [message, setMessage] = useState<string | null>(null);
+  const [isError, setIsError] = useState(false);
 
   useEffect(() => {
     const url = `${window.location.origin}/products/${product.legacyCode}`;
@@ -51,6 +57,20 @@ export function LabelSheet({ product }: { product: Product }) {
   }, [product.legacyCode]);
 
   const rollSize = LABEL_SIZES[printMode];
+
+  function handleSendToPrinter() {
+    setMessage(null);
+    startTransition(async () => {
+      const result = await sendProductLabelToRoutedPrinter(branchId, product.id, copies);
+      if (result.error) {
+        setIsError(true);
+        setMessage(result.error);
+      } else {
+        setIsError(false);
+        setMessage(result.message ?? "Sent");
+      }
+    });
+  }
 
   return (
     <>
@@ -73,6 +93,20 @@ export function LabelSheet({ product }: { product: Product }) {
         </select>
         <button className="btn accent" onClick={() => window.print()}>Print Labels</button>
         <span style={{ fontSize: 11.5, color: "var(--ink-faint)" }}>Barcode for scanner guns · QR code opens this product&apos;s page when scanned with a phone camera</span>
+      </div>
+      <div className="no-print" style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 16, flexWrap: "wrap" }}>
+        <label style={{ fontSize: 12.5, fontWeight: 600 }}>Branch</label>
+        <select value={branchId} onChange={(e) => setBranchId(e.target.value)} style={{ width: 220 }}>
+          {branches.map((b) => (
+            <option key={b.id} value={b.id}>{b.name}</option>
+          ))}
+        </select>
+        <button className="btn ghost" disabled={pending || !branchId} onClick={handleSendToPrinter}>
+          {pending ? "Sending…" : `Send ${copies} Label(s) to Printer (via Devices)`}
+        </button>
+        {message && (
+          <span style={{ fontSize: 12, color: isError ? "var(--bad)" : "var(--good)" }}>{message}</span>
+        )}
       </div>
       {rollSize && (
         <style>{`@media print { @page { size: ${rollSize.width} ${rollSize.height}; margin: 0; } }`}</style>

@@ -44,6 +44,7 @@ export default async function EditRecipePage({ params }: PageProps<"/recipes/[ty
           storageInstructions: "storageInstructions" in recipe ? recipe.storageInstructions : null,
           isModifier: "isModifier" in recipe ? recipe.isModifier : false,
           isCombo: "isCombo" in recipe ? recipe.isCombo : false,
+          costCategory: ("costCategory" in recipe ? recipe.costCategory : "food") as "food" | "beverage",
           branches: recipe.branches,
           branchPrices,
           lines: ingredients.map((i) => ({ stockItemId: i.stockItemId, ingredientMainRecipeId: i.ingredientMainRecipeId, unitLabel: i.unitLabel ?? "", qty: i.qty, wastagePct: i.wastagePct })),

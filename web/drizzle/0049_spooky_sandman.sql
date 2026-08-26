@@ -1,0 +1,2 @@
+ALTER TABLE "main_recipes" ADD COLUMN "cost_category" text DEFAULT 'food' NOT NULL;--> statement-breakpoint
+ALTER TABLE "main_recipes" ADD CONSTRAINT "main_recipes_cost_category_check" CHECK ("main_recipes"."cost_category" in ('food','beverage'));

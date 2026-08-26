@@ -5,10 +5,10 @@ import { eq } from "drizzle-orm";
 import { db } from "@/server/db";
 import { devices, auditLog } from "@/server/db/schema";
 import { assertPermission } from "@/server/auth/permissions";
-import { parseDeviceAddress, tcpProbe, sendRawData } from "@/lib/printerSocket";
-import { buildTestPrintTicket, buildExpiryTicketEscPos } from "@/lib/escpos";
+import { parseDeviceAddress, tcpProbe, sendToDevicePrinter } from "@/lib/printerSocket";
+import { buildTestPrintTicket, buildExpiryTicketEscPos, buildBarcodeTestTicket } from "@/lib/escpos";
 import { listExpiringBatches } from "@/server/db/queries/expiry";
-import { listPrintNodePrinters, sendPrintNodeJob, isPrintNodeConfigured } from "@/lib/printnode";
+import { listPrintNodePrinters, isPrintNodeConfigured } from "@/lib/printnode";
 
 const DEVICE_TYPES = ["label_printer", "receipt_printer", "barcode_scanner", "document_scanner", "fax", "other"] as const;
 const CONNECTIONS = ["network", "bluetooth", "wifi_direct", "printnode", "other"] as const;
@@ -116,23 +116,25 @@ export async function testDeviceConnection(id: string): Promise<{ error?: string
   return { ok: true, message: status };
 }
 
-// Sends real print bytes down whichever path the device is registered for —
-// a raw TCP socket to an IP the server itself can reach ('network'), or a
-// PrintNode print job relayed through PrintNode's client app on whatever
-// computer is actually on the printer's network ('printnode'). Bluetooth/
-// Wi-Fi Direct devices have no server-reachable path at all.
-async function sendToDevicePrinter(device: typeof devices.$inferSelect, data: Buffer): Promise<{ ok: boolean; status: string }> {
-  if (device.connection === "printnode") {
-    if (!device.printnodePrinterId) return { ok: false, status: "Pick a PrintNode printer first." };
-    const result = await sendPrintNodeJob(device.printnodePrinterId, data, device.name);
-    return result.ok ? { ok: true, status: `Sent via PrintNode (job #${result.jobId ?? "?"})` } : { ok: false, status: result.error ?? "Failed to send via PrintNode." };
-  }
-  if (device.connection !== "network") return { ok: false, status: "Only network (IP) or PrintNode receipt printers can receive a print from this server." };
-  if (!device.address) return { ok: false, status: "Enter an IP address (and optional :port) first." };
+// Proves a registered device can actually render a scannable barcode, not
+// just plain text — the open question before any real GRN/product label
+// printing gets wired through the Device pipeline instead of the browser
+// print dialog. Same shape as sendTestPrint, different ticket content.
+export async function sendBarcodeTestPrint(id: string): Promise<{ error?: string; ok?: boolean; message?: string }> {
+  const session = await assertPermission("system", "edit");
+  const [device] = await db.select().from(devices).where(eq(devices.id, id));
+  if (!device) return { error: "Device not found." };
 
-  const { host, port } = parseDeviceAddress(device.address);
-  const result = await sendRawData(host, port, data);
-  return result.ok ? { ok: true, status: `Sent to ${host}:${port}` } : { ok: false, status: result.error ?? "Failed to send." };
+  const ticket = buildBarcodeTestTicket(device.name);
+  const result = await sendToDevicePrinter(device, ticket);
+
+  await db.update(devices).set({ lastTestedAt: new Date(), lastTestStatus: result.status, lastTestOk: result.ok }).where(eq(devices.id, id));
+  await db.insert(auditLog).values({ actorId: session.profile.id, action: "Test Printed", entity: "Device", entityLabel: device.name, detail: `${result.status} (barcode test)` });
+  revalidatePath("/system-settings");
+  revalidatePath("/devices");
+
+  if (!result.ok) return { error: result.status };
+  return { ok: true, message: `${result.status} — scan the printed code and confirm it reads "NY-TEST-00128".` };
 }
 
 export async function sendTestPrint(id: string): Promise<{ error?: string; ok?: boolean; message?: string }> {

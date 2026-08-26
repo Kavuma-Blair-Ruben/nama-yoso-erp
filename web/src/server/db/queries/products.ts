@@ -40,6 +40,7 @@ export async function listProducts(filters: ProductFilters) {
       purchaseUnit: stockItems.purchaseUnit,
       issueUnit: stockItems.issueUnit,
       purchaseRate: stockItems.purchaseRate,
+      ratePerKgL: stockItems.ratePerKgL,
       ratePerGMl: stockItems.ratePerGMl,
       // This query joins categories/subcategories/suppliers, all of which have their own
       // "id" column — interpolating ${stockItems.id} inside the subquery renders as a bare
@@ -156,7 +157,7 @@ export async function getProductByCode(code: string) {
   // separate stock_balances row per cost center (Kitchen/Bar/etc), but the
   // product detail page shows one total per branch.
   const stockByBranch = await db
-    .select({ branchId: stockBalances.branchId, branchName: branches.name, qtyOnHand: sql<number>`sum(${stockBalances.qtyOnHand})` })
+    .select({ branchId: stockBalances.branchId, branchName: branches.name, qtyOnHand: sql<number>`sum(${stockBalances.qtyOnHand})::float8` })
     .from(stockBalances)
     .innerJoin(branches, eq(stockBalances.branchId, branches.id))
     .where(eq(stockBalances.stockItemId, item.id))

@@ -46,6 +46,7 @@ export default async function EditStockCountDraftPage({ params }: PageProps<"/st
           systemQty: l.systemQty,
           countedQty: l.countedQty != null ? String(l.countedQty) : "",
           rate: l.rateAtCount ?? 0,
+          countedByName: l.countedByName,
         }))}
       />
     </>

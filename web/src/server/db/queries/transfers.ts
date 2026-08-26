@@ -1,7 +1,7 @@
 import "server-only";
 import { db } from "@/server/db";
 import { stockTransfers, stockTransferLines, stockItems, branches, profiles } from "@/server/db/schema";
-import { and, eq, desc } from "drizzle-orm";
+import { and, eq, desc, gte, lte } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
 const fromBranch = alias(branches, "from_branch");
@@ -9,9 +9,11 @@ const toBranch = alias(branches, "to_branch");
 const sentByProfile = alias(profiles, "sent_by_profile");
 const postedByProfile = alias(profiles, "posted_by_profile");
 
-export async function listTransfers(filters: { status?: string }) {
+export async function listTransfers(filters: { status?: string; from?: string; to?: string }) {
   const conditions = [];
   if (filters.status) conditions.push(eq(stockTransfers.status, filters.status));
+  if (filters.from) conditions.push(gte(stockTransfers.transferDate, filters.from));
+  if (filters.to) conditions.push(lte(stockTransfers.transferDate, filters.to));
 
   return db
     .select({

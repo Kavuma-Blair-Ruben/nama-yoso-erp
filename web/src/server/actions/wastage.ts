@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/server/db";
 import { wastageEvents, wastageLines, stockItems, auditLog, costCenters } from "@/server/db/schema";
@@ -10,6 +10,8 @@ import { nextWastageNo } from "@/server/db/sequences";
 import { recordStockMovement } from "@/server/db/stockLedger";
 import { uploadPhoto, deletePhoto } from "@/lib/supabaseAdmin";
 import { loadCostingGraph, recipeCurrentCost, flattenRecipeToStockLines, type RecipeWasteLine } from "@/server/costing/recipeCost";
+import { sendToRoutedPrinter } from "@/lib/printRouting";
+import { buildWastageTicketEscPos } from "@/lib/escpos";
 
 const lineSchema = z.object({
   stockItemId: z.string().min(1),
@@ -90,12 +92,32 @@ async function applyWastageSideEffects(tx: Db, eventId: string, input: z.infer<t
   }
 }
 
+// Best-effort auto-print of the scrap ticket, run after the transaction
+// commits — a missing/offline printer must never undo a real wastage post
+// that already adjusted stock. Looked up by name here rather than carried
+// through from the caller since insertWastageEvent only needs rate, not
+// name, for its own math.
+async function printWastageTicket(wastageNo: string, eventDate: string, costCenter: string, staffName: string | undefined, input: z.infer<typeof wastageInputSchema>, totalCost: number) {
+  const stockItemIds = input.lines.map((l) => l.stockItemId);
+  const items = await db.select({ id: stockItems.id, name: stockItems.name }).from(stockItems).where(inArray(stockItems.id, stockItemIds));
+  const nameById = new Map(items.map((i) => [i.id, i.name]));
+  const ticket = buildWastageTicketEscPos({
+    wastageNo,
+    eventDate,
+    costCenter,
+    staffName: staffName ?? null,
+    lines: input.lines.map((l) => ({ name: nameById.get(l.stockItemId) ?? l.stockItemId, qty: l.qty, unitLabel: l.unitLabel ?? "", reason: l.reason, amount: l.qty * (l.rate ?? 0) })),
+    totalCost,
+  });
+  await sendToRoutedPrinter(input.branchId, "wastage_ticket", ticket);
+}
+
 export async function postWastageEvent(input: z.infer<typeof wastageInputSchema>): Promise<WastageActionResult> {
   const session = await assertPermission("wastage", "edit");
   const parsed = wastageInputSchema.safeParse(input);
   if (!parsed.success) return { error: "Add at least one wasted item." };
 
-  const { eventId } = await db.transaction(async (tx) => {
+  const { eventId, wastageNo, costCenterName, totalCost } = await db.transaction(async (tx) => {
     const created = await insertWastageEvent(tx, parsed.data, "POSTED", session.profile.id);
     await applyWastageSideEffects(tx, created.eventId, parsed.data, session.profile.id);
     await tx.insert(auditLog).values({
@@ -105,8 +127,10 @@ export async function postWastageEvent(input: z.infer<typeof wastageInputSchema>
       entityLabel: created.wastageNo,
       detail: `${parsed.data.lines.length} item(s)`,
     });
-    return created;
+    const [costCenter] = await tx.select({ name: costCenters.name }).from(costCenters).where(eq(costCenters.id, parsed.data.costCenterId));
+    return { ...created, costCenterName: costCenter?.name ?? "", totalCost: parsed.data.lines.reduce((s, l) => s + l.qty * (l.rate ?? 0), 0) };
   });
+  await printWastageTicket(wastageNo, parsed.data.eventDate, costCenterName, parsed.data.staffName, parsed.data, totalCost);
 
   revalidatePath("/wastage");
   revalidatePath("/products");
@@ -148,9 +172,11 @@ export async function postWastageDraft(id: string): Promise<WastageActionResult>
     await applyWastageSideEffects(tx, id, input, session.profile.id);
     await tx.update(wastageEvents).set({ status: "POSTED", postedAt: new Date(), postedBy: session.profile.id }).where(eq(wastageEvents.id, id));
     await tx.insert(auditLog).values({ actorId: session.profile.id, action: "Wastage Logged", entity: "Wastage Event", entityLabel: event.wastageNo, detail: "Stock updated" });
-    return { id };
+    const [costCenter] = await tx.select({ name: costCenters.name }).from(costCenters).where(eq(costCenters.id, event.costCenterId));
+    return { id, wastageNo: event.wastageNo, costCenterName: costCenter?.name ?? "", input, totalCost: input.lines.reduce((s, l) => s + l.qty * (l.rate ?? 0), 0) };
   });
   if ("error" in result) return result;
+  await printWastageTicket(result.wastageNo, result.input.eventDate, result.costCenterName, result.input.staffName, result.input, result.totalCost);
 
   revalidatePath(`/wastage/${id}`);
   revalidatePath("/wastage");

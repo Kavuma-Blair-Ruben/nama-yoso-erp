@@ -70,6 +70,7 @@ export function RecipeBuilder({
     storageInstructions: string | null;
     isModifier: boolean;
     isCombo: boolean;
+    costCategory: "food" | "beverage";
     branches: string[];
     branchPrices: { branchId: string; sellingPrice: number }[];
     lines: { stockItemId: string | null; ingredientMainRecipeId: string | null; unitLabel: string; qty: number; wastagePct: number }[];
@@ -113,6 +114,7 @@ export function RecipeBuilder({
   const [stockable, setStockable] = useState(initial?.stockable ?? true);
   const [isModifier, setIsModifier] = useState(initial?.isModifier ?? defaultKind === "modifier");
   const [isCombo, setIsCombo] = useState(initial?.isCombo ?? defaultKind === "combo");
+  const [costCategory, setCostCategory] = useState<"food" | "beverage">(initial?.costCategory ?? "food");
   const [shelfLifeDays, setShelfLifeDays] = useState(initial?.shelfLifeDays != null ? String(initial.shelfLifeDays) : "");
   const [storageInstructions, setStorageInstructions] = useState(initial?.storageInstructions ?? "");
   const [branches, setBranches] = useState<string[]>(initial?.branches ?? []);
@@ -214,6 +216,7 @@ export function RecipeBuilder({
       storageInstructions: type === "sub" && stockable ? storageInstructions.trim() || null : null,
       isModifier: type === "sub" ? isModifier : undefined,
       isCombo: type === "main" ? isCombo : undefined,
+      costCategory: type === "main" ? costCategory : undefined,
       branches,
       branchPrices:
         type === "main"
@@ -277,9 +280,18 @@ export function RecipeBuilder({
           </label>
         )}
         {type === "main" && (
-          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 600, margin: "0 0 16px" }}>
-            <input type="checkbox" checked={isCombo} onChange={(e) => setIsCombo(e.target.checked)} /> This is a Combo (bundles other dishes)
-          </label>
+          <>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 600, margin: "0 0 12px" }}>
+              <input type="checkbox" checked={isCombo} onChange={(e) => setIsCombo(e.target.checked)} /> This is a Combo (bundles other dishes)
+            </label>
+            <div className="form-row" style={{ margin: "0 0 16px" }}>
+              <label>Cost category</label>
+              <select value={costCategory} onChange={(e) => setCostCategory(e.target.value as "food" | "beverage")}>
+                <option value="food">Food</option>
+                <option value="beverage">Beverage</option>
+              </select>
+            </div>
+          </>
         )}
 
         <div className="section-title">Branches</div>

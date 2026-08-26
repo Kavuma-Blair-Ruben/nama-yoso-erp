@@ -1,0 +1,3 @@
+ALTER TABLE "stock_count_lines" ADD COLUMN "counted_by" uuid;--> statement-breakpoint
+ALTER TABLE "stock_count_lines" ADD CONSTRAINT "stock_count_lines_counted_by_profiles_id_fk" FOREIGN KEY ("counted_by") REFERENCES "public"."profiles"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "stock_count_lines" ADD CONSTRAINT "stock_count_lines_count_item_unique" UNIQUE("stock_count_id","stock_item_id");

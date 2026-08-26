@@ -29,47 +29,31 @@ import { PosIntegrationPanel } from "@/components/reports/PosIntegrationPanel";
 import { FoodicsWebhookPanel } from "@/components/reports/FoodicsWebhookPanel";
 import { RecipeSalesImport } from "@/components/reports/RecipeSalesImport";
 import { ReportExportBar } from "@/components/reports/ReportExportBar";
+import { DateRangeBar } from "@/components/dashboard/DateRangeBar";
 
 type Tab =
   | "sales" | "slowmoving" | "pricechange" | "costadjustments" | "sections" | "stock" | "varianceanalysis"
   | "purchaseorders" | "grns" | "supplierreturns" | "invoices" | "wastage" | "transfers" | "stockcounts" | "production";
-const TABS: { id: Tab; label: string }[] = [
-  { id: "sales", label: "Recipe Sales" },
-  { id: "stock", label: "Stock Page" },
-  { id: "varianceanalysis", label: "Variance Analysis" },
-  { id: "slowmoving", label: "Slow Moving Items" },
-  { id: "pricechange", label: "Item Price Change" },
-  { id: "costadjustments", label: "Cost Adjustments" },
-  { id: "sections", label: "Cost by Brand & Section" },
-  { id: "purchaseorders", label: "Purchase Orders" },
-  { id: "grns", label: "GRNs" },
-  { id: "supplierreturns", label: "Supplier Returns" },
-  { id: "invoices", label: "Invoices" },
-  { id: "wastage", label: "Wastage" },
-  { id: "transfers", label: "Transfers" },
-  { id: "stockcounts", label: "Stock Counts" },
-  { id: "production", label: "Production" },
-];
 
 export default async function ReportsPage({ searchParams }: PageProps<"/reports">) {
   await requireSection("reports", "view");
   const sp = await searchParams;
   const tab: Tab = (typeof sp.tab === "string" ? (sp.tab as Tab) : "sales");
+  // Shared default window for every tab below that accepts from/to —
+  // last 30 days, same default the Dashboard's date-filtered tabs use.
+  // Tabs pass `undefined` through instead when a real from/to isn't given,
+  // so a tab whose underlying query has no date column (Stock Page) or is
+  // a frozen historical snapshot (Cost by Brand & Section) simply ignores it.
+  const to = typeof sp.to === "string" ? sp.to : todayStr();
+  const from = typeof sp.from === "string" ? sp.from : new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
 
   return (
     <>
       <PageHeader title="Reports" subtitle="Printable and exportable reports across your live and historical data." />
-      <div className="pill-tabs">
-        {TABS.map((t) => (
-          <Link key={t.id} href={`/reports?tab=${t.id}`} className={`btn ${tab === t.id ? "" : "ghost"}`} style={{ borderRadius: 20 }}>
-            {t.label}
-          </Link>
-        ))}
-      </div>
       <ReportExportBar tab={tab} sp={sp} />
 
-      {tab === "sales" && <RecipeSalesTab />}
-      {tab === "stock" && <StockTab />}
+      {tab === "sales" && <RecipeSalesTab from={from} to={to} />}
+      {tab === "stock" && <StockTab q={typeof sp.q === "string" ? sp.q : undefined} view={typeof sp.view === "string" ? (sp.view as StockView) : undefined} />}
       {tab === "varianceanalysis" && (
         <VarianceAnalysisTab
           from={typeof sp.from === "string" ? sp.from : undefined}
@@ -80,24 +64,24 @@ export default async function ReportsPage({ searchParams }: PageProps<"/reports"
         />
       )}
       {tab === "slowmoving" && <SlowMovingTab minDays={typeof sp.minDays === "string" ? Number(sp.minDays) : 0} />}
-      {tab === "pricechange" && <PriceChangeTab />}
-      {tab === "costadjustments" && <CostAdjustmentsTab q={typeof sp.q === "string" ? sp.q : undefined} />}
+      {tab === "pricechange" && <PriceChangeTab from={from} to={to} />}
+      {tab === "costadjustments" && <CostAdjustmentsTab q={typeof sp.q === "string" ? sp.q : undefined} from={from} to={to} />}
       {tab === "sections" && <SectionsTab sector={typeof sp.sector === "string" ? sp.sector : undefined} />}
-      {tab === "purchaseorders" && <PurchaseOrdersTab q={typeof sp.q === "string" ? sp.q : undefined} status={typeof sp.status === "string" ? sp.status : undefined} />}
-      {tab === "grns" && <GrnsTab q={typeof sp.q === "string" ? sp.q : undefined} />}
-      {tab === "supplierreturns" && <SupplierReturnsTab />}
-      {tab === "invoices" && <InvoicesReportTab q={typeof sp.q === "string" ? sp.q : undefined} status={typeof sp.status === "string" ? sp.status : undefined} />}
-      {tab === "wastage" && <WastageReportTab status={typeof sp.status === "string" ? sp.status : undefined} />}
-      {tab === "transfers" && <TransfersReportTab status={typeof sp.status === "string" ? sp.status : undefined} />}
-      {tab === "stockcounts" && <StockCountsTab status={typeof sp.status === "string" ? sp.status : undefined} />}
-      {tab === "production" && <ProductionReportTab status={typeof sp.status === "string" ? sp.status : undefined} />}
+      {tab === "purchaseorders" && <PurchaseOrdersTab q={typeof sp.q === "string" ? sp.q : undefined} status={typeof sp.status === "string" ? sp.status : undefined} from={from} to={to} />}
+      {tab === "grns" && <GrnsTab q={typeof sp.q === "string" ? sp.q : undefined} from={from} to={to} />}
+      {tab === "supplierreturns" && <SupplierReturnsTab from={from} to={to} />}
+      {tab === "invoices" && <InvoicesReportTab q={typeof sp.q === "string" ? sp.q : undefined} status={typeof sp.status === "string" ? sp.status : undefined} from={from} to={to} />}
+      {tab === "wastage" && <WastageReportTab status={typeof sp.status === "string" ? sp.status : undefined} from={from} to={to} />}
+      {tab === "transfers" && <TransfersReportTab status={typeof sp.status === "string" ? sp.status : undefined} from={from} to={to} />}
+      {tab === "stockcounts" && <StockCountsTab status={typeof sp.status === "string" ? sp.status : undefined} from={from} to={to} />}
+      {tab === "production" && <ProductionReportTab status={typeof sp.status === "string" ? sp.status : undefined} from={from} to={to} />}
     </>
   );
 }
 
-async function RecipeSalesTab() {
+async function RecipeSalesTab({ from, to }: { from: string; to: string }) {
   const [report, foodicsIntegration, branches, costCenters, recipes, branchMappings, itemMappings, recentEvents] = await Promise.all([
-    getRecipeSalesReport(),
+    getRecipeSalesReport({ from, to }),
     getPosIntegration("foodics"),
     listBranches(),
     listAllActiveCostCenters(),
@@ -125,6 +109,11 @@ async function RecipeSalesTab() {
         recentEvents={recentEvents}
       />
       <RecipeSalesImport hasData={report.hasData} unmatchedCount={report.unmatchedCount} />
+      <form className="filterbar" method="get">
+        <input type="hidden" name="tab" value="sales" />
+        <div className="daterange">📅<input type="date" name="from" defaultValue={from} /><span>–</span><input type="date" name="to" defaultValue={to} /></div>
+        <button className="btn ghost" type="submit">Apply</button>
+      </form>
       {!report.hasData ? (
         <div className="callout">No sales data imported yet — upload a POS export above to see this report.</div>
       ) : (
@@ -169,43 +158,135 @@ async function RecipeSalesTab() {
   );
 }
 
-async function StockTab() {
+type StockView = "all" | "flagged" | "negative" | "notlinked" | "abovepar" | "belowmin";
+
+async function StockTab({ q, view }: { q?: string; view?: StockView }) {
   const rows = await getStockPageRows();
   const negCount = rows.filter((r) => r.onHand < 0).length;
   const belowMinCount = rows.filter((r) => r.flag === "BELOW MIN").length;
   const abovePar = rows.filter((r) => r.abovePar).length;
   const notLinkedCount = rows.filter((r) => !r.linkedToRecipe).length;
   const totalValue = rows.reduce((s, r) => s + r.value, 0);
-  const flagged = rows.filter((r) => r.flag).sort((a, b) => (a.flag ? 0 : 1) - (b.flag ? 0 : 1));
+  const flaggedCount = rows.filter((r) => r.flag).length;
+  const activeView: StockView = view ?? "all";
+
+  let filtered = rows;
+  if (activeView === "flagged") filtered = filtered.filter((r) => r.flag);
+  else if (activeView === "negative") filtered = filtered.filter((r) => r.onHand < 0);
+  else if (activeView === "notlinked") filtered = filtered.filter((r) => !r.linkedToRecipe);
+  else if (activeView === "abovepar") filtered = filtered.filter((r) => r.abovePar);
+  else if (activeView === "belowmin") filtered = filtered.filter((r) => r.flag === "BELOW MIN");
+  if (q) {
+    const needle = q.toLowerCase();
+    filtered = filtered.filter((r) => r.name.toLowerCase().includes(needle) || r.legacyCode.toLowerCase().includes(needle));
+  }
+  filtered = [...filtered].sort((a, b) => (a.flag ? 0 : 1) - (b.flag ? 0 : 1) || a.name.localeCompare(b.name));
+
+  function kpiHref(v: StockView) {
+    const params = new URLSearchParams({ tab: "stock", view: v });
+    if (q) params.set("q", q);
+    return `/reports?${params.toString()}`;
+  }
 
   return (
     <>
       <div className="kpi-grid">
-        <div className="kpi"><div className="kpi-icon">📦</div><div className="n">{money(totalValue, 0)}</div><div className="l">Stock on Hand</div></div>
-        <div className="kpi"><div className="kpi-icon">🔗</div><div className="n" style={{ color: notLinkedCount ? "var(--bad)" : "inherit" }}>{notLinkedCount}</div><div className="l">Not Linked to Recipe</div><div className="d">Needs mapping</div></div>
-        <div className="kpi"><div className="kpi-icon">⊖</div><div className="n" style={{ color: negCount ? "var(--bad)" : "inherit" }}>{negCount}</div><div className="l">Negative Stock</div><div className="d">Count required</div></div>
-        <div className="kpi"><div className="kpi-icon">📈</div><div className="n">{abovePar}</div><div className="l">Above Par</div><div className="d">Overstocked items</div></div>
-        <div className="kpi"><div className="kpi-icon">📉</div><div className="n" style={{ color: belowMinCount ? "var(--bad)" : "inherit" }}>{belowMinCount}</div><div className="l">Below Minimum</div><div className="d">Reorder now</div></div>
+        <Link href={kpiHref("all")} className={`kpi${activeView === "all" ? " accent-neutral" : ""}`}>
+          <div className="kpi-icon">📦</div>
+          <div className="n">{money(totalValue, 0)}</div>
+          <div className="l">Stock on Hand</div>
+          <div className="d">{rows.length} item(s) — click to view all</div>
+        </Link>
+        <Link href={kpiHref("notlinked")} className={`kpi${activeView === "notlinked" ? " accent-bad" : ""}`}>
+          <div className="kpi-icon">🔗</div>
+          <div className="n" style={{ color: notLinkedCount ? "var(--bad)" : "inherit" }}>{notLinkedCount}</div>
+          <div className="l">Not Linked to Recipe</div>
+          <div className="d">Needs mapping</div>
+        </Link>
+        <Link href={kpiHref("negative")} className={`kpi${activeView === "negative" ? " accent-bad" : ""}`}>
+          <div className="kpi-icon">⊖</div>
+          <div className="n" style={{ color: negCount ? "var(--bad)" : "inherit" }}>{negCount}</div>
+          <div className="l">Negative Stock</div>
+          <div className="d">Count required</div>
+        </Link>
+        <Link href={kpiHref("abovepar")} className={`kpi${activeView === "abovepar" ? " accent-neutral" : ""}`}>
+          <div className="kpi-icon">📈</div>
+          <div className="n">{abovePar}</div>
+          <div className="l">Above Par</div>
+          <div className="d">Overstocked items</div>
+        </Link>
+        <Link href={kpiHref("belowmin")} className={`kpi${activeView === "belowmin" ? " accent-bad" : ""}`}>
+          <div className="kpi-icon">📉</div>
+          <div className="n" style={{ color: belowMinCount ? "var(--bad)" : "inherit" }}>{belowMinCount}</div>
+          <div className="l">Below Minimum</div>
+          <div className="d">Reorder now</div>
+        </Link>
       </div>
-      <div className="callout">{flagged.length} item(s) flagged below — everything else is carrying non-negative stock at or above its minimum level.</div>
+
+      <form className="filterbar" method="get">
+        <input type="hidden" name="tab" value="stock" />
+        <input type="hidden" name="view" value={activeView} />
+        <input type="text" name="q" placeholder="Search item name or code…" defaultValue={q ?? ""} />
+        <button className="btn ghost" type="submit">Search</button>
+        {(activeView !== "all" || q) && <Link href="/reports?tab=stock" className="btn ghost">Clear filters</Link>}
+        <span style={{ marginLeft: "auto", alignSelf: "center", fontSize: 12, color: "var(--ink-soft)" }}>{filtered.length} of {rows.length} shown</span>
+      </form>
+
+      {flaggedCount > 0 && activeView === "all" && (
+        <div className="callout">{flaggedCount} item(s) flagged below — click a stat card above to filter down to just those.</div>
+      )}
       <div className="panel">
         <div className="table-wrap" style={{ maxHeight: 560 }}>
           <table className="data">
-            <thead><tr><th>Item</th><th>Category</th><th className="right">Stock on Hand</th><th className="right">Min Level</th><th className="right">Value</th><th></th></tr></thead>
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th className="right">Cost</th>
+                <th>Storage Unit</th>
+                <th className="right">On Hand</th>
+                <th className="right">Stock Value</th>
+                <th className="right">Last Count</th>
+                <th>Status</th>
+              </tr>
+            </thead>
             <tbody>
-              {flagged.length ? (
-                flagged.map((r) => (
-                  <tr key={r.id}>
-                    <td><Link href={`/products/${r.legacyCode}`}>{r.name}</Link></td>
-                    <td>{r.categoryName ?? "-"}</td>
-                    <td className="mono-r" style={{ color: r.onHand < 0 ? "var(--bad)" : "inherit" }}>{fmt(r.onHand, 2)} {canonicalUnitLabel(r.issueUnit)}</td>
-                    <td className="mono-r">{r.minLevel != null ? fmt(r.minLevel, 2) : "-"}</td>
-                    <td className="mono-r">{money(r.value, 2)}</td>
-                    <td className="right">{r.flag && <span className={`tag ${r.flag === "ABOVE PAR" ? "neutral" : "bad"}`}>{r.flag}</span>}</td>
-                  </tr>
-                ))
+              {filtered.length ? (
+                filtered.map((r) => {
+                  const unit = canonicalUnitLabel(r.issueUnit);
+                  const statusMeta =
+                    r.status === "OUT_OF_STOCK"
+                      ? { color: "var(--ink-faint)", label: "Out of Stock" }
+                      : r.status === "LOW_STOCK"
+                        ? { color: "var(--bad)", label: "Low Stock" }
+                        : { color: "var(--good)", label: "In Stock" };
+                  return (
+                    <tr key={r.id}>
+                      <td>
+                        <Link href={`/products/${r.legacyCode}`}>{r.name}</Link>
+                        <div style={{ fontSize: 10.5, color: "var(--ink-faint)" }}>{r.categoryName ?? "-"}</div>
+                      </td>
+                      <td className="mono-r">
+                        {r.sourceType === "purchased" && r.purchaseRate != null
+                          ? `${fmt(r.purchaseRate, 2)} / ${r.purchaseUnit ?? unit}`
+                          : r.ratePerKgL != null
+                            ? `${fmt(r.ratePerKgL, 2)} / ${unit}`
+                            : "-"}
+                      </td>
+                      <td>{r.sourceType === "purchased" ? (r.purchaseUnit ?? unit) : unit}</td>
+                      <td className="mono-r" style={{ color: r.onHand < 0 ? "var(--bad)" : "inherit" }}>{fmt(r.onHand, 2)}</td>
+                      <td className="mono-r">{money(r.value, 2)}</td>
+                      <td className="mono-r">{r.lastCountQty != null ? fmt(r.lastCountQty, 2) : "—"}</td>
+                      <td>
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, color: statusMeta.color }}>
+                          <span style={{ width: 7, height: 7, borderRadius: "50%", background: statusMeta.color, flex: "none" }} />
+                          {statusMeta.label}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })
               ) : (
-                <tr className="empty-row"><td colSpan={6}>No items are negative or below their minimum level.</td></tr>
+                <tr className="empty-row"><td colSpan={7}>No items match this filter.</td></tr>
               )}
             </tbody>
           </table>
@@ -366,14 +447,19 @@ async function SlowMovingTab({ minDays }: { minDays: number }) {
   );
 }
 
-async function PriceChangeTab() {
-  const rows = await listPriceChangeEvents();
+async function PriceChangeTab({ from, to }: { from: string; to: string }) {
+  const rows = await listPriceChangeEvents({ from, to });
   const totalImpact = rows.reduce((s, e) => s + e.varianceValue, 0);
   const increases = rows.filter((e) => e.variancePct > 0).length;
 
   return (
     <>
       <div className="callout">Every GRN line where what you were actually invoiced didn&apos;t match what the LPO said, across every supplier and outlet in one place.</div>
+      <form className="filterbar" method="get">
+        <input type="hidden" name="tab" value="pricechange" />
+        <div className="daterange">📅<input type="date" name="from" defaultValue={from} /><span>–</span><input type="date" name="to" defaultValue={to} /></div>
+        <button className="btn ghost" type="submit">Apply</button>
+      </form>
       <div className="kpi-grid">
         <div className="kpi"><div className="n">{rows.length}</div><div className="l">Total Discrepancies</div><div className="d">All-time</div></div>
         <div className="kpi"><div className="n" style={{ color: totalImpact >= 0 ? "var(--bad)" : "var(--good)" }}>{money(totalImpact, 0)}</div><div className="l">Net Cost Impact</div><div className="d">{totalImpact >= 0 ? "Cost you" : "Saved you"}</div></div>
@@ -408,14 +494,15 @@ async function PriceChangeTab() {
   );
 }
 
-async function CostAdjustmentsTab({ q }: { q?: string }) {
-  const rows = await listCostAdjustmentEvents({ q });
+async function CostAdjustmentsTab({ q, from, to }: { q?: string; from: string; to: string }) {
+  const rows = await listCostAdjustmentEvents({ q, from, to });
 
   return (
     <>
       <div className="callout">Every ingredient price change, and which recipes it moved the cost of — e.g. &quot;recipe cost went up 2% because chicken breast rose 20%.&quot;</div>
       <form className="filterbar" method="get">
         <input type="hidden" name="tab" value="costadjustments" />
+        <div className="daterange">📅<input type="date" name="from" defaultValue={from} /><span>–</span><input type="date" name="to" defaultValue={to} /></div>
         <input type="text" name="q" placeholder="Search ingredient..." defaultValue={q ?? ""} />
         <button className="btn ghost" type="submit">Search</button>
         <span style={{ marginLeft: "auto", alignSelf: "center", fontSize: 12, color: "var(--ink-soft)" }}>{rows.length} price change event(s)</span>
@@ -523,8 +610,8 @@ async function SectionsTab({ sector }: { sector?: string }) {
   );
 }
 
-async function PurchaseOrdersTab({ q, status }: { q?: string; status?: string }) {
-  const rows = await listPurchaseOrders({ q, status });
+async function PurchaseOrdersTab({ q, status, from, to }: { q?: string; status?: string; from: string; to: string }) {
+  const rows = await listPurchaseOrders({ q, status, from, to });
   const totalValue = rows.reduce((s, r) => s + r.total, 0);
 
   return (
@@ -535,6 +622,7 @@ async function PurchaseOrdersTab({ q, status }: { q?: string; status?: string })
       </div>
       <form className="filterbar" method="get">
         <input type="hidden" name="tab" value="purchaseorders" />
+        <div className="daterange">📅<input type="date" name="from" defaultValue={from} /><span>–</span><input type="date" name="to" defaultValue={to} /></div>
         <input type="text" name="q" placeholder="Search PO number or supplier..." defaultValue={q ?? ""} />
         <select name="status" defaultValue={status ?? ""}>
           <option value="">All statuses</option>
@@ -576,8 +664,8 @@ async function PurchaseOrdersTab({ q, status }: { q?: string; status?: string })
   );
 }
 
-async function GrnsTab({ q }: { q?: string }) {
-  const rows = await listGrns({ q });
+async function GrnsTab({ q, from, to }: { q?: string; from: string; to: string }) {
+  const rows = await listGrns({ q, from, to });
   const totalValue = rows.reduce((s, r) => s + r.total, 0);
 
   return (
@@ -588,6 +676,7 @@ async function GrnsTab({ q }: { q?: string }) {
       </div>
       <form className="filterbar" method="get">
         <input type="hidden" name="tab" value="grns" />
+        <div className="daterange">📅<input type="date" name="from" defaultValue={from} /><span>–</span><input type="date" name="to" defaultValue={to} /></div>
         <input type="text" name="q" placeholder="Search GRN/PO number or supplier..." defaultValue={q ?? ""} />
         <button className="btn ghost" type="submit">Search</button>
         <span style={{ marginLeft: "auto", alignSelf: "center", fontSize: 12, color: "var(--ink-soft)" }}>{rows.length} GRN(s)</span>
@@ -623,8 +712,8 @@ async function GrnsTab({ q }: { q?: string }) {
   );
 }
 
-async function SupplierReturnsTab() {
-  const rows = await listAllSupplierReturns();
+async function SupplierReturnsTab({ from, to }: { from: string; to: string }) {
+  const rows = await listAllSupplierReturns({ from, to });
   const totalValue = rows.reduce((s, r) => s + r.value, 0);
 
   return (
@@ -633,6 +722,11 @@ async function SupplierReturnsTab() {
         <div className="kpi"><div className="n">{rows.length}</div><div className="l">Supplier Returns</div></div>
         <div className="kpi"><div className="n">{money(totalValue, 0)}</div><div className="l">Total Value</div></div>
       </div>
+      <form className="filterbar" method="get">
+        <input type="hidden" name="tab" value="supplierreturns" />
+        <div className="daterange">📅<input type="date" name="from" defaultValue={from} /><span>–</span><input type="date" name="to" defaultValue={to} /></div>
+        <button className="btn ghost" type="submit">Apply</button>
+      </form>
       <div className="panel">
         <div className="table-wrap" style={{ maxHeight: 560 }}>
           <table className="data">
@@ -660,8 +754,8 @@ async function SupplierReturnsTab() {
   );
 }
 
-async function InvoicesReportTab({ q, status }: { q?: string; status?: string }) {
-  const rows = await listInvoices({ q, status, limit: 1_000_000 });
+async function InvoicesReportTab({ q, status, from, to }: { q?: string; status?: string; from: string; to: string }) {
+  const rows = await listInvoices({ q, status, from, to, limit: 1_000_000 });
   const totalValue = rows.reduce((s, r) => s + (r.total ?? 0), 0);
   const outstanding = rows.filter((r) => r.status === "OUTSTANDING").reduce((s, r) => s + (r.total ?? 0), 0);
 
@@ -674,6 +768,7 @@ async function InvoicesReportTab({ q, status }: { q?: string; status?: string })
       </div>
       <form className="filterbar" method="get">
         <input type="hidden" name="tab" value="invoices" />
+        <div className="daterange">📅<input type="date" name="from" defaultValue={from} /><span>–</span><input type="date" name="to" defaultValue={to} /></div>
         <input type="text" name="q" placeholder="Search invoice number or supplier..." defaultValue={q ?? ""} />
         <select name="status" defaultValue={status ?? ""}>
           <option value="">All statuses</option>
@@ -713,8 +808,8 @@ async function InvoicesReportTab({ q, status }: { q?: string; status?: string })
   );
 }
 
-async function WastageReportTab({ status }: { status?: string }) {
-  const rows = await listWastageEvents({ status });
+async function WastageReportTab({ status, from, to }: { status?: string; from: string; to: string }) {
+  const rows = await listWastageEvents({ status, from, to });
   const totalCost = rows.reduce((s, r) => s + r.totalCost, 0);
 
   return (
@@ -725,6 +820,7 @@ async function WastageReportTab({ status }: { status?: string }) {
       </div>
       <form className="filterbar" method="get">
         <input type="hidden" name="tab" value="wastage" />
+        <div className="daterange">📅<input type="date" name="from" defaultValue={from} /><span>–</span><input type="date" name="to" defaultValue={to} /></div>
         <select name="status" defaultValue={status ?? ""}>
           <option value="">All statuses</option>
           <option value="DRAFT">Draft</option>
@@ -761,8 +857,8 @@ async function WastageReportTab({ status }: { status?: string }) {
   );
 }
 
-async function TransfersReportTab({ status }: { status?: string }) {
-  const rows = await listTransfers({ status });
+async function TransfersReportTab({ status, from, to }: { status?: string; from: string; to: string }) {
+  const rows = await listTransfers({ status, from, to });
   const totalValue = rows.reduce((s, r) => s + r.totalCost, 0);
 
   return (
@@ -773,6 +869,7 @@ async function TransfersReportTab({ status }: { status?: string }) {
       </div>
       <form className="filterbar" method="get">
         <input type="hidden" name="tab" value="transfers" />
+        <div className="daterange">📅<input type="date" name="from" defaultValue={from} /><span>–</span><input type="date" name="to" defaultValue={to} /></div>
         <select name="status" defaultValue={status ?? ""}>
           <option value="">All statuses</option>
           <option value="DRAFT">Draft</option>
@@ -810,8 +907,8 @@ async function TransfersReportTab({ status }: { status?: string }) {
   );
 }
 
-async function StockCountsTab({ status }: { status?: string }) {
-  const rows = await listStockCounts({ status });
+async function StockCountsTab({ status, from, to }: { status?: string; from: string; to: string }) {
+  const rows = await listStockCounts({ status, from, to });
   const totalVariance = rows.reduce((s, r) => s + r.totalVarianceValue, 0);
 
   return (
@@ -822,6 +919,7 @@ async function StockCountsTab({ status }: { status?: string }) {
       </div>
       <form className="filterbar" method="get">
         <input type="hidden" name="tab" value="stockcounts" />
+        <div className="daterange">📅<input type="date" name="from" defaultValue={from} /><span>–</span><input type="date" name="to" defaultValue={to} /></div>
         <select name="status" defaultValue={status ?? ""}>
           <option value="">All statuses</option>
           <option value="DRAFT">Draft</option>
@@ -858,8 +956,8 @@ async function StockCountsTab({ status }: { status?: string }) {
   );
 }
 
-async function ProductionReportTab({ status }: { status?: string }) {
-  const rows = await listProductionBatches({ status });
+async function ProductionReportTab({ status, from, to }: { status?: string; from: string; to: string }) {
+  const rows = await listProductionBatches({ status, from, to });
   const totalCost = rows.reduce((s, r) => s + r.totalCost, 0);
 
   return (
@@ -870,6 +968,7 @@ async function ProductionReportTab({ status }: { status?: string }) {
       </div>
       <form className="filterbar" method="get">
         <input type="hidden" name="tab" value="production" />
+        <div className="daterange">📅<input type="date" name="from" defaultValue={from} /><span>–</span><input type="date" name="to" defaultValue={to} /></div>
         <select name="status" defaultValue={status ?? ""}>
           <option value="">All statuses</option>
           <option value="OPEN">Open</option>

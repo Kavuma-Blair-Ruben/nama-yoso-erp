@@ -2,7 +2,7 @@
 
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { postStockCount, saveStockCountDraft, updateStockCountDraft } from "@/server/actions/stockCount";
+import { postStockCount, saveStockCountDraft, updateStockCountDraft, removeStockCountDraftLine, pullStockCountDraftLines } from "@/server/actions/stockCount";
 import { createStockCountTemplate } from "@/server/actions/stockCountTemplates";
 import { fmt, money, todayStr, num } from "@/lib/format";
 import { canonicalUnitLabel } from "@/lib/unitMath";
@@ -12,7 +12,9 @@ import { extractProductCode } from "@/lib/scanCode";
 type PickerItem = { id: string; legacyCode: string; name: string; issueUnit: string | null; ratePerKgL: number | null };
 // countedQty is a raw string while editing ("" = not yet counted) — see num()
 // in @/lib/format for why a number can't be stored straight back into the input.
-type Line = { stockItemId: string; legacyCode: string; name: string; unitLabel: string; systemQty: number; countedQty: string; rate: number };
+// countedByName is who last saved a counted qty for this line — set once
+// this draft has been saved at least once (see updateStockCountDraft).
+type Line = { stockItemId: string; legacyCode: string; name: string; unitLabel: string; systemQty: number; countedQty: string; rate: number; countedByName?: string | null };
 type Template = { id: string; name: string; costCenter: string | null; stockItemIds: string[] };
 type CostCenter = { id: string; branchId: string; name: string };
 
@@ -84,13 +86,56 @@ export function StockCountBuilder({
   function updateLine(i: number, patch: Partial<Line>) {
     setLines((ls) => ls.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
   }
+  // For an existing (already-saved) draft, a line the user removes locally
+  // has to be deleted server-side immediately too — now that saves upsert
+  // rather than replace (see updateStockCountDraft), simply leaving it out
+  // of the next save would no longer delete it. A brand-new, not-yet-saved
+  // count has nothing in the DB yet, so local-only removal is correct there.
   function removeLine(i: number) {
+    const line = lines[i];
     setLines((ls) => ls.filter((_, idx) => idx !== i));
+    if (existingCountId) {
+      startTransition(async () => {
+        const result = await removeStockCountDraftLine(existingCountId, line.stockItemId);
+        if (result.error) setError(result.error);
+      });
+    }
   }
   function zeroUncounted() {
     const n = lines.filter((l) => l.countedQty === "").length;
     setLines(lines.map((l) => (l.countedQty === "" ? { ...l, countedQty: "0" } : l)));
     setInfo(`Set ${n} uncounted item(s) to zero.`);
+  }
+  // Merges in lines that exist in the DB but not locally yet (added by
+  // another counter working the same draft since this page loaded) —
+  // deliberately never overwrites a line already present locally, so it
+  // can't clobber something the current counter is mid-typing.
+  function pullOthersCounts() {
+    if (!existingCountId) return;
+    setError(null);
+    startTransition(async () => {
+      const fresh = await pullStockCountDraftLines(existingCountId);
+      const existingIds = new Set(lines.map((l) => l.stockItemId));
+      const added = fresh.filter((f) => !existingIds.has(f.stockItemId));
+      if (added.length === 0) {
+        setInfo("Nothing new — you already have every item that's been counted so far.");
+        return;
+      }
+      setLines((ls) => [
+        ...ls,
+        ...added.map((f) => ({
+          stockItemId: f.stockItemId,
+          legacyCode: f.legacyCode,
+          name: `${f.legacyCode} — ${f.name}`,
+          unitLabel: f.unitLabel ?? "",
+          systemQty: f.systemQty,
+          countedQty: f.countedQty != null ? String(f.countedQty) : "",
+          rate: f.rateAtCount ?? 0,
+          countedByName: f.countedByName,
+        })),
+      ]);
+      setInfo(`Pulled in ${added.length} item(s) counted by someone else.`);
+    });
   }
 
   const countedLines = lines.filter((l) => l.countedQty !== "");
@@ -286,6 +331,11 @@ export function StockCountBuilder({
           <button className="btn ghost" onClick={exportCsv}>Export Blank Sheet (CSV)</button>
           <button className="btn ghost" onClick={() => fileInputRef.current?.click()}>Import Filled Sheet</button>
           <button className="btn ghost" disabled={lines.length === 0} onClick={zeroUncounted}>Set Uncounted Items to Zero</button>
+          {existingCountId && (
+            <button className="btn ghost" disabled={pending} onClick={pullOthersCounts} title="Fetch items someone else added to this same draft since you opened it">
+              🔄 Pull in Others&apos; Counts
+            </button>
+          )}
           <input
             ref={fileInputRef}
             type="file"
@@ -325,7 +375,10 @@ export function StockCountBuilder({
                   const varianceValue = variance != null ? variance * l.rate : null;
                   return (
                     <tr key={l.stockItemId}>
-                      <td>{l.name}</td>
+                      <td>
+                        {l.name}
+                        {l.countedByName && <span className="tag neutral" style={{ marginLeft: 6, fontSize: 9.5 }} title="Who last saved a count for this item">👤 {l.countedByName}</span>}
+                      </td>
                       {!blindCounts && <td className="mono-r">{fmt(l.systemQty, 2)}</td>}
                       <td>
                         <input

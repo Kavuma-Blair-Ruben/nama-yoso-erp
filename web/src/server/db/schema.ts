@@ -153,6 +153,29 @@ export const devices = pgTable(
   ]
 );
 
+// Which registered Device handles which automatically-printed document type,
+// per branch — one row per (branch, documentType). expiry_ticket/
+// production_label/wastage_ticket/grn_label all auto-fire on their real
+// trigger event (a GRN closing prints one label per received line);
+// product_label is manual only (a "Send to Printer" button), since it isn't
+// tied to a single event. All five render as raw ESC/POS text + a real
+// CODE128 barcode (see escpos.ts) rather than the jsbarcode/canvas HTML
+// sheets, which stay as the browser-print fallback for re-printing/reprints.
+export const printRoutes = pgTable(
+  "print_routes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    branchId: uuid("branch_id").notNull().references(() => branches.id, { onDelete: "cascade" }),
+    documentType: text("document_type").notNull(),
+    deviceId: uuid("device_id").notNull().references(() => devices.id, { onDelete: "cascade" }),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique("print_routes_branch_doctype_unique").on(t.branchId, t.documentType),
+    check("print_routes_document_type_check", sql`${t.documentType} in ('expiry_ticket','production_label','wastage_ticket','grn_label','product_label')`),
+  ]
+);
+
 export const wastageReasons = pgTable("wastage_reasons", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull().unique(),
@@ -416,34 +439,43 @@ export const productSupplierPackaging = pgTable("product_supplier_packaging", {
   isPriority: boolean("is_priority").notNull().default(false),
 });
 
-export const mainRecipes = pgTable("main_recipes", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  legacyCode: text("legacy_code").notNull().unique(),
-  name: text("name").notNull(),
-  // Same purpose as stock_items.secondary_name (e.g. an Arabic name shown
-  // alongside the English one) — kept as its own column per table rather
-  // than a shared lookup since a recipe's secondary name is independent of
-  // any of its ingredients' own secondary names.
-  secondaryName: text("secondary_name"),
-  section: text("section"),
-  yieldQty: numeric("yield_qty", { precision: 14, scale: 4, mode: "number" }),
-  yieldUnit: text("yield_unit"),
-  isArchived: boolean("is_archived").notNull().default(false),
-  sellingPrice: money("selling_price"),
-  targetFoodCostPct: numeric("target_food_cost_pct", { precision: 5, scale: 2, mode: "number" }),
-  cookBookText: text("cook_book_text"),
-  photoUrl: text("photo_url"),
-  branches: text("branches").array().notNull().default(sql`'{}'::text[]`), // empty = all branches, same convention as stock_items.branches
-  // A bundle of other dishes (e.g. "Burger + Fries + Drink") rather than a
-  // single dish — built the same way as any other main recipe, typically
-  // with ingredient lines that reference other main recipes via
-  // recipeIngredients.ingredientMainRecipeId (already-existing mechanism).
-  // This flag only controls which view (Recipe Costing / Menu panel) a
-  // recipe shows up under.
-  isCombo: boolean("is_combo").notNull().default(false),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const mainRecipes = pgTable(
+  "main_recipes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    legacyCode: text("legacy_code").notNull().unique(),
+    name: text("name").notNull(),
+    // Same purpose as stock_items.secondary_name (e.g. an Arabic name shown
+    // alongside the English one) — kept as its own column per table rather
+    // than a shared lookup since a recipe's secondary name is independent of
+    // any of its ingredients' own secondary names.
+    secondaryName: text("secondary_name"),
+    section: text("section"),
+    yieldQty: numeric("yield_qty", { precision: 14, scale: 4, mode: "number" }),
+    yieldUnit: text("yield_unit"),
+    isArchived: boolean("is_archived").notNull().default(false),
+    sellingPrice: money("selling_price"),
+    targetFoodCostPct: numeric("target_food_cost_pct", { precision: 5, scale: 2, mode: "number" }),
+    cookBookText: text("cook_book_text"),
+    photoUrl: text("photo_url"),
+    branches: text("branches").array().notNull().default(sql`'{}'::text[]`), // empty = all branches, same convention as stock_items.branches
+    // A bundle of other dishes (e.g. "Burger + Fries + Drink") rather than a
+    // single dish — built the same way as any other main recipe, typically
+    // with ingredient lines that reference other main recipes via
+    // recipeIngredients.ingredientMainRecipeId (already-existing mechanism).
+    // This flag only controls which view (Recipe Costing / Menu panel) a
+    // recipe shows up under.
+    isCombo: boolean("is_combo").notNull().default(false),
+    // Drives the COGS Analysis dashboard's Food vs Beverage split — real
+    // restaurant P&L tracks these separately since they carry very
+    // different target cost %s. Defaults to 'food' since every recipe in
+    // this app's real data was food-only until this column existed.
+    costCategory: text("cost_category").notNull().default("food"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [check("main_recipes_cost_category_check", sql`${t.costCategory} in ('food','beverage')`)]
+);
 
 // Per-branch selling-price override for a main recipe — a branch not listed
 // here just uses mainRecipes.sellingPrice (the default/all-branches price).
@@ -1001,15 +1033,30 @@ export const stockCounts = pgTable(
 // systemQty/countedQty snapshot the live balance and the counted amount at
 // the moment the line was added/submitted; variance is derived (counted -
 // system), never stored, so there's nothing to keep in sync on edit.
-export const stockCountLines = pgTable("stock_count_lines", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  stockCountId: uuid("stock_count_id").notNull().references(() => stockCounts.id, { onDelete: "cascade" }),
-  stockItemId: uuid("stock_item_id").notNull().references(() => stockItems.id),
-  systemQty: numeric("system_qty", { precision: 14, scale: 4, mode: "number" }).notNull(),
-  countedQty: numeric("counted_qty", { precision: 14, scale: 4, mode: "number" }),
-  unitLabel: text("unit_label"),
-  rateAtCount: money("rate_at_count"),
-});
+export const stockCountLines = pgTable(
+  "stock_count_lines",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    stockCountId: uuid("stock_count_id").notNull().references(() => stockCounts.id, { onDelete: "cascade" }),
+    stockItemId: uuid("stock_item_id").notNull().references(() => stockItems.id),
+    systemQty: numeric("system_qty", { precision: 14, scale: 4, mode: "number" }).notNull(),
+    countedQty: numeric("counted_qty", { precision: 14, scale: 4, mode: "number" }),
+    unitLabel: text("unit_label"),
+    rateAtCount: money("rate_at_count"),
+    // Who actually counted this specific line — set whenever a save touches
+    // a line with a non-null countedQty. Distinct from stock_counts.staff_name
+    // (the count header's single "counted by" field, a holdover from when a
+    // count had exactly one counter) so a draft split across several people
+    // counting different items at once shows who counted what.
+    countedBy: uuid("counted_by").references(() => profiles.id),
+  },
+  // One row per (count, item) — lets a draft save upsert by this pair
+  // instead of deleting and re-inserting every line on every save, which is
+  // what makes concurrent counting safe: two people saving the same draft at
+  // once each only touch the lines they actually have open, never wiping out
+  // a line the other person just added.
+  (t) => [unique("stock_count_lines_count_item_unique").on(t.stockCountId, t.stockItemId)]
+);
 
 // A reusable checklist of items for a cost center's recurring counts — just
 // the item roster, never quantities. System qty is always re-fetched live

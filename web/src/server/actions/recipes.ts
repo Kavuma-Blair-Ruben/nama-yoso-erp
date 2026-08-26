@@ -44,6 +44,9 @@ export type RecipeInput = {
   // main recipes via ingredientMainRecipeId), just flags which view it
   // shows up under.
   isCombo?: boolean;
+  // Main recipe only — drives the COGS Analysis dashboard's Food vs
+  // Beverage split. Defaults to 'food' server-side when omitted.
+  costCategory?: "food" | "beverage";
   lines: RecipeLineInput[];
 };
 
@@ -119,6 +122,7 @@ export async function createRecipe(input: RecipeInput): Promise<RecipeActionResu
           targetFoodCostPct: input.targetFoodCostPct ?? undefined,
           branches: input.branches,
           isCombo: input.isCombo ?? false,
+          costCategory: input.costCategory ?? "food",
         })
         .returning({ id: mainRecipes.id });
       recipeId = created.id;
@@ -200,6 +204,7 @@ export async function updateRecipe(code: string, input: RecipeInput): Promise<Re
           targetFoodCostPct: input.targetFoodCostPct,
           branches: input.branches,
           isCombo: input.isCombo ?? false,
+          costCategory: input.costCategory ?? "food",
           updatedAt: new Date(),
         })
         .where(eq(mainRecipes.id, existing.id));

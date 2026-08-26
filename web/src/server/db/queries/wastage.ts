@@ -1,16 +1,18 @@
 import "server-only";
 import { db } from "@/server/db";
 import { wastageEvents, wastageLines, stockItems, categories, branches, profiles, wastageReasons } from "@/server/db/schema";
-import { and, eq, desc } from "drizzle-orm";
+import { and, eq, desc, gte, lte } from "drizzle-orm";
 
 export async function listWastageReasons() {
   return db.select({ id: wastageReasons.id, name: wastageReasons.name, isExpense: wastageReasons.isExpense }).from(wastageReasons).orderBy(wastageReasons.name);
 }
 
-export async function listWastageEvents(filters: { status?: string; costCenterId?: string }) {
+export async function listWastageEvents(filters: { status?: string; costCenterId?: string; from?: string; to?: string }) {
   const conditions = [];
   if (filters.status) conditions.push(eq(wastageEvents.status, filters.status));
   if (filters.costCenterId) conditions.push(eq(wastageEvents.costCenterId, filters.costCenterId));
+  if (filters.from) conditions.push(gte(wastageEvents.eventDate, filters.from));
+  if (filters.to) conditions.push(lte(wastageEvents.eventDate, filters.to));
 
   return db
     .select({

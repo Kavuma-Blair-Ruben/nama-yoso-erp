@@ -12,6 +12,8 @@ import { recordStockMovement } from "@/server/db/stockLedger";
 import { getDefaultCostCenterId } from "@/server/db/costCenterDefaults";
 import { convertQtyToCanonical } from "@/lib/unitMath";
 import { checkSupplierReceivingLimit, checkAbovePriceBreach, checkBranchReceivingLimit } from "@/server/policyChecks";
+import { sendToRoutedPrinter } from "@/lib/printRouting";
+import { buildGrnLabelEscPos } from "@/lib/escpos";
 
 const lineSchema = z.object({
   stockItemId: z.string().min(1),
@@ -250,6 +252,9 @@ export async function postGRN(input: z.infer<typeof grnInputSchema>): Promise<Gr
     });
     return { ...created, warning: grnWarning };
   });
+  // Best-effort, after the transaction commits — a missing/offline printer
+  // must never undo a real GRN post that already adjusted stock.
+  await printGrnLabels(grnId, parsed.data.branchId);
 
   revalidatePath("/grn");
   revalidatePath("/products");
@@ -312,9 +317,11 @@ export async function postDraftGrn(id: string): Promise<GrnActionResult> {
     const grnWarning = await computeGrnWarning(tx, input);
     await tx.update(grns).set({ status: "POSTED", postedAt: new Date(), postedBy: session.profile.id }).where(eq(grns.id, id));
     await tx.insert(auditLog).values({ actorId: session.profile.id, action: "Posted", entity: "GRN", entityLabel: grn.grnNumber, detail: `Stock updated${grnWarning ? " ⚠ " + grnWarning : ""}` });
-    return { id, warning: grnWarning };
+    return { id, warning: grnWarning, branchId: grn.branchId };
   });
   if ("error" in result) return result;
+  // Best-effort, after the transaction commits — same reasoning as postGRN.
+  await printGrnLabels(id, result.branchId);
 
   revalidatePath(`/grn/${id}`);
   revalidatePath("/grn");
@@ -457,4 +464,43 @@ export async function markGrnStickersPrinted(grnId: string, lineIds: string[]): 
   }
   revalidatePath(`/grn/${grnId}`);
   return {};
+}
+
+// Sends one label per received line, in sequence, to whichever device the
+// given branch has routed for 'grn_label'. Shared by the automatic
+// post-posting print (see postGRN/postDraftGrn — fires the moment a GRN
+// closes, for every received line, best-effort so a missing/offline
+// printer never undoes a real receipt that already adjusted stock) and the
+// manual "Send Labels to Printer" button (for re-printing after the fact,
+// e.g. a sticker got damaged).
+async function printGrnLabels(grnId: string, branchId: string): Promise<{ sent: number; total: number; lastError: string | null }> {
+  const lines = await db
+    .select({ name: stockItems.name, legacyCode: stockItems.legacyCode, batchNo: grnLines.batchNo, lotNo: grnLines.lotNo, mfgDate: grnLines.mfgDate, expiryDate: grnLines.expiryDate })
+    .from(grnLines)
+    .innerJoin(stockItems, eq(grnLines.stockItemId, stockItems.id))
+    .where(eq(grnLines.grnId, grnId));
+
+  let sent = 0;
+  let lastError: string | null = null;
+  for (const line of lines) {
+    const result = await sendToRoutedPrinter(
+      branchId,
+      "grn_label",
+      buildGrnLabelEscPos({ itemName: line.name, itemCode: line.legacyCode, batchNo: line.batchNo, lotNo: line.lotNo, mfgDate: line.mfgDate, expiryDate: line.expiryDate })
+    );
+    if (result.ok) sent++;
+    else lastError = result.status;
+  }
+  return { sent, total: lines.length, lastError };
+}
+
+export async function sendGrnLabelsToRoutedPrinter(grnId: string): Promise<{ error?: string; ok?: boolean; message?: string }> {
+  await assertPermission("grn", "view");
+  const [grn] = await db.select({ branchId: grns.branchId }).from(grns).where(eq(grns.id, grnId));
+  if (!grn) return { error: "GRN not found." };
+
+  const { sent, total, lastError } = await printGrnLabels(grnId, grn.branchId);
+  if (total === 0) return { error: "This GRN has no lines to label." };
+  if (sent === 0) return { error: lastError ?? "No labels were sent." };
+  return { ok: true, message: `Sent ${sent} of ${total} label(s).${sent < total ? ` Last error: ${lastError}` : ""}` };
 }

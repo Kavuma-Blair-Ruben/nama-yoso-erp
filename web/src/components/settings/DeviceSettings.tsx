@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { createDevice, deleteDevice, testDeviceConnection, setDeviceActive, sendTestPrint, sendExpiryTicketTestPrint } from "@/server/actions/devices";
+import { createDevice, deleteDevice, testDeviceConnection, setDeviceActive, sendTestPrint, sendExpiryTicketTestPrint, sendBarcodeTestPrint } from "@/server/actions/devices";
 
 type Device = {
   id: string;
@@ -82,6 +82,7 @@ function DeviceRow({ device }: { device: Device }) {
   const [pending, startTransition] = useTransition();
   const [printPending, startPrintTransition] = useTransition();
   const [expiryPrintPending, startExpiryPrintTransition] = useTransition();
+  const [barcodePrintPending, startBarcodePrintTransition] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
   const [isError, setIsError] = useState(false);
 
@@ -127,6 +128,20 @@ function DeviceRow({ device }: { device: Device }) {
     });
   }
 
+  function handleBarcodeTestPrint() {
+    setMessage(null);
+    startBarcodePrintTransition(async () => {
+      const result = await sendBarcodeTestPrint(device.id);
+      if (result.error) {
+        setIsError(true);
+        setMessage(result.error);
+      } else {
+        setIsError(false);
+        setMessage(result.message ?? "Sent");
+      }
+    });
+  }
+
   return (
     <div className="usedin-item" style={{ flexDirection: "column", alignItems: "stretch", gap: 4 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -151,6 +166,11 @@ function DeviceRow({ device }: { device: Device }) {
           {REACHABLE_CONNECTIONS.has(device.connection) && device.type === "receipt_printer" && (
             <button type="button" className="btn ghost" style={{ padding: "3px 8px", fontSize: 11, borderColor: "var(--bad)", color: "var(--bad)" }} disabled={expiryPrintPending} onClick={handleExpiryTestPrint}>
               {expiryPrintPending ? "Printing…" : "Send Test Expiry Ticket"}
+            </button>
+          )}
+          {REACHABLE_CONNECTIONS.has(device.connection) && (device.type === "receipt_printer" || device.type === "label_printer") && (
+            <button type="button" className="btn ghost" style={{ padding: "3px 8px", fontSize: 11 }} disabled={barcodePrintPending} onClick={handleBarcodeTestPrint}>
+              {barcodePrintPending ? "Printing…" : "Test Barcode Print"}
             </button>
           )}
           <a

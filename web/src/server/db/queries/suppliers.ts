@@ -34,11 +34,40 @@ export async function listSuppliers(q?: string) {
     .where(q ? sql`${suppliers.name} ilike ${"%" + q + "%"}` : undefined)
     .orderBy(sql`3 desc`); // totalSpend, descending
 
-  return list.map((s) => ({
-    ...s,
-    qualityPct: s.totalLines > 0 ? (s.acceptedLines / s.totalLines) * 100 : null,
-    stars: s.totalLines > 0 ? Math.max(1, Math.min(5, Math.round(((s.acceptedLines / s.totalLines) * 100) / 20))) : null,
-  }));
+  return list.map((s) => {
+    const qualityPct = s.totalLines > 0 ? (s.acceptedLines / s.totalLines) * 100 : null;
+    const { grade, gradeScore } = supplierGrade(qualityPct, s.avgLeadTimeDays);
+    return {
+      ...s,
+      qualityPct,
+      stars: s.totalLines > 0 ? Math.max(1, Math.min(5, Math.round((qualityPct! ) / 20))) : null,
+      grade,
+      gradeScore,
+    };
+  });
+}
+
+// A-F supplier scorecard: 60% GRN acceptance rate (quality of what actually
+// arrives), 40% average PO->GRN lead time (speed). Either component is
+// dropped from the blend (and the other used alone) when there isn't enough
+// history yet — a brand-new supplier with one fast delivery and no accepted/
+// rejected data shouldn't be graded on quality it hasn't demonstrated. A
+// supplier with neither signal gets no grade at all rather than a fabricated
+// middle score.
+export function supplierGrade(qualityPct: number | null, avgLeadTimeDays: number | null): { grade: string | null; gradeScore: number | null } {
+  const qualityComponent = qualityPct;
+  // 0 days -> 100, 14+ days -> 0, linear between.
+  const leadComponent = avgLeadTimeDays != null ? Math.max(0, Math.min(100, 100 - avgLeadTimeDays * 7)) : null;
+
+  let score: number | null;
+  if (qualityComponent != null && leadComponent != null) score = qualityComponent * 0.6 + leadComponent * 0.4;
+  else if (qualityComponent != null) score = qualityComponent;
+  else if (leadComponent != null) score = leadComponent;
+  else score = null;
+
+  if (score == null) return { grade: null, gradeScore: null };
+  const grade = score >= 90 ? "A" : score >= 80 ? "B" : score >= 70 ? "C" : score >= 60 ? "D" : score >= 50 ? "E" : "F";
+  return { grade, gradeScore: score };
 }
 
 // Petty-cash Direct GRNs still need a real supplier row (grns.supplier_id

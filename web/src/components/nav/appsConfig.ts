@@ -14,7 +14,23 @@ export type AppDef = { id: string; label: string; icon: string; color: string; c
 // `subrecipes` gets a Production-only launcher tile *and* a Production-only
 // sidebar, instead of still being bundled in with unrelated pages.
 export const APPS: AppDef[] = [
-  { id: "dashboard", label: "Dashboard", icon: "◆", color: "#0a5a96", colorDark: "#073f6b", items: [{ href: "/dashboard", label: "Dashboard", ico: "◆", section: null }] },
+  {
+    id: "dashboard",
+    label: "Dashboard",
+    icon: "◆",
+    color: "#0a5a96",
+    colorDark: "#073f6b",
+    items: [
+      { href: "/dashboard?tab=overview", label: "Overview", ico: "◆", section: null },
+      { href: "/dashboard?tab=purchasing", label: "Purchasing Dashboard", ico: "💳", section: "reports" },
+      { href: "/dashboard?tab=suppliers", label: "Supplier Dashboard", ico: "🚚", section: "reports" },
+      { href: "/dashboard?tab=cost", label: "Cost Dashboard", ico: "📊", section: "reports" },
+      { href: "/dashboard?tab=cogs", label: "COGS Analysis", ico: "🍳", section: "reports" },
+      { href: "/dashboard?tab=menuengineering", label: "Menu Engineering", ico: "🍽", section: "reports" },
+      { href: "/dashboard?tab=costcenter", label: "Cost by Sector", ico: "🏢", section: "reports" },
+      { href: "/dashboard?tab=salesdashboard", label: "Sales Dashboard", ico: "💰", section: "reports" },
+    ],
+  },
   { id: "scanner", label: "Scanner", icon: "📷", color: "#3a7d44", colorDark: "#285a2f", items: [{ href: "/scanner", label: "Scanner", ico: "📷", section: null }] },
   {
     id: "inventory",
@@ -87,7 +103,30 @@ export const APPS: AppDef[] = [
       { href: "/customers", label: "Customers", ico: "👥", section: "ckwarehouse" },
     ],
   },
-  { id: "reports", label: "Reports", icon: "📊", color: "#3f7d5c", colorDark: "#2c5c42", items: [{ href: "/reports", label: "Reports", ico: "📊", section: "reports" }] },
+  {
+    id: "reports",
+    label: "Reports",
+    icon: "📊",
+    color: "#3f7d5c",
+    colorDark: "#2c5c42",
+    items: [
+      { href: "/reports?tab=sales", label: "Recipe Sales", ico: "💵", section: "reports" },
+      { href: "/reports?tab=stock", label: "Stock Page", ico: "📦", section: "reports" },
+      { href: "/reports?tab=varianceanalysis", label: "Variance Analysis", ico: "⚖", section: "reports" },
+      { href: "/reports?tab=slowmoving", label: "Slow Moving Items", ico: "🐌", section: "reports" },
+      { href: "/reports?tab=pricechange", label: "Item Price Change", ico: "🔺", section: "reports" },
+      { href: "/reports?tab=costadjustments", label: "Cost Adjustments", ico: "🧮", section: "reports" },
+      { href: "/reports?tab=sections", label: "Cost by Brand & Section", ico: "🗂", section: "reports" },
+      { href: "/reports?tab=purchaseorders", label: "Purchase Orders", ico: "▤", section: "reports" },
+      { href: "/reports?tab=grns", label: "GRNs", ico: "▦", section: "reports" },
+      { href: "/reports?tab=supplierreturns", label: "Supplier Returns", ico: "📤", section: "reports" },
+      { href: "/reports?tab=invoices", label: "Invoices", ico: "🧾", section: "reports" },
+      { href: "/reports?tab=wastage", label: "Wastage", ico: "🗑", section: "reports" },
+      { href: "/reports?tab=transfers", label: "Transfers", ico: "⇄", section: "reports" },
+      { href: "/reports?tab=stockcounts", label: "Stock Counts", ico: "☑", section: "reports" },
+      { href: "/reports?tab=production", label: "Production", ico: "🍳", section: "reports" },
+    ],
+  },
   { id: "print-center", label: "Print Center", icon: "🖨", color: "#7a5c8f", colorDark: "#5b4269", items: [{ href: "/print-center", label: "Print Center", ico: "🖨", section: null }] },
   {
     id: "settings",

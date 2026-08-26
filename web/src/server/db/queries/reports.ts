@@ -22,7 +22,7 @@ import {
   stockCountLines,
   recipeSales,
 } from "@/server/db/schema";
-import { and, eq, isNotNull, ne, sql, gte, lte } from "drizzle-orm";
+import { and, eq, isNotNull, ne, sql, gte, lte, desc } from "drizzle-orm";
 import { loadCostingGraph, recipeCurrentCost, getSubRecipeCost, type CostingGraph } from "@/server/costing/recipeCost";
 import { todayStr } from "@/lib/format";
 
@@ -85,7 +85,10 @@ export async function listSlowMovingItems(minDays: number) {
 // Every GRN line that shipped at a different rate than its LPO said — unlike
 // index.html's array-index matching between GRN and PO lines (fragile),
 // this follows the real purchase_order_line_id FK on grn_lines.
-export async function listPriceChangeEvents() {
+export async function listPriceChangeEvents(filters: { from?: string; to?: string } = {}) {
+  const conditions = [eq(grns.status, "POSTED")];
+  if (filters.from) conditions.push(gte(grns.receivedDate, filters.from));
+  if (filters.to) conditions.push(lte(grns.receivedDate, filters.to));
   const rows = await db
     .select({
       grnId: grns.id,
@@ -104,7 +107,7 @@ export async function listPriceChangeEvents() {
     .innerJoin(suppliers, eq(grns.supplierId, suppliers.id))
     .innerJoin(stockItems, eq(grnLines.stockItemId, stockItems.id))
     .innerJoin(purchaseOrderLines, eq(grnLines.purchaseOrderLineId, purchaseOrderLines.id))
-    .where(eq(grns.status, "POSTED"));
+    .where(and(...conditions));
 
   return rows
     .filter((r) => Math.abs(r.orderedRate - r.receivedRate) >= 0.001)
@@ -120,12 +123,16 @@ export async function listPriceChangeEvents() {
 // Accepts an optional pre-loaded costing graph so callers that already need
 // one for the same request (e.g. the Cost Dashboard tab) don't trigger a
 // second, fully redundant loadCostingGraph() round trip.
-export async function listCostAdjustmentEvents(filters: { q?: string }, preloadedGraph?: CostingGraph) {
+export async function listCostAdjustmentEvents(filters: { q?: string; from?: string; to?: string }, preloadedGraph?: CostingGraph) {
+  const dateConditions = [];
+  if (filters.from) dateConditions.push(gte(priceHistory.changedAt, new Date(filters.from + "T00:00:00")));
+  if (filters.to) dateConditions.push(lte(priceHistory.changedAt, new Date(filters.to + "T23:59:59")));
   const [history, graph, ingredientRows] = await Promise.all([
     db
       .select({ stockItemId: priceHistory.stockItemId, oldRate: priceHistory.oldRate, newRate: priceHistory.newRate, changedAt: priceHistory.changedAt, legacyCode: stockItems.legacyCode, name: stockItems.name })
       .from(priceHistory)
-      .innerJoin(stockItems, eq(priceHistory.stockItemId, stockItems.id)),
+      .innerJoin(stockItems, eq(priceHistory.stockItemId, stockItems.id))
+      .where(dateConditions.length ? and(...dateConditions) : undefined),
     preloadedGraph ?? loadCostingGraph(),
     db.select({ mainRecipeId: recipeIngredients.mainRecipeId, subRecipeId: recipeIngredients.subRecipeId, stockItemId: recipeIngredients.stockItemId }).from(recipeIngredients),
   ]);
@@ -209,24 +216,30 @@ export async function getSectionStats() {
 // separate from getSectionStats() above, which is built entirely from frozen
 // historical import data and a different, unrelated "section" field. This is
 // the report that answers "Kitchen's food cost vs Bar's beverage cost", live.
-export async function getCostCenterStats() {
+export async function getCostCenterStats(filters: { from?: string; to?: string } = {}) {
   const allCenters = await db
     .select({ id: costCenters.id, name: costCenters.name, branchId: costCenters.branchId, branchName: branches.name })
     .from(costCenters)
     .innerJoin(branches, eq(costCenters.branchId, branches.id))
     .orderBy(branches.name, costCenters.name);
 
+  const grnConditions = [eq(grns.status, "POSTED")];
+  if (filters.from) grnConditions.push(gte(grns.receivedDate, filters.from));
+  if (filters.to) grnConditions.push(lte(grns.receivedDate, filters.to));
   const grnRows = await db
     .select({ costCenterId: grns.costCenterId, amount: grnLines.lineAmount, taxRate: grnLines.taxRate })
     .from(grnLines)
     .innerJoin(grns, eq(grnLines.grnId, grns.id))
-    .where(eq(grns.status, "POSTED"));
+    .where(and(...grnConditions));
 
+  const wastageConditions = [eq(wastageEvents.status, "POSTED")];
+  if (filters.from) wastageConditions.push(gte(wastageEvents.eventDate, filters.from));
+  if (filters.to) wastageConditions.push(lte(wastageEvents.eventDate, filters.to));
   const wastageRows = await db
     .select({ costCenterId: wastageEvents.costCenterId, amount: wastageLines.amountAtWaste })
     .from(wastageLines)
     .innerJoin(wastageEvents, eq(wastageLines.wastageEventId, wastageEvents.id))
-    .where(eq(wastageEvents.status, "POSTED"));
+    .where(and(...wastageConditions));
 
   const grnSpendById = new Map<string, number>();
   for (const r of grnRows) {
@@ -316,14 +329,42 @@ export async function getPurchasingStats() {
 // Stock on hand across every item, with negative/below-minimum/above-par
 // flags and whether it's used in any recipe — index.html's Stock Page.
 export async function getStockPageRows() {
-  const [items, balances, linkedRows] = await Promise.all([
-    db.select({ id: stockItems.id, legacyCode: stockItems.legacyCode, name: stockItems.name, issueUnit: stockItems.issueUnit, ratePerKgL: stockItems.ratePerKgL, minLevel: stockItems.minLevel, parLevel: stockItems.parLevel, categoryName: categories.name, sourceType: stockItems.sourceType }).from(stockItems).leftJoin(categories, eq(stockItems.categoryId, categories.id)),
+  const [items, balances, linkedRows, countLines] = await Promise.all([
+    db
+      .select({
+        id: stockItems.id,
+        legacyCode: stockItems.legacyCode,
+        name: stockItems.name,
+        issueUnit: stockItems.issueUnit,
+        purchaseUnit: stockItems.purchaseUnit,
+        ratePerKgL: stockItems.ratePerKgL,
+        purchaseRate: stockItems.purchaseRate,
+        minLevel: stockItems.minLevel,
+        parLevel: stockItems.parLevel,
+        categoryName: categories.name,
+        sourceType: stockItems.sourceType,
+      })
+      .from(stockItems)
+      .leftJoin(categories, eq(stockItems.categoryId, categories.id)),
     db.select({ stockItemId: stockBalances.stockItemId, qtyOnHand: stockBalances.qtyOnHand }).from(stockBalances),
     db.selectDistinct({ stockItemId: recipeIngredients.stockItemId }).from(recipeIngredients).where(isNotNull(recipeIngredients.stockItemId)),
+    // Most recent POSTED count per item, across every count ever taken —
+    // "Last Count Qty" is a point-in-time snapshot from whenever that item
+    // was last physically counted, not tied to any one count session.
+    db
+      .select({ stockItemId: stockCountLines.stockItemId, countedQty: stockCountLines.countedQty, countDate: stockCounts.countDate })
+      .from(stockCountLines)
+      .innerJoin(stockCounts, eq(stockCountLines.stockCountId, stockCounts.id))
+      .where(and(eq(stockCounts.status, "POSTED"), isNotNull(stockCountLines.countedQty)))
+      .orderBy(desc(stockCounts.countDate)),
   ]);
   const qtyByItemId = new Map<string, number>();
   for (const b of balances) qtyByItemId.set(b.stockItemId, (qtyByItemId.get(b.stockItemId) ?? 0) + b.qtyOnHand);
   const linkedIds = new Set(linkedRows.map((r) => r.stockItemId));
+  const lastCountByItemId = new Map<string, number>();
+  for (const l of countLines) {
+    if (!lastCountByItemId.has(l.stockItemId) && l.countedQty != null) lastCountByItemId.set(l.stockItemId, l.countedQty);
+  }
 
   return items.map((it) => {
     const onHand = qtyByItemId.get(it.id) ?? 0;
@@ -333,7 +374,10 @@ export async function getStockPageRows() {
     // it's never expected to show up in recipe_ingredients, so it's excluded
     // from the "not linked to any recipe" signal rather than always flagged.
     const linkedToRecipe = it.sourceType === "produced" || linkedIds.has(it.id);
-    return { ...it, onHand, value: onHand * (it.ratePerKgL ?? 0), flag, abovePar, linkedToRecipe };
+    // Supy-style 3-state status, distinct from `flag` above (which drives
+    // the KPI cards/filters) — this is purely the per-row display label.
+    const status: "OUT_OF_STOCK" | "LOW_STOCK" | "IN_STOCK" = onHand <= 0 ? "OUT_OF_STOCK" : it.minLevel != null && onHand < it.minLevel ? "LOW_STOCK" : "IN_STOCK";
+    return { ...it, onHand, value: onHand * (it.ratePerKgL ?? 0), flag, abovePar, linkedToRecipe, status, lastCountQty: lastCountByItemId.get(it.id) ?? null };
   });
 }
 

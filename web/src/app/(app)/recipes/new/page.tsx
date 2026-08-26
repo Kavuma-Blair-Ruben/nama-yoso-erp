@@ -35,6 +35,7 @@ export default async function NewRecipePage({ searchParams }: PageProps<"/recipe
         storageInstructions: "storageInstructions" in cloneData.recipe ? cloneData.recipe.storageInstructions : null,
         isModifier: "isModifier" in cloneData.recipe ? cloneData.recipe.isModifier : false,
         isCombo: "isCombo" in cloneData.recipe ? cloneData.recipe.isCombo : false,
+        costCategory: ("costCategory" in cloneData.recipe ? cloneData.recipe.costCategory : "food") as "food" | "beverage",
         branches: cloneData.recipe.branches,
         branchPrices: cloneData.branchPrices,
         lines: cloneData.ingredients.map((i) => ({ stockItemId: i.stockItemId, ingredientMainRecipeId: i.ingredientMainRecipeId, unitLabel: i.unitLabel ?? "", qty: i.qty, wastagePct: i.wastagePct })),
