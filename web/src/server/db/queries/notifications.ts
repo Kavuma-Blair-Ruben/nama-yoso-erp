@@ -1,6 +1,6 @@
 import "server-only";
 import { db } from "@/server/db";
-import { stockItems, stockBalances, priceHistory, purchaseOrders, purchaseOrderLines, wastageEvents, stockTransfers, stockCounts, grns, policySettings } from "@/server/db/schema";
+import { stockItems, stockBalances, priceHistory, purchaseOrders, purchaseOrderLines, wastageEvents, stockTransfers, stockCounts, grns, policySettings, poApprovalSteps } from "@/server/db/schema";
 import { eq, gte, sql } from "drizzle-orm";
 import type { Session } from "@/server/auth/session";
 import { hasAccess } from "@/server/auth/session";
@@ -58,7 +58,11 @@ export async function getNotifications(session: Session): Promise<Notification[]
 
   if (hasAccess(session, "orders", "view")) {
     const [settings] = await db.select({ threshold: policySettings.poApprovalThreshold }).from(policySettings);
-    if (settings?.threshold != null) {
+    const [{ n: stepCount }] = await db.select({ n: sql<number>`count(*)::int` }).from(poApprovalSteps);
+    // A threshold with no chain steps configured gates nothing (see
+    // updatePOStatus) — matches that same condition here so this alert can't
+    // warn about an approval requirement that isn't actually blocking anyone.
+    if (settings?.threshold != null && stepCount > 0) {
       const draftPos = await db
         .select({ id: purchaseOrders.id, poNumber: purchaseOrders.poNumber, total: sql<number>`coalesce(sum(${purchaseOrderLines.qty} * ${purchaseOrderLines.rate} * (1 + ${purchaseOrderLines.taxRate}/100.0)), 0)::float8` })
         .from(purchaseOrders)
