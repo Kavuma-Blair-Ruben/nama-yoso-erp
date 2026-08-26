@@ -15,6 +15,7 @@ import { DonutChart } from "@/components/charts/DonutChart";
 import { HorizontalBarChart } from "@/components/charts/HorizontalBarChart";
 import { TrendLineChart } from "@/components/charts/TrendLineChart";
 import { MenuEngineeringScatter } from "@/components/charts/MenuEngineeringScatter";
+import { Sparkline } from "@/components/charts/Sparkline";
 
 type Tab = "overview" | "purchasing" | "suppliers" | "cost" | "menuengineering" | "costcenter" | "salesdashboard";
 const ANALYTICS_TABS: { id: Tab; label: string }[] = [
@@ -71,27 +72,32 @@ async function OverviewTab() {
       <div className="section-title">Today at a Glance</div>
       <div className="callout">📋 {buildDailySummary(digest)}</div>
       <div className="kpi-grid">
-        <Link href="/predictive-orders" className="kpi">
+        <Link href="/predictive-orders" className={`kpi${digest.reorderAlertCount > 0 ? " accent-bad" : ""}`}>
+          <div className="kpi-icon">🔁</div>
           <div className="n" style={{ color: digest.reorderAlertCount > 0 ? "var(--bad)" : "inherit" }}>{fmt(digest.reorderAlertCount, 0)}</div>
           <div className="l">Reorder Alerts</div>
           <div className="d">{digest.reorderAlertCount ? "Items below safe stock coverage" : "All items on track"}</div>
         </Link>
         <Link href="/reports?tab=sales" className="kpi">
+          <div className="kpi-icon">💵</div>
           <div className="n">{money(digest.salesToday.revenue, 0)}</div>
           <div className="l">Sales Today</div>
           <div className="d">{fmt(digest.salesToday.orderCount, 0)} recipe(s) sold</div>
         </Link>
         <Link href="/purchase-orders?status=ORDERED" className="kpi">
+          <div className="kpi-icon">🛒</div>
           <div className="n">{money(digest.upcomingPurchases.value, 0)}</div>
           <div className="l">Upcoming Purchases</div>
           <div className="d">{fmt(digest.upcomingPurchases.count, 0)} PO(s) on the way</div>
         </Link>
         <Link href="/production?status=OPEN" className="kpi">
+          <div className="kpi-icon">🍳</div>
           <div className="n">{fmt(digest.openProductionBatches, 0)}</div>
           <div className="l">Production In Progress</div>
           <div className="d">{digest.openProductionBatches ? "Open batch(es) right now" : "Nothing in progress"}</div>
         </Link>
-        <Link href="/wastage" className="kpi">
+        <Link href="/wastage" className={`kpi${digest.wastageTodayCost > 0 ? " accent-bad" : ""}`}>
+          <div className="kpi-icon">🗑️</div>
           <div className="n" style={{ color: digest.wastageTodayCost > 0 ? "var(--bad)" : "inherit" }}>{money(digest.wastageTodayCost, 0)}</div>
           <div className="l">Wastage Today</div>
           <div className="d">{digest.wastageTodayCost ? "Logged so far today" : "Nothing logged today"}</div>
@@ -101,6 +107,7 @@ async function OverviewTab() {
       <div className="section-title" style={{ marginTop: 16 }}>Master Data Health</div>
       <div className="kpi-grid">
         <Link href="/products" className="kpi">
+          <div className="kpi-icon">📦</div>
           <div className="n">{fmt(d.activeSkuCount, 0)}</div>
           <div className="l">Active SKUs</div>
           <div className="d">
@@ -108,21 +115,25 @@ async function OverviewTab() {
           </div>
         </Link>
         <Link href="/recipes" className="kpi">
+          <div className="kpi-icon">📖</div>
           <div className="n">{fmt(d.mainRecipeCount, 0)}</div>
           <div className="l">Main Recipes</div>
           <div className="d">{fmt(d.mainSectionCount, 0)} menu sections</div>
         </Link>
         <Link href="/recipes" className="kpi">
+          <div className="kpi-icon">🧾</div>
           <div className="n">{fmt(d.subRecipeCount, 0)}</div>
           <div className="l">Sub-Recipes</div>
           <div className="d">{fmt(d.subSectionCount, 0)} production sections</div>
         </Link>
         <Link href="/invoices" className="kpi">
+          <div className="kpi-icon">💳</div>
           <div className="n">{money(d.totalPurchaseSpend, 0)}</div>
           <div className="l">Total Purchases</div>
           <div className="d">{fmt(d.invoiceCount, 0)} invoices logged</div>
         </Link>
-        <Link href="/invoices?status=OUTSTANDING" className="kpi">
+        <Link href="/invoices?status=OUTSTANDING" className={`kpi${d.totalOutstanding > 0 ? " accent-bad" : ""}`}>
+          <div className="kpi-icon">💰</div>
           <div className="n" style={{ color: d.totalOutstanding > 0 ? "var(--bad)" : "inherit" }}>
             {money(d.totalOutstanding, 0)}
           </div>
@@ -130,6 +141,7 @@ async function OverviewTab() {
           <div className="d">Across {fmt(d.outstandingSupplierCount, 0)} suppliers</div>
         </Link>
         <Link href="/products" className="kpi">
+          <div className="kpi-icon">❓</div>
           <div className="n">{fmt(d.missingIngredientCount, 0)}</div>
           <div className="l">Ingredients w/o master price</div>
           <div className="d">{d.missingIngredientCount ? "Flagged in recipe ledgers" : "Master data fully linked"}</div>
@@ -228,10 +240,16 @@ async function PurchasingTab() {
   return (
     <>
       <div className="kpi-grid">
-        <Link href="/invoices" className="kpi"><div className="n">{money(stats.totalSpend, 0)}</div><div className="l">Total Purchases</div><div className="d">{stats.invoiceCount} invoices</div></Link>
-        <Link href="/invoices?status=OUTSTANDING" className="kpi"><div className="n" style={{ color: "var(--bad)" }}>{money(stats.outstanding, 0)}</div><div className="l">Outstanding Payables</div><div className="d">{stats.outstandingCount} unpaid invoices</div></Link>
-        <Link href="/invoices" className="kpi"><div className="n">{money(stats.cashSpend, 0)}</div><div className="l">Cash / Paid</div><div className="d">{fmt(stats.totalSpend ? (stats.cashSpend / stats.totalSpend) * 100 : 0, 0)}% of spend</div></Link>
-        <Link href="/invoices" className="kpi"><div className="n">{money(stats.creditSpend, 0)}</div><div className="l">Credit Purchases</div><div className="d">{fmt(stats.totalSpend ? (stats.creditSpend / stats.totalSpend) * 100 : 0, 0)}% of spend</div></Link>
+        <Link href="/invoices" className="kpi">
+          <div className="kpi-icon">💳</div>
+          <div className="n">{money(stats.totalSpend, 0)}</div>
+          <div className="l">Total Purchases</div>
+          <div className="d">{stats.invoiceCount} invoices</div>
+          {stats.weeks.length > 1 && <div style={{ marginTop: 6 }}><Sparkline data={stats.weeks.map(([, v]) => v)} color="var(--chart-1)" /></div>}
+        </Link>
+        <Link href="/invoices?status=OUTSTANDING" className="kpi accent-bad"><div className="kpi-icon">💰</div><div className="n" style={{ color: "var(--bad)" }}>{money(stats.outstanding, 0)}</div><div className="l">Outstanding Payables</div><div className="d">{stats.outstandingCount} unpaid invoices</div></Link>
+        <Link href="/invoices" className="kpi"><div className="kpi-icon">💵</div><div className="n">{money(stats.cashSpend, 0)}</div><div className="l">Cash / Paid</div><div className="d">{fmt(stats.totalSpend ? (stats.cashSpend / stats.totalSpend) * 100 : 0, 0)}% of spend</div></Link>
+        <Link href="/invoices" className="kpi"><div className="kpi-icon">🏦</div><div className="n">{money(stats.creditSpend, 0)}</div><div className="l">Credit Purchases</div><div className="d">{fmt(stats.totalSpend ? (stats.creditSpend / stats.totalSpend) * 100 : 0, 0)}% of spend</div></Link>
       </div>
       <div className="grid-2">
         <div className="panel">
@@ -276,10 +294,10 @@ async function SupplierDashboardTab() {
   return (
     <>
       <div className="kpi-grid">
-        <Link href="/suppliers" className="kpi"><div className="n">{suppliers.length}</div><div className="l">Active Suppliers</div><div className="d">{bySpend.length} with purchase history</div></Link>
-        <Link href="/suppliers" className="kpi"><div className="n">{money(totalSpend, 0)}</div><div className="l">Total Spend</div><div className="d">All-time, historical + live</div></Link>
-        <Link href="/suppliers" className="kpi"><div className="n">{totalSpend ? fmt((top5Spend / totalSpend) * 100, 0) : 0}%</div><div className="l">Spend in Top 5 Suppliers</div><div className="d">Concentration risk</div></Link>
-        <Link href="/suppliers" className="kpi"><div className="n" style={{ color: flaggedSuppliers.length ? "var(--bad)" : "inherit" }}>{flaggedSuppliers.length}</div><div className="l">Below 90% Quality</div><div className="d">{avgLeadTime != null ? `${fmt(avgLeadTime, 1)}d avg lead time` : "No lead-time data yet"}</div></Link>
+        <Link href="/suppliers" className="kpi"><div className="kpi-icon">🚚</div><div className="n">{suppliers.length}</div><div className="l">Active Suppliers</div><div className="d">{bySpend.length} with purchase history</div></Link>
+        <Link href="/suppliers" className="kpi"><div className="kpi-icon">💰</div><div className="n">{money(totalSpend, 0)}</div><div className="l">Total Spend</div><div className="d">All-time, historical + live</div></Link>
+        <Link href="/suppliers" className="kpi"><div className="kpi-icon">🏆</div><div className="n">{totalSpend ? fmt((top5Spend / totalSpend) * 100, 0) : 0}%</div><div className="l">Spend in Top 5 Suppliers</div><div className="d">Concentration risk</div></Link>
+        <Link href="/suppliers" className={`kpi${flaggedSuppliers.length ? " accent-bad" : ""}`}><div className="kpi-icon">⭐</div><div className="n" style={{ color: flaggedSuppliers.length ? "var(--bad)" : "inherit" }}>{flaggedSuppliers.length}</div><div className="l">Below 90% Quality</div><div className="d">{avgLeadTime != null ? `${fmt(avgLeadTime, 1)}d avg lead time` : "No lead-time data yet"}</div></Link>
       </div>
       <div className="grid-2">
         <div className="panel">
@@ -366,10 +384,16 @@ async function CostDashboardTab() {
         the closest actual-vs-theoretical view available until POS sales import lands.
       </div>
       <div className="kpi-grid">
-        <Link href="/recipes" className="kpi"><div className="n">{d.topCost.length ? d.mainRecipeCount : 0}</div><div className="l">Main Recipes Costed</div><div className="d">{d.missingIngredientCount} ingredient(s) missing a live price</div></Link>
-        <Link href="/reports?tab=costadjustments" className="kpi"><div className="n" style={{ color: totalDrift >= 0 ? "var(--bad)" : "var(--good)" }}>{money(totalDrift, 0)}</div><div className="l">Net Cost Drift</div><div className="d">{totalDrift >= 0 ? "Costing more than build-time" : "Costing less than build-time"}</div></Link>
-        <Link href="/reports?tab=costadjustments" className="kpi"><div className="n" style={{ color: "var(--bad)" }}>{increases}</div><div className="l">Price Increases</div><div className="d">of {adjustments.length} recorded changes</div></Link>
-        <Link href="/reports?tab=costadjustments" className="kpi"><div className="n" style={{ color: "var(--good)" }}>{decreases}</div><div className="l">Price Decreases</div><div className="d">of {adjustments.length} recorded changes</div></Link>
+        <Link href="/recipes" className="kpi"><div className="kpi-icon">📖</div><div className="n">{d.topCost.length ? d.mainRecipeCount : 0}</div><div className="l">Main Recipes Costed</div><div className="d">{d.missingIngredientCount} ingredient(s) missing a live price</div></Link>
+        <Link href="/reports?tab=costadjustments" className={`kpi ${totalDrift >= 0 ? "accent-bad" : "accent-good"}`}>
+          <div className="kpi-icon">📊</div>
+          <div className="n" style={{ color: totalDrift >= 0 ? "var(--bad)" : "var(--good)" }}>{money(totalDrift, 0)}</div>
+          <div className="l">Net Cost Drift</div>
+          <div className="d">{totalDrift >= 0 ? "Costing more than build-time" : "Costing less than build-time"}</div>
+          {trend.length > 1 && <div style={{ marginTop: 6 }}><Sparkline data={trend.map((t) => t.value)} color={totalDrift >= 0 ? "var(--bad)" : "var(--good)"} /></div>}
+        </Link>
+        <Link href="/reports?tab=costadjustments" className="kpi"><div className="kpi-icon">🔺</div><div className="n" style={{ color: "var(--bad)" }}>{increases}</div><div className="l">Price Increases</div><div className="d">of {adjustments.length} recorded changes</div></Link>
+        <Link href="/reports?tab=costadjustments" className="kpi"><div className="kpi-icon">🔻</div><div className="n" style={{ color: "var(--good)" }}>{decreases}</div><div className="l">Price Decreases</div><div className="d">of {adjustments.length} recorded changes</div></Link>
       </div>
       <div className="grid-2">
         <div className="panel">
@@ -427,10 +451,10 @@ async function MenuEngineeringTab() {
       ) : (
         <>
           <div className="kpi-grid">
-            <Link href="/recipes" className="kpi"><div className="n" style={{ color: "var(--good)" }}>{byClass.Star}</div><div className="l">Stars</div></Link>
-            <Link href="/recipes" className="kpi"><div className="n" style={{ color: "var(--chart-5)" }}>{byClass["Plow-Horse"]}</div><div className="l">Plow-Horses</div></Link>
-            <Link href="/recipes" className="kpi"><div className="n" style={{ color: "var(--chart-4)" }}>{byClass.Puzzle}</div><div className="l">Puzzles</div></Link>
-            <Link href="/recipes" className="kpi"><div className="n" style={{ color: "var(--bad)" }}>{byClass.Dog}</div><div className="l">Dogs</div></Link>
+            <Link href="/recipes" className="kpi accent-good"><div className="kpi-icon">⭐</div><div className="n" style={{ color: "var(--good)" }}>{byClass.Star}</div><div className="l">Stars</div></Link>
+            <Link href="/recipes" className="kpi"><div className="kpi-icon">🐎</div><div className="n" style={{ color: "var(--chart-5)" }}>{byClass["Plow-Horse"]}</div><div className="l">Plow-Horses</div></Link>
+            <Link href="/recipes" className="kpi"><div className="kpi-icon">🧩</div><div className="n" style={{ color: "var(--chart-4)" }}>{byClass.Puzzle}</div><div className="l">Puzzles</div></Link>
+            <Link href="/recipes" className="kpi accent-bad"><div className="kpi-icon">🐶</div><div className="n" style={{ color: "var(--bad)" }}>{byClass.Dog}</div><div className="l">Dogs</div></Link>
           </div>
           <div className="panel">
             <div className="panel-head"><h3>Menu Engineering — Popularity vs. Profitability</h3></div>
@@ -459,9 +483,9 @@ async function CostCenterTab() {
         this is live and grows as you post GRNs/wastage with a sector selected, not a snapshot of historical import data.
       </div>
       <div className="kpi-grid">
-        <Link href="/grn" className="kpi"><div className="n">{money(totalGrnSpend, 0)}</div><div className="l">Total Received (all sectors)</div></Link>
-        <Link href="/wastage" className="kpi"><div className="n" style={{ color: totalWastage > 0 ? "var(--bad)" : "inherit" }}>{money(totalWastage, 0)}</div><div className="l">Total Wastage (all sectors)</div></Link>
-        <Link href="/wastage" className="kpi"><div className="n">{totalGrnSpend ? fmt((totalWastage / totalGrnSpend) * 100, 1) : "0.0"}%</div><div className="l">Wastage as % of Spend</div></Link>
+        <Link href="/grn" className="kpi"><div className="kpi-icon">📥</div><div className="n">{money(totalGrnSpend, 0)}</div><div className="l">Total Received (all sectors)</div></Link>
+        <Link href="/wastage" className={`kpi${totalWastage > 0 ? " accent-bad" : ""}`}><div className="kpi-icon">🗑️</div><div className="n" style={{ color: totalWastage > 0 ? "var(--bad)" : "inherit" }}>{money(totalWastage, 0)}</div><div className="l">Total Wastage (all sectors)</div></Link>
+        <Link href="/wastage" className="kpi"><div className="kpi-icon">📉</div><div className="n">{totalGrnSpend ? fmt((totalWastage / totalGrnSpend) * 100, 1) : "0.0"}%</div><div className="l">Wastage as % of Spend</div></Link>
       </div>
       {[...byBranch.entries()].map(([branchName, sectors]) => (
         <div className="panel" key={branchName} style={{ marginBottom: 16 }}>
@@ -505,21 +529,26 @@ async function SalesDashboardTab() {
         <>
           <div className="kpi-grid">
             <div className="kpi">
+              <div className="kpi-icon">💵</div>
               <div className="n">{money(stats.grossRevenue, 0)}</div>
               <div className="l">Gross Revenue</div>
               <div className="d">Before discounts, last {stats.days} days</div>
             </div>
-            <div className="kpi">
+            <div className={`kpi${stats.totalDiscount > 0 ? " accent-bad" : ""}`}>
+              <div className="kpi-icon">🏷️</div>
               <div className="n" style={{ color: stats.totalDiscount > 0 ? "var(--bad)" : "inherit" }}>{money(stats.totalDiscount, 0)}</div>
               <div className="l">Discounts Given</div>
               <div className="d">{fmt(stats.discountRatePct, 1)}% of gross</div>
             </div>
-            <div className="kpi">
+            <div className="kpi accent-good">
+              <div className="kpi-icon">💰</div>
               <div className="n">{money(stats.netRevenue, 0)}</div>
               <div className="l">Net Collected</div>
               <div className="d">{money(stats.avgOrderValue, 2)} avg order value</div>
+              {stats.trend.length > 1 && <div style={{ marginTop: 6 }}><Sparkline data={stats.trend.map((t) => t.value)} color="var(--chart-3)" /></div>}
             </div>
             <div className="kpi">
+              <div className="kpi-icon">🧾</div>
               <div className="n">{fmt(stats.orderCount, 0)}</div>
               <div className="l">Orders</div>
               <div className="d">Last {stats.days} days</div>

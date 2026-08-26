@@ -7,6 +7,7 @@ import {
   listCostAdjustmentEvents,
   getSectionStats,
   getStockPageRows,
+  getVarianceAnalysis,
 } from "@/server/db/queries/reports";
 import { getRecipeSalesReport } from "@/server/db/queries/sales";
 import { getPosIntegration, listPosBranchMappings, listPosItemMappings, listPosWebhookEvents } from "@/server/db/queries/pos";
@@ -19,21 +20,23 @@ import { listProductionBatches } from "@/server/db/queries/production";
 import { listInvoices } from "@/server/db/queries/invoices";
 import { listAllActiveCostCenters } from "@/server/db/queries/costCenters";
 import { listMainRecipesForPicker } from "@/server/db/queries/recipes";
-import { fmt, money, pct } from "@/lib/format";
+import { fmt, money, pct, todayStr } from "@/lib/format";
 import { canonicalUnitLabel } from "@/lib/unitMath";
 import { DonutChart } from "@/components/charts/DonutChart";
 import { HorizontalBarChart } from "@/components/charts/HorizontalBarChart";
+import { Sparkline } from "@/components/charts/Sparkline";
 import { PosIntegrationPanel } from "@/components/reports/PosIntegrationPanel";
 import { FoodicsWebhookPanel } from "@/components/reports/FoodicsWebhookPanel";
 import { RecipeSalesImport } from "@/components/reports/RecipeSalesImport";
 import { ReportExportBar } from "@/components/reports/ReportExportBar";
 
 type Tab =
-  | "sales" | "slowmoving" | "pricechange" | "costadjustments" | "sections" | "stock"
+  | "sales" | "slowmoving" | "pricechange" | "costadjustments" | "sections" | "stock" | "varianceanalysis"
   | "purchaseorders" | "grns" | "supplierreturns" | "invoices" | "wastage" | "transfers" | "stockcounts" | "production";
 const TABS: { id: Tab; label: string }[] = [
   { id: "sales", label: "Recipe Sales" },
   { id: "stock", label: "Stock Page" },
+  { id: "varianceanalysis", label: "Variance Analysis" },
   { id: "slowmoving", label: "Slow Moving Items" },
   { id: "pricechange", label: "Item Price Change" },
   { id: "costadjustments", label: "Cost Adjustments" },
@@ -67,6 +70,15 @@ export default async function ReportsPage({ searchParams }: PageProps<"/reports"
 
       {tab === "sales" && <RecipeSalesTab />}
       {tab === "stock" && <StockTab />}
+      {tab === "varianceanalysis" && (
+        <VarianceAnalysisTab
+          from={typeof sp.from === "string" ? sp.from : undefined}
+          to={typeof sp.to === "string" ? sp.to : undefined}
+          branchId={typeof sp.branchId === "string" ? sp.branchId : undefined}
+          costCenterId={typeof sp.costCenterId === "string" ? sp.costCenterId : undefined}
+          excludeNonCogs={sp.excludeNonCogs === "1"}
+        />
+      )}
       {tab === "slowmoving" && <SlowMovingTab minDays={typeof sp.minDays === "string" ? Number(sp.minDays) : 0} />}
       {tab === "pricechange" && <PriceChangeTab />}
       {tab === "costadjustments" && <CostAdjustmentsTab q={typeof sp.q === "string" ? sp.q : undefined} />}
@@ -161,15 +173,19 @@ async function StockTab() {
   const rows = await getStockPageRows();
   const negCount = rows.filter((r) => r.onHand < 0).length;
   const belowMinCount = rows.filter((r) => r.flag === "BELOW MIN").length;
+  const abovePar = rows.filter((r) => r.abovePar).length;
+  const notLinkedCount = rows.filter((r) => !r.linkedToRecipe).length;
   const totalValue = rows.reduce((s, r) => s + r.value, 0);
   const flagged = rows.filter((r) => r.flag).sort((a, b) => (a.flag ? 0 : 1) - (b.flag ? 0 : 1));
 
   return (
     <>
       <div className="kpi-grid">
-        <div className="kpi"><div className="n">{money(totalValue, 0)}</div><div className="l">Total Stock Value</div></div>
-        <div className="kpi"><div className="n" style={{ color: negCount ? "var(--bad)" : "inherit" }}>{negCount}</div><div className="l">Negative Stock Items</div></div>
-        <div className="kpi"><div className="n" style={{ color: belowMinCount ? "var(--bad)" : "inherit" }}>{belowMinCount}</div><div className="l">Below Minimum</div></div>
+        <div className="kpi"><div className="kpi-icon">📦</div><div className="n">{money(totalValue, 0)}</div><div className="l">Stock on Hand</div></div>
+        <div className="kpi"><div className="kpi-icon">🔗</div><div className="n" style={{ color: notLinkedCount ? "var(--bad)" : "inherit" }}>{notLinkedCount}</div><div className="l">Not Linked to Recipe</div><div className="d">Needs mapping</div></div>
+        <div className="kpi"><div className="kpi-icon">⊖</div><div className="n" style={{ color: negCount ? "var(--bad)" : "inherit" }}>{negCount}</div><div className="l">Negative Stock</div><div className="d">Count required</div></div>
+        <div className="kpi"><div className="kpi-icon">📈</div><div className="n">{abovePar}</div><div className="l">Above Par</div><div className="d">Overstocked items</div></div>
+        <div className="kpi"><div className="kpi-icon">📉</div><div className="n" style={{ color: belowMinCount ? "var(--bad)" : "inherit" }}>{belowMinCount}</div><div className="l">Below Minimum</div><div className="d">Reorder now</div></div>
       </div>
       <div className="callout">{flagged.length} item(s) flagged below — everything else is carrying non-negative stock at or above its minimum level.</div>
       <div className="panel">
@@ -185,7 +201,7 @@ async function StockTab() {
                     <td className="mono-r" style={{ color: r.onHand < 0 ? "var(--bad)" : "inherit" }}>{fmt(r.onHand, 2)} {canonicalUnitLabel(r.issueUnit)}</td>
                     <td className="mono-r">{r.minLevel != null ? fmt(r.minLevel, 2) : "-"}</td>
                     <td className="mono-r">{money(r.value, 2)}</td>
-                    <td className="right">{r.flag && <span className="tag bad">{r.flag}</span>}</td>
+                    <td className="right">{r.flag && <span className={`tag ${r.flag === "ABOVE PAR" ? "neutral" : "bad"}`}>{r.flag}</span>}</td>
                   </tr>
                 ))
               ) : (
@@ -193,6 +209,108 @@ async function StockTab() {
               )}
             </tbody>
           </table>
+        </div>
+      </div>
+    </>
+  );
+}
+
+async function VarianceAnalysisTab({ from, to, branchId, costCenterId, excludeNonCogs }: { from?: string; to?: string; branchId?: string; costCenterId?: string; excludeNonCogs?: boolean }) {
+  const effTo = to || todayStr();
+  const effFrom = from || new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+  const [data, branches, costCenters] = await Promise.all([
+    getVarianceAnalysis({ from: effFrom, to: effTo, branchId, costCenterId, excludeNonCogs }),
+    listBranches(),
+    listAllActiveCostCenters(),
+  ]);
+  const maxNeg = Math.max(1, ...data.negativeItems.map((i) => Math.abs(i.varianceValue)));
+  const maxPos = Math.max(1, ...data.positiveItems.map((i) => i.varianceValue));
+
+  return (
+    <>
+      <div className="callout">
+        <b>What this shows:</b> theoretical stock (the running ledger, driven by GRN receipts, production, wastage and sales) vs. what was
+        physically counted, rolled up per item across every posted stock count in this date range. A negative variance means an item came up
+        short of what the system expected; positive means more was on the shelf than expected.
+      </div>
+      <form className="filterbar" method="get" style={{ alignItems: "center" }}>
+        <input type="hidden" name="tab" value="varianceanalysis" />
+        <div className="daterange">
+          📅
+          <input type="date" name="from" defaultValue={effFrom} />
+          <span>–</span>
+          <input type="date" name="to" defaultValue={effTo} />
+        </div>
+        <select name="branchId" defaultValue={branchId ?? ""}>
+          <option value="">All branches</option>
+          {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+        </select>
+        <select name="costCenterId" defaultValue={costCenterId ?? ""}>
+          <option value="">All cost centers</option>
+          {costCenters.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--ink-soft)" }}>
+          <input type="checkbox" name="excludeNonCogs" value="1" defaultChecked={excludeNonCogs} /> Exclude non-COGS items
+        </label>
+        <button className="btn ghost" type="submit">Apply</button>
+      </form>
+
+      <div className="kpi-grid">
+        <div className="kpi accent-bad">
+          <div className="kpi-icon">➖</div>
+          <div className="n" style={{ color: "var(--bad)" }}>{money(data.negativeVarianceValue, 2)}</div>
+          <div className="l">Negative Variance</div>
+          <div className="d">{data.negativeItemCount} item(s) short</div>
+        </div>
+        <div className="kpi accent-good">
+          <div className="kpi-icon">➕</div>
+          <div className="n" style={{ color: "var(--good)" }}>{money(data.positiveVarianceValue, 2)}</div>
+          <div className="l">Positive Variance</div>
+          <div className="d">{data.positiveItemCount} item(s) over</div>
+        </div>
+        <div className="kpi accent-neutral">
+          <div className="kpi-icon">⚖️</div>
+          <div className="n" style={{ color: data.netVarianceValue < 0 ? "var(--bad)" : "inherit" }}>{money(data.netVarianceValue, 2)}</div>
+          <div className="l">Net Variance</div>
+          <div className="d">{effFrom} — {effTo}</div>
+        </div>
+        <div className="kpi accent-warn">
+          <div className="kpi-icon">🎯</div>
+          <div className="n">{data.netVarianceOfSalesPct != null ? pct(data.netVarianceOfSalesPct) : "—"}</div>
+          <div className="l">Net Variance / Sales</div>
+          <div className="d">{data.netVarianceOfSalesPct == null ? "No sales data in this range" : "Target ≤ 1.0%"}</div>
+        </div>
+      </div>
+
+      <div className="panel">
+        <div className="panel-head"><h3>Variance per Item</h3><span style={{ fontSize: 11, color: "var(--ink-soft)" }}>Top 12 each side, ranked independently</span></div>
+        <div className="panel-body">
+          {data.negativeItems.length || data.positiveItems.length ? (
+            <div className="grid-2">
+              <div>
+                <div className="section-title" style={{ color: "var(--bad)" }}>Negative (short)</div>
+                {data.negativeItems.length ? data.negativeItems.map((i) => (
+                  <div className="barrow" key={i.code}>
+                    <div className="lbl" title={i.name}>{i.name}</div>
+                    <div className="track"><div className="fill" style={{ width: `${(Math.abs(i.varianceValue) / maxNeg) * 100}%`, background: "var(--bad)" }} /></div>
+                    <div className="val">{fmt(i.varianceValue, 0)}</div>
+                  </div>
+                )) : <div style={{ color: "var(--ink-faint)", fontSize: 12.5 }}>None.</div>}
+              </div>
+              <div>
+                <div className="section-title" style={{ color: "var(--good)" }}>Positive (over)</div>
+                {data.positiveItems.length ? data.positiveItems.map((i) => (
+                  <div className="barrow" key={i.code}>
+                    <div className="lbl" title={i.name}>{i.name}</div>
+                    <div className="track"><div className="fill" style={{ width: `${(i.varianceValue / maxPos) * 100}%`, background: "var(--good)" }} /></div>
+                    <div className="val">{fmt(i.varianceValue, 0)}</div>
+                  </div>
+                )) : <div style={{ color: "var(--ink-faint)", fontSize: 12.5 }}>None.</div>}
+              </div>
+            </div>
+          ) : (
+            <div className="callout">No posted stock counts with a variance in this date range/location.</div>
+          )}
         </div>
       </div>
     </>

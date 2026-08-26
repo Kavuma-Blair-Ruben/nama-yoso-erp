@@ -18,8 +18,11 @@ import {
   branches,
   wastageEvents,
   wastageLines,
+  stockCounts,
+  stockCountLines,
+  recipeSales,
 } from "@/server/db/schema";
-import { and, eq, isNotNull, ne, sql } from "drizzle-orm";
+import { and, eq, isNotNull, ne, sql, gte, lte } from "drizzle-orm";
 import { loadCostingGraph, recipeCurrentCost, getSubRecipeCost, type CostingGraph } from "@/server/costing/recipeCost";
 import { todayStr } from "@/lib/format";
 
@@ -310,20 +313,92 @@ export async function getPurchasingStats() {
   return { totalSpend, outstanding, outstandingCount, cashSpend, creditSpend, invoiceCount: invoices.length, buckets, topItems, weeks };
 }
 
-// Stock on hand across every item, with negative/below-minimum flags —
-// index.html's Stock Page, minus the "par level" column (that map was
-// never migrated into real data, so it'd just be an empty column here).
+// Stock on hand across every item, with negative/below-minimum/above-par
+// flags and whether it's used in any recipe — index.html's Stock Page.
 export async function getStockPageRows() {
-  const [items, balances] = await Promise.all([
-    db.select({ id: stockItems.id, legacyCode: stockItems.legacyCode, name: stockItems.name, issueUnit: stockItems.issueUnit, ratePerKgL: stockItems.ratePerKgL, minLevel: stockItems.minLevel, categoryName: categories.name, sourceType: stockItems.sourceType }).from(stockItems).leftJoin(categories, eq(stockItems.categoryId, categories.id)),
+  const [items, balances, linkedRows] = await Promise.all([
+    db.select({ id: stockItems.id, legacyCode: stockItems.legacyCode, name: stockItems.name, issueUnit: stockItems.issueUnit, ratePerKgL: stockItems.ratePerKgL, minLevel: stockItems.minLevel, parLevel: stockItems.parLevel, categoryName: categories.name, sourceType: stockItems.sourceType }).from(stockItems).leftJoin(categories, eq(stockItems.categoryId, categories.id)),
     db.select({ stockItemId: stockBalances.stockItemId, qtyOnHand: stockBalances.qtyOnHand }).from(stockBalances),
+    db.selectDistinct({ stockItemId: recipeIngredients.stockItemId }).from(recipeIngredients).where(isNotNull(recipeIngredients.stockItemId)),
   ]);
   const qtyByItemId = new Map<string, number>();
   for (const b of balances) qtyByItemId.set(b.stockItemId, (qtyByItemId.get(b.stockItemId) ?? 0) + b.qtyOnHand);
+  const linkedIds = new Set(linkedRows.map((r) => r.stockItemId));
 
   return items.map((it) => {
     const onHand = qtyByItemId.get(it.id) ?? 0;
-    const flag = onHand < 0 ? "NEGATIVE" : it.minLevel != null && onHand < it.minLevel ? "BELOW MIN" : null;
-    return { ...it, onHand, value: onHand * (it.ratePerKgL ?? 0), flag };
+    const abovePar = it.parLevel != null && onHand > it.parLevel;
+    const flag = onHand < 0 ? "NEGATIVE" : it.minLevel != null && onHand < it.minLevel ? "BELOW MIN" : abovePar ? "ABOVE PAR" : null;
+    // A produced sub-recipe is itself a recipe, not an ingredient of one —
+    // it's never expected to show up in recipe_ingredients, so it's excluded
+    // from the "not linked to any recipe" signal rather than always flagged.
+    const linkedToRecipe = it.sourceType === "produced" || linkedIds.has(it.id);
+    return { ...it, onHand, value: onHand * (it.ratePerKgL ?? 0), flag, abovePar, linkedToRecipe };
   });
+}
+
+// Theoretical (system-expected) vs actual (physically counted) stock,
+// rolled up per item across every POSTED stock count in the given date
+// range/location — the per-item shrinkage/overage breakdown that Reports >
+// Stock Counts never had (that tab only lists count headers, one row per
+// count, not a cross-count item rollup).
+export async function getVarianceAnalysis(filters: { from: string; to: string; branchId?: string; costCenterId?: string; excludeNonCogs?: boolean }) {
+  const conditions = [eq(stockCounts.status, "POSTED"), gte(stockCounts.countDate, filters.from), lte(stockCounts.countDate, filters.to)];
+  if (filters.branchId) conditions.push(eq(stockCounts.branchId, filters.branchId));
+  if (filters.costCenterId) conditions.push(eq(stockCounts.costCenterId, filters.costCenterId));
+
+  const [lines, [{ totalRevenue }]] = await Promise.all([
+    db
+      .select({
+        stockItemId: stockCountLines.stockItemId,
+        name: stockItems.name,
+        legacyCode: stockItems.legacyCode,
+        unitLabel: stockCountLines.unitLabel,
+        systemQty: stockCountLines.systemQty,
+        countedQty: stockCountLines.countedQty,
+        rateAtCount: stockCountLines.rateAtCount,
+        nonCogs: stockItems.nonCogs,
+      })
+      .from(stockCountLines)
+      .innerJoin(stockCounts, eq(stockCountLines.stockCountId, stockCounts.id))
+      .innerJoin(stockItems, eq(stockCountLines.stockItemId, stockItems.id))
+      .where(and(...conditions)),
+    db
+      .select({ totalRevenue: sql<number>`coalesce(sum(${recipeSales.revenue}), 0)::float8` })
+      .from(recipeSales)
+      .where(and(gte(recipeSales.saleDate, filters.from), lte(recipeSales.saleDate, filters.to))),
+  ]);
+
+  const byItem = new Map<string, { name: string; code: string; unit: string | null; varianceQty: number; varianceValue: number }>();
+  for (const l of lines) {
+    if (l.countedQty == null) continue;
+    if (filters.excludeNonCogs && l.nonCogs) continue;
+    const varQty = l.countedQty - l.systemQty;
+    const varValue = varQty * (l.rateAtCount ?? 0);
+    const existing = byItem.get(l.stockItemId);
+    if (existing) {
+      existing.varianceQty += varQty;
+      existing.varianceValue += varValue;
+    } else {
+      byItem.set(l.stockItemId, { name: l.name, code: l.legacyCode, unit: l.unitLabel, varianceQty: varQty, varianceValue: varValue });
+    }
+  }
+
+  const items = [...byItem.values()];
+  const negativeItems = items.filter((i) => i.varianceValue < 0).sort((a, b) => a.varianceValue - b.varianceValue);
+  const positiveItems = items.filter((i) => i.varianceValue > 0).sort((a, b) => b.varianceValue - a.varianceValue);
+  const negativeVarianceValue = negativeItems.reduce((s, i) => s + i.varianceValue, 0);
+  const positiveVarianceValue = positiveItems.reduce((s, i) => s + i.varianceValue, 0);
+  const netVarianceValue = negativeVarianceValue + positiveVarianceValue;
+
+  return {
+    negativeVarianceValue,
+    positiveVarianceValue,
+    netVarianceValue,
+    negativeItemCount: negativeItems.length,
+    positiveItemCount: positiveItems.length,
+    netVarianceOfSalesPct: totalRevenue > 0 ? (netVarianceValue / totalRevenue) * 100 : null,
+    negativeItems: negativeItems.slice(0, 12),
+    positiveItems: positiveItems.slice(0, 12),
+  };
 }

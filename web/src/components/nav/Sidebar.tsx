@@ -27,7 +27,7 @@ export async function Sidebar() {
     <div className="sidebar">
       <div className="brand">
         <Link href="/apps" className="brand-text">
-          <Logo height={42} />
+          <Logo height={42} white />
           <span>Inventory Management</span>
         </Link>
       </div>
