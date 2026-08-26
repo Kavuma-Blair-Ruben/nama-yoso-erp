@@ -1,36 +1,78 @@
 import "server-only";
 import { db } from "@/server/db";
-import { suppliers, invoicesHistorical, purchaseLinesHistorical, grns, stockItems } from "@/server/db/schema";
+import { suppliers, invoicesHistorical, purchaseLinesHistorical, grns, grnLines, purchaseOrders, stockItems } from "@/server/db/schema";
 import { eq, sql, desc, sum, count } from "drizzle-orm";
 
 // A price move of this size or more (up or down) since the last recorded
 // change gets flagged for follow-up with the supplier.
 const PRICE_FLUCTUATION_THRESHOLD_PCT = 10;
 
+// Each metric below is its own GROUP BY over its own table, joined to
+// suppliers as a derived table — one pass per table total. The previous
+// version ran 5 correlated subqueries PER supplier row (300+ subquery
+// evaluations for 60 suppliers), which measured at 3.6s on the live DB;
+// this shape does the same aggregation in one pass per table regardless of
+// supplier count.
 export async function listSuppliers(q?: string) {
+  const invoiceAgg = db
+    .select({
+      supplierId: invoicesHistorical.supplierId,
+      totalSpend: sql<number>`sum(${invoicesHistorical.total})::float8`.as("total_spend"),
+      outstanding: sql<number>`coalesce(sum(case when ${invoicesHistorical.status} = 'OUTSTANDING' then ${invoicesHistorical.total} else 0 end), 0)::float8`.as("outstanding"),
+    })
+    .from(invoicesHistorical)
+    .groupBy(invoicesHistorical.supplierId)
+    .as("invoice_agg");
+
+  const grnAgg = db
+    .select({
+      supplierId: grns.supplierId,
+      deliveryCount: sql<number>`count(distinct ${grns.id})::int`.as("delivery_count"),
+    })
+    .from(grns)
+    .where(eq(grns.status, "POSTED"))
+    .groupBy(grns.supplierId)
+    .as("grn_agg");
+
+  const grnLinesAgg = db
+    .select({
+      supplierId: grns.supplierId,
+      acceptedLines: sql<number>`count(*) filter (where ${grnLines.condition} = 'ACCEPTED')::int`.as("accepted_lines"),
+      totalLines: sql<number>`count(*)::int`.as("total_lines"),
+    })
+    .from(grnLines)
+    .innerJoin(grns, eq(grnLines.grnId, grns.id))
+    .where(eq(grns.status, "POSTED"))
+    .groupBy(grns.supplierId)
+    .as("grn_lines_agg");
+
+  const leadTimeAgg = db
+    .select({
+      supplierId: grns.supplierId,
+      avgLeadTimeDays: sql<number | null>`avg(extract(day from ${grns.receivedDate}::timestamp - ${purchaseOrders.createdDate}::timestamp))::float8`.as("avg_lead_time_days"),
+    })
+    .from(grns)
+    .innerJoin(purchaseOrders, eq(grns.purchaseOrderId, purchaseOrders.id))
+    .where(eq(grns.status, "POSTED"))
+    .groupBy(grns.supplierId)
+    .as("lead_time_agg");
+
   const list = await db
     .select({
       id: suppliers.id,
       name: suppliers.name,
-      // Even single-table subqueries here must use literal qualified text: interpolating
-      // ${suppliers.id} (the outer, correlated table) renders as a bare "id", which
-      // Postgres silently resolves to the LOCAL invoices_historical/grns "id" column
-      // instead of erroring — wrong data with no error, not a crash. Confirmed empirically
-      // (bare version returned 0 for every supplier; qualified returns real totals).
-      totalSpend: sql<number>`coalesce((select sum(invoices_historical.total) from invoices_historical where invoices_historical.supplier_id = suppliers.id), 0)::float8`,
-      outstanding: sql<number>`coalesce((select sum(invoices_historical.total) from invoices_historical where invoices_historical.supplier_id = suppliers.id and invoices_historical.status = 'OUTSTANDING'), 0)::float8`,
-      deliveryCount: sql<number>`(select count(distinct grns.id) from grns where grns.supplier_id = suppliers.id and grns.status = 'POSTED')::int`,
-      // These two subqueries also JOIN grn_lines+grns (both have "id"), compounding the
-      // same trap — every reference, including the outer correlation, must be qualified.
-      acceptedLines: sql<number>`(select count(*) from grn_lines join grns on grn_lines.grn_id = grns.id where grns.supplier_id = suppliers.id and grns.status = 'POSTED' and grn_lines.condition = 'ACCEPTED')::int`,
-      totalLines: sql<number>`(select count(*) from grn_lines join grns on grn_lines.grn_id = grns.id where grns.supplier_id = suppliers.id and grns.status = 'POSTED')::int`,
-      avgLeadTimeDays: sql<number | null>`(
-        select avg(extract(day from grns.received_date::timestamp - purchase_orders.created_date::timestamp))::float8
-        from grns join purchase_orders on grns.purchase_order_id = purchase_orders.id
-        where grns.supplier_id = suppliers.id and grns.status = 'POSTED'
-      )`,
+      totalSpend: sql<number>`coalesce(${invoiceAgg.totalSpend}, 0)`,
+      outstanding: sql<number>`coalesce(${invoiceAgg.outstanding}, 0)`,
+      deliveryCount: sql<number>`coalesce(${grnAgg.deliveryCount}, 0)`,
+      acceptedLines: sql<number>`coalesce(${grnLinesAgg.acceptedLines}, 0)`,
+      totalLines: sql<number>`coalesce(${grnLinesAgg.totalLines}, 0)`,
+      avgLeadTimeDays: leadTimeAgg.avgLeadTimeDays,
     })
     .from(suppliers)
+    .leftJoin(invoiceAgg, eq(invoiceAgg.supplierId, suppliers.id))
+    .leftJoin(grnAgg, eq(grnAgg.supplierId, suppliers.id))
+    .leftJoin(grnLinesAgg, eq(grnLinesAgg.supplierId, suppliers.id))
+    .leftJoin(leadTimeAgg, eq(leadTimeAgg.supplierId, suppliers.id))
     .where(q ? sql`${suppliers.name} ilike ${"%" + q + "%"}` : undefined)
     .orderBy(sql`3 desc`); // totalSpend, descending
 
