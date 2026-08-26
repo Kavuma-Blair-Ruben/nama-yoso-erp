@@ -1,0 +1,20 @@
+{
+  "name": "nama-yoso-mobile",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Capacitor native shell (Android + iOS) for the NAMA YOSO ERP web app — loads the live deployed app in a native WebView, does not bundle its own web build.",
+  "scripts": {
+    "sync": "cap sync",
+    "open:android": "cap open android",
+    "open:ios": "cap open ios"
+  },
+  "dependencies": {
+    "@capacitor/android": "^7.0.0",
+    "@capacitor/core": "^7.0.0",
+    "@capacitor/ios": "^7.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^7.0.0",
+    "typescript": "^5.6.3"
+  }
+}
