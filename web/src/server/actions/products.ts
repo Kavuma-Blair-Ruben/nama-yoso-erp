@@ -8,6 +8,20 @@ import { db } from "@/server/db";
 import { stockItems, categories, subcategories, suppliers, productSupplierPackaging, priceHistory, auditLog } from "@/server/db/schema";
 import { assertPermission } from "@/server/auth/permissions";
 import { nextProductCode } from "@/server/db/sequences";
+import { categorizeUnit } from "@/lib/unitMath";
+
+// ratePerKgL is a misnomer for a count-purchased item (issueUnit "pc"/"all"
+// etc.) — it's really just "live rate per issue unit" there, no gram/ml
+// conversion applies. Only a genuine weight/volume issueUnit needs the
+// ×1000 scale-up (unitWeight is stored in grams/ml for those, so dividing
+// by it first gives a per-gram/per-ml rate that then needs ×1000 to reach
+// per-kg/per-litre). Applying ×1000 unconditionally — as this used to —
+// silently inflated a count item's live rate 1000x the moment it was ever
+// re-saved through this path.
+function computeRatePerKgL(rate: number, unitWeight: number | null | undefined, issueUnit: string | null | undefined): number {
+  const perIssueUnit = unitWeight ? rate / unitWeight : rate;
+  return categorizeUnit(issueUnit) === "count" ? perIssueUnit : perIssueUnit * 1000;
+}
 
 export async function findOrCreateCategory(name: string): Promise<string> {
   const trimmed = name.trim();
@@ -57,7 +71,7 @@ export async function createProduct(_prev: CreateProductState, formData: FormDat
   const categoryId = await findOrCreateCategory(f.category);
   const subcategoryId = f.subcategory?.trim() ? await findOrCreateSubcategory(categoryId, f.subcategory) : undefined;
   const supplierId = f.supplier?.trim() ? await findOrCreateSupplier(f.supplier) : undefined;
-  const ratePerKgL = f.unitWeight ? (f.rate / f.unitWeight) * 1000 : f.rate;
+  const ratePerKgL = computeRatePerKgL(f.rate, f.unitWeight, f.issueUnit);
 
   const legacyCode = await nextProductCode();
   const [created] = await db
@@ -128,7 +142,7 @@ export async function bulkImportProducts(rows: ProductImportRow[]): Promise<Bulk
     const categoryId = await findOrCreateCategory(r.category);
     const subcategoryId = r.subcategory?.trim() ? await findOrCreateSubcategory(categoryId, r.subcategory) : undefined;
     const supplierId = r.supplier?.trim() ? await findOrCreateSupplier(r.supplier) : undefined;
-    const ratePerKgL = r.unitWeight ? (r.purchaseRate / r.unitWeight) * 1000 : r.purchaseRate;
+    const ratePerKgL = computeRatePerKgL(r.purchaseRate, r.unitWeight, r.issueUnit);
 
     if (existing) {
       if (existing.purchaseRate !== r.purchaseRate) {
