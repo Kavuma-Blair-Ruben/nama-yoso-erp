@@ -31,6 +31,7 @@ export default async function EditRecipePage({ params }: PageProps<"/recipes/[ty
         menuCategories={menuCategories}
         initial={{
           name: recipe.name,
+          secondaryName: recipe.secondaryName ?? null,
           section: recipe.section ?? "",
           yieldQty: recipe.yieldQty,
           yieldUnit: recipe.yieldUnit ?? "",

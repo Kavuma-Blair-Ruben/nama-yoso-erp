@@ -73,6 +73,7 @@ export default async function RecipeDetailPage({ params }: PageProps<"/recipes/[
             <div className="ledger-head">
               <div>
                 <div className="name">{recipe.name}</div>
+                {recipe.secondaryName && <div style={{ fontSize: 13, color: "var(--ink-soft)" }}>{recipe.secondaryName}</div>}
                 <div className="code">{recipe.legacyCode}</div>
               </div>
               <div className="yield">

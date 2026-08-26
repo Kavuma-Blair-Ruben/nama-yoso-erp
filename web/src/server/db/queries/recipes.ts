@@ -171,6 +171,7 @@ export async function getRecipeDetail(type: RecipeType, code: string) {
     // fields not needed by the costing graph — fetched separately and merged in.
     const [extra] = await db
       .select({
+        secondaryName: mainRecipes.secondaryName,
         sellingPrice: mainRecipes.sellingPrice,
         targetFoodCostPct: mainRecipes.targetFoodCostPct,
         cookBookText: mainRecipes.cookBookText,
@@ -195,6 +196,7 @@ export async function getRecipeDetail(type: RecipeType, code: string) {
   const variancePct = orig.perUnit ? ((cur.perUnit - orig.perUnit) / orig.perUnit) * 100 : 0;
   const [extra] = await db
     .select({
+      secondaryName: subRecipes.secondaryName,
       cookBookText: subRecipes.cookBookText,
       photoUrl: subRecipes.photoUrl,
       stockable: subRecipes.stockable,

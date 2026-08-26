@@ -57,6 +57,7 @@ export function RecipeBuilder({
   defaultKind?: "modifier" | "combo";
   initial?: {
     name: string;
+    secondaryName: string | null;
     section: string;
     yieldQty: number | null;
     yieldUnit: string;
@@ -77,6 +78,7 @@ export function RecipeBuilder({
   const router = useRouter();
   const isEdit = !!code;
   const [name, setName] = useState(initial?.name ?? "");
+  const [secondaryName, setSecondaryName] = useState(initial?.secondaryName ?? "");
   const [section, setSection] = useState(initial?.section ?? "");
   const [categoryOptions, setCategoryOptions] = useState(menuCategories);
   const [addingCategory, setAddingCategory] = useState(false);
@@ -200,6 +202,7 @@ export function RecipeBuilder({
     const input: RecipeInput = {
       type,
       name: name.trim(),
+      secondaryName: secondaryName.trim() || null,
       section: section.trim(),
       yieldQty: yieldQty ? Number(yieldQty) : null,
       yieldUnit: yieldUnit.trim(),
@@ -256,6 +259,10 @@ export function RecipeBuilder({
             <button type="button" className="btn ghost" onClick={() => { setAddingCategory(false); setNewCategoryName(""); }}>Cancel</button>
           </div>
         )}
+        <div className="form-row">
+          <label>Secondary language name</label>
+          <input type="text" value={secondaryName} onChange={(e) => setSecondaryName(e.target.value)} placeholder="e.g. Arabic name" />
+        </div>
         <div className="line-builder-row head" style={{ gridTemplateColumns: "1fr 1fr" }}>
           <div>Yield qty</div>
           <div>Yield unit</div>

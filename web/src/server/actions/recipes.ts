@@ -20,6 +20,7 @@ export type RecipeLineInput = { stockItemId: string | null; ingredientMainRecipe
 export type RecipeInput = {
   type: RecipeType;
   name: string;
+  secondaryName?: string | null;
   section: string;
   yieldQty: number | null;
   yieldUnit: string;
@@ -109,6 +110,7 @@ export async function createRecipe(input: RecipeInput): Promise<RecipeActionResu
         .values({
           legacyCode: code,
           name: input.name,
+          secondaryName: input.secondaryName || undefined,
           section: input.section || undefined,
           yieldQty: input.yieldQty ?? undefined,
           yieldUnit: input.yieldUnit || undefined,
@@ -138,6 +140,7 @@ export async function createRecipe(input: RecipeInput): Promise<RecipeActionResu
           legacyCode: code,
           stockItemId: stockItem.id,
           name: input.name,
+          secondaryName: input.secondaryName || undefined,
           section: input.section || undefined,
           yieldQty: input.yieldQty ?? undefined,
           yieldUnit: input.yieldUnit || undefined,
@@ -188,6 +191,7 @@ export async function updateRecipe(code: string, input: RecipeInput): Promise<Re
         .update(mainRecipes)
         .set({
           name: input.name,
+          secondaryName: input.secondaryName || null,
           section: input.section || null,
           yieldQty: input.yieldQty,
           yieldUnit: input.yieldUnit || null,
@@ -209,6 +213,7 @@ export async function updateRecipe(code: string, input: RecipeInput): Promise<Re
         .update(subRecipes)
         .set({
           name: input.name,
+          secondaryName: input.secondaryName || null,
           section: input.section || null,
           yieldQty: input.yieldQty,
           yieldUnit: input.yieldUnit || null,

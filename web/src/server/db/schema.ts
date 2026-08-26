@@ -420,6 +420,11 @@ export const mainRecipes = pgTable("main_recipes", {
   id: uuid("id").primaryKey().defaultRandom(),
   legacyCode: text("legacy_code").notNull().unique(),
   name: text("name").notNull(),
+  // Same purpose as stock_items.secondary_name (e.g. an Arabic name shown
+  // alongside the English one) — kept as its own column per table rather
+  // than a shared lookup since a recipe's secondary name is independent of
+  // any of its ingredients' own secondary names.
+  secondaryName: text("secondary_name"),
   section: text("section"),
   yieldQty: numeric("yield_qty", { precision: 14, scale: 4, mode: "number" }),
   yieldUnit: text("yield_unit"),
@@ -459,6 +464,7 @@ export const subRecipes = pgTable("sub_recipes", {
   legacyCode: text("legacy_code").notNull().unique(),
   stockItemId: uuid("stock_item_id").notNull().unique().references(() => stockItems.id),
   name: text("name").notNull(),
+  secondaryName: text("secondary_name"),
   section: text("section"),
   yieldQty: numeric("yield_qty", { precision: 14, scale: 4, mode: "number" }),
   yieldUnit: text("yield_unit"),

@@ -65,6 +65,7 @@ export default async function RecipePrintPage({ params }: PageProps<"/recipes/[t
             )}
             <div style={{ flex: 1, paddingTop: 4 }}>
               <h1 style={{ fontSize: 28, margin: "0 0 8px", lineHeight: 1.15 }}>{recipe.name}</h1>
+              {recipe.secondaryName && <div style={{ fontSize: 15, color: "#666", margin: "-4px 0 8px" }}>{recipe.secondaryName}</div>}
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                 {recipe.section && (
                   <span style={{ fontSize: 11, fontWeight: 600, color: ACCENT, background: "#eaf2f9", padding: "3px 10px", borderRadius: 20 }}>{recipe.section}</span>

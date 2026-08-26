@@ -22,6 +22,7 @@ export default async function NewRecipePage({ searchParams }: PageProps<"/recipe
   const initial = cloneData
     ? {
         name: cloneData.recipe.name + " (Copy)",
+        secondaryName: cloneData.recipe.secondaryName ?? null,
         section: cloneData.recipe.section ?? "",
         yieldQty: cloneData.recipe.yieldQty,
         yieldUnit: cloneData.recipe.yieldUnit ?? "",
