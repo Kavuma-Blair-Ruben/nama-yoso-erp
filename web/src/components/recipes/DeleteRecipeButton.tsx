@@ -2,10 +2,11 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { deleteTransferDraft } from "@/server/actions/transfers";
+import { archiveRecipe } from "@/server/actions/recipes";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import type { RecipeType } from "@/server/db/queries/recipes";
 
-export function DeleteTransferDraftButton({ id }: { id: string }) {
+export function DeleteRecipeButton({ type, code, name }: { type: RecipeType; code: string; name: string }) {
   const router = useRouter();
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -14,28 +15,28 @@ export function DeleteTransferDraftButton({ id }: { id: string }) {
   function handleDelete() {
     setError(null);
     startTransition(async () => {
-      const result = await deleteTransferDraft(id);
+      const result = await archiveRecipe(type, code);
       if (result.error) setError(result.error);
-      else router.push("/transfers");
+      else router.push(`/recipes?tab=${type}`);
     });
   }
 
   return (
-    <div style={{ marginTop: 4 }}>
-      <button className="btn ghost" onClick={() => setConfirming(true)}>
-        🗑 Delete Draft
+    <>
+      <button type="button" className="btn ghost" style={{ color: "var(--bad)", borderColor: "var(--bad-soft)" }} onClick={() => setConfirming(true)}>
+        🗑 Delete Recipe
       </button>
       <ConfirmDialog
         open={confirming}
-        title="Delete this draft?"
-        body="This draft transfer will be deleted. This can't be undone."
+        title="Delete this recipe?"
+        body={`"${name}" will disappear from Recipe Costing and the Menu panel. Past production, sales, and any combo using it stay intact.`}
         error={error}
         pending={pending}
-        confirmLabel="Delete Draft"
+        confirmLabel="Delete Recipe"
         pendingLabel="Deleting…"
         onCancel={() => setConfirming(false)}
         onConfirm={handleDelete}
       />
-    </div>
+    </>
   );
 }

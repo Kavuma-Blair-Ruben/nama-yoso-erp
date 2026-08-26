@@ -36,6 +36,7 @@ export default async function RecipesPage({ searchParams }: PageProps<"/recipes"
         action={
           canEdit ? (
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <Link href="/recipes/archived" className="btn ghost">🗑 Deleted Recipes</Link>
               <RecipesCsvImport />
               <Link href={`/recipes/new?type=${type}${onlyFlagged ? `&kind=${tab}` : ""}`} className="btn accent">
                 + New {tab === "modifier" ? "Modifier" : tab === "combo" ? "Combo" : tab === "main" ? "Main Recipe" : "Sub-Recipe"}

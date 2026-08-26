@@ -4,6 +4,7 @@ import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { importRecipeSales, clearRecipeSales, type SalesImportRow } from "@/server/actions/sales";
 import { parseCsv, pickField } from "@/lib/csv";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 
 export function RecipeSalesImport({ hasData, unmatchedCount }: { hasData: boolean; unmatchedCount: number }) {
   const router = useRouter();
@@ -11,6 +12,7 @@ export function RecipeSalesImport({ hasData, unmatchedCount }: { hasData: boolea
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+  const [confirmingClear, setConfirmingClear] = useState(false);
 
   function handleFile(file: File) {
     setError(null);
@@ -45,11 +47,12 @@ export function RecipeSalesImport({ hasData, unmatchedCount }: { hasData: boolea
   }
 
   function handleClear() {
-    if (!confirm("Remove all imported sales data? This can't be undone.")) return;
+    setError(null);
     startTransition(async () => {
       const result = await clearRecipeSales();
       if (result.error) setError(result.error);
       else {
+        setConfirmingClear(false);
         setInfo("Cleared — import a fresh file to start over.");
         router.refresh();
       }
@@ -69,7 +72,7 @@ export function RecipeSalesImport({ hasData, unmatchedCount }: { hasData: boolea
             {pending ? "Importing…" : "Upload Sales CSV"}
           </button>
           {hasData && (
-            <button className="btn ghost" disabled={pending} onClick={handleClear}>
+            <button className="btn ghost" disabled={pending} onClick={() => setConfirmingClear(true)}>
               Clear All Sales Data
             </button>
           )}
@@ -91,6 +94,17 @@ export function RecipeSalesImport({ hasData, unmatchedCount }: { hasData: boolea
         {info && <div className="callout" style={{ marginTop: 10 }}>{info}</div>}
         {error && <div className="login-error">{error}</div>}
       </div>
+      <ConfirmDialog
+        open={confirmingClear}
+        title="Clear all sales data?"
+        body="Every imported sales row will be removed. This can't be undone."
+        error={error}
+        pending={pending}
+        confirmLabel="Clear All Sales Data"
+        pendingLabel="Clearing…"
+        onCancel={() => setConfirmingClear(false)}
+        onConfirm={handleClear}
+      />
     </div>
   );
 }

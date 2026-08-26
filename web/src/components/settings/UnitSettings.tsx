@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { createUnit, updateUnit, deleteUnit, type UnitInput } from "@/server/actions/settings";
 import { fmt, num } from "@/lib/format";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 
 type Unit = { id: string; code: string; name: string; type: string; factor: number; inUseCount: number };
 // factor is a raw string while editing — see num() in @/lib/format for why.
@@ -20,6 +21,15 @@ export function UnitSettings({ units }: { units: Unit[] }) {
   const [error, setError] = useState<string | null>(null);
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Unit | null>(null);
+
+  function handleDelete() {
+    if (!deleteTarget) return;
+    startTransition(async () => {
+      await deleteUnit(deleteTarget.id);
+      setDeleteTarget(null);
+    });
+  }
 
   function startCreate() {
     setEditId(null);
@@ -121,10 +131,7 @@ export function UnitSettings({ units }: { units: Unit[] }) {
                           style={{ color: "var(--bad)" }}
                           onClick={(e) => {
                             e.preventDefault();
-                            if (!confirm(`Delete unit "${u.name}"?`)) return;
-                            startTransition(async () => {
-                              await deleteUnit(u.id);
-                            });
+                            setDeleteTarget(u);
                           }}
                         >
                           delete
@@ -138,6 +145,16 @@ export function UnitSettings({ units }: { units: Unit[] }) {
           </table>
         </div>
       </div>
+      <ConfirmDialog
+        open={!!deleteTarget}
+        title="Delete this unit?"
+        body={`"${deleteTarget?.name ?? ""}" will no longer be selectable anywhere quantities are entered.`}
+        pending={pending}
+        confirmLabel="Delete Unit"
+        pendingLabel="Deleting…"
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={handleDelete}
+      />
     </>
   );
 }

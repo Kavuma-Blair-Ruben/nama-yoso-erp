@@ -18,6 +18,25 @@ export async function listMainRecipesForPicker() {
     .orderBy(mainRecipes.name);
 }
 
+// Recycle-bin view — every archived (deleted) recipe of either type, most
+// recently archived first, so a recipe removed by mistake (or genuinely
+// needed again later) can be found and restored.
+export async function listArchivedRecipes() {
+  const [mains, subs] = await Promise.all([
+    db
+      .select({ code: mainRecipes.legacyCode, name: mainRecipes.name, section: mainRecipes.section, updatedAt: mainRecipes.updatedAt })
+      .from(mainRecipes)
+      .where(eq(mainRecipes.isArchived, true)),
+    db
+      .select({ code: subRecipes.legacyCode, name: subRecipes.name, section: subRecipes.section, updatedAt: subRecipes.updatedAt })
+      .from(subRecipes)
+      .where(eq(subRecipes.isArchived, true)),
+  ]);
+  return [...mains.map((r) => ({ type: "main" as const, ...r })), ...subs.map((r) => ({ type: "sub" as const, ...r }))].sort(
+    (a, b) => b.updatedAt.getTime() - a.updatedAt.getTime()
+  );
+}
+
 // Lightweight name/code browse across both recipe types for the Print
 // Center — deliberately skips loadCostingGraph() (used by listRecipesWithCost)
 // since a print-document picker only needs code/name/section, not live cost.
@@ -44,9 +63,17 @@ export async function listRecipesWithCost(type: RecipeType, filters: { q?: strin
   const graph = await loadCostingGraph();
   const source = type === "main" ? graph.mainRecipes : [...graph.subRecipesById.values()];
 
-  // isCombo/isModifier aren't part of the shared costing graph (they're
-  // presentational, not costing-relevant) — a small separate lookup keeps
-  // loadCostingGraph()'s shape untouched for its ~15 other call sites.
+  // isCombo/isModifier/isArchived aren't part of the shared costing graph
+  // (loadCostingGraph() deliberately loads every recipe regardless of
+  // archived status, so an archived recipe stays resolvable as another
+  // recipe's combo ingredient) — small separate lookups keep that shape
+  // untouched for its ~15 other call sites.
+  const archivedIds = new Set(
+    (type === "main"
+      ? await db.select({ id: mainRecipes.id }).from(mainRecipes).where(eq(mainRecipes.isArchived, true))
+      : await db.select({ id: subRecipes.id }).from(subRecipes).where(eq(subRecipes.isArchived, true))
+    ).map((r) => r.id)
+  );
   const flaggedIds = filters.onlyFlagged
     ? new Set(
         type === "main"
@@ -57,6 +84,7 @@ export async function listRecipesWithCost(type: RecipeType, filters: { q?: strin
 
   const q = filters.q?.trim().toLowerCase();
   const filtered = source.filter((r) => {
+    if (archivedIds.has((r as { id: string }).id)) return false;
     if (q && !(r.name.toLowerCase().includes(q) || r.legacyCode.toLowerCase().includes(q))) return false;
     if (filters.section && r.section !== filters.section) return false;
     if (flaggedIds && !flaggedIds.has((r as { id: string }).id)) return false;
@@ -94,8 +122,9 @@ export async function listRecipesWithCost(type: RecipeType, filters: { q?: strin
     };
   });
 
-  const sections = [...new Set(source.map((r) => r.section).filter((s): s is string => !!s))].sort();
-  return { rows, totalCount: source.length, sections };
+  const active = source.filter((r) => !archivedIds.has((r as { id: string }).id));
+  const sections = [...new Set(active.map((r) => r.section).filter((s): s is string => !!s))].sort();
+  return { rows, totalCount: active.length, sections };
 }
 
 // Menu > Products — a card-grid, menu-like view of Main Recipes grouped
@@ -105,10 +134,14 @@ export async function listRecipesWithCost(type: RecipeType, filters: { q?: strin
 // photoUrl/sellingPrice (avoids an N+1 per-recipe fetch for a grid page).
 export async function listMenuProducts() {
   const graph = await loadCostingGraph();
-  const extras = await db.select({ id: mainRecipes.id, photoUrl: mainRecipes.photoUrl, sellingPrice: mainRecipes.sellingPrice }).from(mainRecipes);
+  // loadCostingGraph() deliberately doesn't filter isArchived (an archived
+  // recipe must stay resolvable as another recipe's combo ingredient), so
+  // this browsable list filters it here instead — same pattern as
+  // listRecipesWithCost.
+  const extras = await db.select({ id: mainRecipes.id, photoUrl: mainRecipes.photoUrl, sellingPrice: mainRecipes.sellingPrice, isArchived: mainRecipes.isArchived }).from(mainRecipes);
   const extraById = new Map(extras.map((e) => [e.id, e]));
 
-  const products = graph.mainRecipes.map((r) => {
+  const products = graph.mainRecipes.filter((r) => !extraById.get(r.id)?.isArchived).map((r) => {
     const cur = recipeCurrentCost(graph, r);
     const extra = extraById.get(r.id);
     return {
@@ -132,8 +165,8 @@ export async function listMenuProducts() {
 // production component.
 export async function listMenuModifiers() {
   const graph = await loadCostingGraph();
-  const flagged = await db.select({ id: subRecipes.id }).from(subRecipes).where(eq(subRecipes.isModifier, true));
-  const flaggedIds = new Set(flagged.map((f) => f.id));
+  const flagged = await db.select({ id: subRecipes.id, isArchived: subRecipes.isArchived }).from(subRecipes).where(eq(subRecipes.isModifier, true));
+  const flaggedIds = new Set(flagged.filter((f) => !f.isArchived).map((f) => f.id));
 
   return [...graph.subRecipesById.values()]
     .filter((r) => flaggedIds.has(r.id))
@@ -147,8 +180,8 @@ export async function listMenuModifiers() {
 // bundles of other dishes.
 export async function listMenuCombos() {
   const graph = await loadCostingGraph();
-  const extras = await db.select({ id: mainRecipes.id, photoUrl: mainRecipes.photoUrl, sellingPrice: mainRecipes.sellingPrice }).from(mainRecipes).where(eq(mainRecipes.isCombo, true));
-  const extraById = new Map(extras.map((e) => [e.id, e]));
+  const extras = await db.select({ id: mainRecipes.id, photoUrl: mainRecipes.photoUrl, sellingPrice: mainRecipes.sellingPrice, isArchived: mainRecipes.isArchived }).from(mainRecipes).where(eq(mainRecipes.isCombo, true));
+  const extraById = new Map(extras.filter((e) => !e.isArchived).map((e) => [e.id, e]));
 
   return graph.mainRecipes
     .filter((r) => extraById.has(r.id))

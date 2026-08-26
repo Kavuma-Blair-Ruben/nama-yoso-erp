@@ -4,6 +4,7 @@ import { requireSection, hasAccess } from "@/server/auth/permissions";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { getRecipeDetail, type RecipeType } from "@/server/db/queries/recipes";
 import { LedgerRow } from "@/components/recipes/LedgerRow";
+import { DeleteRecipeButton } from "@/components/recipes/DeleteRecipeButton";
 import { displayYield, normalizeToKgLtr } from "@/lib/unitMath";
 import { fmt, money, pct } from "@/lib/format";
 
@@ -41,6 +42,7 @@ export default async function RecipeDetailPage({ params }: PageProps<"/recipes/[
             <Link href={`/recipes/${type}/${code}/print`} className="btn ghost">Print / Cook Book</Link>
             {canEdit && <Link href={`/recipes/new?type=${type}&cloneFrom=${code}`} className="btn ghost">Clone</Link>}
             {canEdit && <Link href={`/recipes/${type}/${code}/edit`} className="btn accent">Edit Recipe</Link>}
+            {canEdit && <DeleteRecipeButton type={type} code={code} name={recipe.name} />}
           </div>
         }
       />

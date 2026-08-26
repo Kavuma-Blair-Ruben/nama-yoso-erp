@@ -243,6 +243,77 @@ export async function updateRecipe(code: string, input: RecipeInput): Promise<Re
   return { code };
 }
 
+// A real delete would either fail outright (production history, recipe
+// sales, and another recipe's combo ingredient line all reference a recipe
+// with no cascade — by design, so that history can never silently vanish)
+// or, for a never-used recipe, succeed but leave nothing to undo. Archiving
+// is the safe equivalent: isArchived is already the filter every browsable
+// list (Recipe Costing, Menu panel, Production's sub-recipe picker) uses,
+// so the recipe disappears everywhere a user would find it, while
+// everything that already points to it — a past production batch, a
+// combo that includes it — keeps working exactly as before.
+export async function archiveRecipe(type: RecipeType, code: string): Promise<{ error?: string }> {
+  const perm = type === "main" ? "recipes" : "subrecipes";
+  const session = await assertPermission(perm, "edit");
+
+  const [existing] =
+    type === "main"
+      ? await db.select({ id: mainRecipes.id, name: mainRecipes.name }).from(mainRecipes).where(eq(mainRecipes.legacyCode, code))
+      : await db.select({ id: subRecipes.id, name: subRecipes.name }).from(subRecipes).where(eq(subRecipes.legacyCode, code));
+  if (!existing) return { error: "Recipe not found." };
+
+  if (type === "main") await db.update(mainRecipes).set({ isArchived: true, updatedAt: new Date() }).where(eq(mainRecipes.id, existing.id));
+  else await db.update(subRecipes).set({ isArchived: true, updatedAt: new Date() }).where(eq(subRecipes.id, existing.id));
+
+  await db.insert(auditLog).values({
+    actorId: session.profile.id,
+    action: "Archived",
+    entity: type === "main" ? "Main Recipe" : "Sub-Recipe",
+    entityLabel: existing.name,
+    detail: `Code ${code}`,
+  });
+
+  revalidatePath("/recipes");
+  revalidatePath("/recipes/archived");
+  revalidatePath("/menu/products");
+  revalidatePath("/menu/modifiers");
+  revalidatePath("/menu/combos");
+  return {};
+}
+
+// Reverses archiveRecipe — brings a deleted recipe back into Recipe
+// Costing, the Menu panel, and Production's sub-recipe picker exactly as it
+// was, since archiving never touched any of its data (ingredients,
+// history, cost) to begin with.
+export async function unarchiveRecipe(type: RecipeType, code: string): Promise<{ error?: string }> {
+  const perm = type === "main" ? "recipes" : "subrecipes";
+  const session = await assertPermission(perm, "edit");
+
+  const [existing] =
+    type === "main"
+      ? await db.select({ id: mainRecipes.id, name: mainRecipes.name }).from(mainRecipes).where(eq(mainRecipes.legacyCode, code))
+      : await db.select({ id: subRecipes.id, name: subRecipes.name }).from(subRecipes).where(eq(subRecipes.legacyCode, code));
+  if (!existing) return { error: "Recipe not found." };
+
+  if (type === "main") await db.update(mainRecipes).set({ isArchived: false, updatedAt: new Date() }).where(eq(mainRecipes.id, existing.id));
+  else await db.update(subRecipes).set({ isArchived: false, updatedAt: new Date() }).where(eq(subRecipes.id, existing.id));
+
+  await db.insert(auditLog).values({
+    actorId: session.profile.id,
+    action: "Restored",
+    entity: type === "main" ? "Main Recipe" : "Sub-Recipe",
+    entityLabel: existing.name,
+    detail: `Code ${code}`,
+  });
+
+  revalidatePath("/recipes");
+  revalidatePath("/recipes/archived");
+  revalidatePath("/menu/products");
+  revalidatePath("/menu/modifiers");
+  revalidatePath("/menu/combos");
+  return {};
+}
+
 export async function uploadRecipePhoto(type: RecipeType, code: string, formData: FormData): Promise<{ error?: string; url?: string }> {
   const perm = type === "main" ? "recipes" : "subrecipes";
   await assertPermission(perm, "edit");
