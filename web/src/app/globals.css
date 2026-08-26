@@ -296,6 +296,34 @@ table.data tbody tr:hover{background:var(--bg-panel-alt);}
   .apps-tile-icon{width:58px;height:58px;border-radius:15px;font-size:25px;}
 }
 
+/* ---------- Chat Assistant ---------- */
+.assistant-fab{
+  position:fixed;right:24px;bottom:24px;z-index:50;width:52px;height:52px;border-radius:50%;border:none;
+  background:var(--accent);color:#fff;font-size:22px;box-shadow:0 6px 20px rgba(10,90,150,.35);cursor:pointer;
+  display:flex;align-items:center;justify-content:center;transition:transform .15s ease;
+}
+.assistant-fab:hover{transform:scale(1.06);}
+.assistant-panel{
+  position:fixed;right:24px;bottom:86px;z-index:50;width:340px;max-width:calc(100vw - 32px);height:min(480px, 70vh);
+  background:var(--bg-card);border:1px solid var(--line);border-radius:14px;box-shadow:0 12px 40px rgba(15,39,64,.18);
+  display:flex;flex-direction:column;overflow:hidden;
+}
+.assistant-head{padding:14px 16px;border-bottom:1px solid var(--line);background:var(--bg-panel);}
+.assistant-head b{font-family:var(--display);font-size:14px;}
+.assistant-head span{display:block;font-size:11px;color:var(--ink-soft);margin-top:2px;}
+.assistant-messages{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:8px;}
+.assistant-bubble{max-width:85%;padding:9px 12px;border-radius:12px;font-size:12.8px;line-height:1.4;white-space:pre-wrap;}
+.assistant-bubble.assistant{align-self:flex-start;background:var(--bg-panel-alt);color:var(--ink);border-bottom-left-radius:4px;}
+.assistant-bubble.user{align-self:flex-end;background:var(--accent);color:#fff;border-bottom-right-radius:4px;}
+.assistant-typing{color:var(--ink-faint);}
+.assistant-input-row{display:flex;gap:8px;padding:12px;border-top:1px solid var(--line);}
+.assistant-input-row input{flex:1;font:500 12.5px var(--sans);padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg-card);color:var(--ink);}
+.assistant-input-row .btn{padding:8px 14px;}
+@media(max-width:640px){
+  .assistant-panel{right:16px;left:16px;width:auto;bottom:80px;}
+  .assistant-fab{right:16px;bottom:16px;}
+}
+
 /* ---------- Access restricted ---------- */
 .access-restricted{padding:40px 20px;}
 .access-restricted-panel{max-width:520px;margin:0 auto;text-align:center;padding:36px 24px;}

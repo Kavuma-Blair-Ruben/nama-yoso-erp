@@ -1,5 +1,6 @@
 import { Sidebar } from "@/components/nav/Sidebar";
 import { NotificationBell } from "@/components/nav/NotificationBell";
+import { ChatAssistant } from "@/components/assistant/ChatAssistant";
 import { getSession } from "@/server/auth/session";
 import { getNotifications } from "@/server/db/queries/notifications";
 
@@ -18,6 +19,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         )}
         <div className="content">{children}</div>
       </div>
+      {session && <ChatAssistant />}
     </div>
   );
 }
