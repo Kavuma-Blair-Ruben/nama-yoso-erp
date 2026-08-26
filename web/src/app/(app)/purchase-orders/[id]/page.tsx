@@ -2,8 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireSection, hasAccess } from "@/server/auth/permissions";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { getPurchaseOrderDetail } from "@/server/db/queries/purchaseOrders";
+import { getPurchaseOrderDetail, getPoApprovalProgress } from "@/server/db/queries/purchaseOrders";
 import { POStatusActions } from "@/components/purchase-orders/POStatusActions";
+import { PoApprovalProgress } from "@/components/purchase-orders/PoApprovalProgress";
 import { SendDocumentButtons } from "@/components/ui/SendDocumentButtons";
 import { sendPurchaseOrderEmail, sendPurchaseOrderWhatsApp } from "@/server/actions/purchaseOrders";
 import { isWhatsAppBusinessConfigured } from "@/lib/whatsappBusiness";
@@ -26,6 +27,7 @@ export default async function PurchaseOrderDetailPage({ params }: PageProps<"/pu
   const { po, lines, net, vat, total } = data;
   const canEdit = hasAccess(session, "orders", "edit");
   const canReceive = po.status === "ORDERED" || po.status === "PARTIALLY RECEIVED";
+  const approvalProgress = await getPoApprovalProgress(po.id, total);
 
   const waDigitsOnly = po.supplierPhone?.replace(/[^0-9]/g, "") ?? "";
   const waText = encodeURIComponent(
@@ -103,6 +105,8 @@ export default async function PurchaseOrderDetailPage({ params }: PageProps<"/pu
       {po.notes && (
         <div className="field-row"><span className="k">Notes</span><span className="v">{po.notes}</span></div>
       )}
+
+      {approvalProgress.applies && <PoApprovalProgress steps={approvalProgress.steps} />}
 
       {canEdit && <POStatusActions id={po.id} status={po.status} />}
 

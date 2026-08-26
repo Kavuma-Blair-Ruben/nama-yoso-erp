@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/server/db";
-import { locationOrderLimits, policySettings, roles, branches, branchReceivingLimits, rolePurchaseLimits } from "@/server/db/schema";
+import { locationOrderLimits, policySettings, roles, branches, branchReceivingLimits, rolePurchaseLimits, poApprovalSteps } from "@/server/db/schema";
 
 export async function listLocationOrderLimits() {
   return db.select().from(locationOrderLimits).orderBy(locationOrderLimits.location);
@@ -33,11 +33,8 @@ export async function getPolicySettings() {
       receiveAbovePricePct: policySettings.receiveAbovePricePct,
       internalOnlyLocations: policySettings.internalOnlyLocations,
       poApprovalThreshold: policySettings.poApprovalThreshold,
-      poApprovalRoleId: policySettings.poApprovalRoleId,
-      poApprovalRoleName: roles.name,
     })
-    .from(policySettings)
-    .leftJoin(roles, eq(policySettings.poApprovalRoleId, roles.id));
+    .from(policySettings);
   return (
     row ?? {
       id: "default",
@@ -45,12 +42,20 @@ export async function getPolicySettings() {
       receiveAbovePricePct: null,
       internalOnlyLocations: [] as string[],
       poApprovalThreshold: null,
-      poApprovalRoleId: null,
-      poApprovalRoleName: null,
     }
   );
 }
 
 export async function listRoles() {
   return db.select({ id: roles.id, name: roles.name }).from(roles).orderBy(roles.name);
+}
+
+// The current approval chain, ordered — empty means no chain is configured
+// (poApprovalThreshold, if set, then has no effect: nothing to gate on).
+export async function listPoApprovalSteps() {
+  return db
+    .select({ stepOrder: poApprovalSteps.stepOrder, roleId: poApprovalSteps.roleId, roleName: roles.name })
+    .from(poApprovalSteps)
+    .innerJoin(roles, eq(poApprovalSteps.roleId, roles.id))
+    .orderBy(poApprovalSteps.stepOrder);
 }

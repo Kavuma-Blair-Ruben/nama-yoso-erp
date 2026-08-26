@@ -1,10 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/server/db";
-import { locationOrderLimits, branchReceivingLimits, rolePurchaseLimits, policySettings, branches, roles, auditLog } from "@/server/db/schema";
+import { locationOrderLimits, branchReceivingLimits, rolePurchaseLimits, policySettings, branches, roles, auditLog, poApprovalSteps } from "@/server/db/schema";
 import { assertPermission } from "@/server/auth/permissions";
 
 export type PolicyActionResult = { error?: string } | undefined;
@@ -111,10 +111,14 @@ export async function savePolicyPercent(field: "abovePparOverPct" | "receiveAbov
   return {};
 }
 
-export async function savePoApprovalPolicy(threshold: number | null, roleId: string | null): Promise<{ error?: string }> {
+// poApprovalRoleId (the single-role predecessor of the chain below) is no
+// longer set here — the chain in poApprovalSteps is the only thing that can
+// gate anything now; this threshold just says at what value the currently
+// configured chain, if any, starts applying.
+export async function savePoApprovalPolicy(threshold: number | null): Promise<{ error?: string }> {
   const session = await assertPermission("policies", "edit");
   await ensurePolicySettingsRow();
-  await db.update(policySettings).set({ poApprovalThreshold: threshold, poApprovalRoleId: threshold != null ? roleId : null }).where(eq(policySettings.id, "default"));
+  await db.update(policySettings).set({ poApprovalThreshold: threshold }).where(eq(policySettings.id, "default"));
   await db.insert(auditLog).values({
     actorId: session.profile.id,
     action: "Updated",
@@ -122,6 +126,34 @@ export async function savePoApprovalPolicy(threshold: number | null, roleId: str
     entityLabel: "PO Approval Threshold",
     detail: threshold != null ? `AED ${threshold}+ requires approval` : "Cleared",
   });
+  revalidatePath("/policies");
+  return {};
+}
+
+// Replaces the entire chain in one call rather than add/remove-one-step —
+// the UI is always exactly 5 role-picker slots, so "save" naturally means
+// "this is the whole chain now". Empty/unselected slots are dropped and the
+// remaining steps are renumbered 1..N contiguously, so a gap in the middle
+// (e.g. step 2 left blank) doesn't produce a step the enforcement logic can
+// never reach.
+export async function savePoApprovalSteps(roleIds: (string | null)[]): Promise<{ error?: string }> {
+  const session = await assertPermission("policies", "edit");
+  const compact = roleIds.filter((id): id is string => !!id).slice(0, 5);
+
+  await db.transaction(async (tx) => {
+    await tx.delete(poApprovalSteps);
+    if (compact.length > 0) {
+      await tx.insert(poApprovalSteps).values(compact.map((roleId, i) => ({ stepOrder: i + 1, roleId })));
+    }
+  });
+
+  const roleNames = compact.length
+    ? (await db.select({ id: roles.id, name: roles.name }).from(roles).where(inArray(roles.id, compact)))
+    : [];
+  const nameById = new Map(roleNames.map((r) => [r.id, r.name]));
+  const detail = compact.length ? compact.map((id, i) => `${i + 1}. ${nameById.get(id) ?? id}`).join(", ") : "Cleared";
+
+  await db.insert(auditLog).values({ actorId: session.profile.id, action: "Updated", entity: "Policy Setting", entityLabel: "PO Approval Chain", detail });
   revalidatePath("/policies");
   return {};
 }

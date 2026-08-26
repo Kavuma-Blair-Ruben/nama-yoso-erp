@@ -1,6 +1,6 @@
 import { requireSection, hasAccess } from "@/server/auth/permissions";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { listLocationOrderLimits, listBranchReceivingLimits, listRolePurchaseLimits, getPolicySettings, listRoles } from "@/server/db/queries/policies";
+import { listLocationOrderLimits, listBranchReceivingLimits, listRolePurchaseLimits, getPolicySettings, listRoles, listPoApprovalSteps } from "@/server/db/queries/policies";
 import { listBranches } from "@/server/db/queries/purchaseOrders";
 import { POLICY_LOCATIONS } from "@/server/db/schema";
 import { LocationLimits } from "@/components/policies/LocationLimits";
@@ -13,13 +13,14 @@ import { ApprovalPolicySettings } from "@/components/policies/ApprovalPolicySett
 export default async function PoliciesPage() {
   const session = await requireSection("policies", "view");
   const canEdit = hasAccess(session, "policies", "edit");
-  const [limits, branchLimits, roleLimits, settings, roles, branches] = await Promise.all([
+  const [limits, branchLimits, roleLimits, settings, roles, branches, approvalSteps] = await Promise.all([
     listLocationOrderLimits(),
     listBranchReceivingLimits(),
     listRolePurchaseLimits(),
     getPolicySettings(),
     listRoles(),
     listBranches(),
+    listPoApprovalSteps(),
   ]);
 
   return (
@@ -31,7 +32,7 @@ export default async function PoliciesPage() {
         Approval setting and Per-Role Purchase Limits below are the exception — they actually block the action.
       </div>
 
-      <ApprovalPolicySettings threshold={settings.poApprovalThreshold} roleId={settings.poApprovalRoleId} roles={roles} canEdit={canEdit} />
+      <ApprovalPolicySettings threshold={settings.poApprovalThreshold} steps={approvalSteps} roles={roles} canEdit={canEdit} />
       <RolePurchaseLimits roleLimits={roleLimits} canEdit={canEdit} />
       <LocationLimits limits={limits} locations={POLICY_LOCATIONS} canEdit={canEdit} />
       <BranchReceivingLimits limits={branchLimits} branches={branches} canEdit={canEdit} />

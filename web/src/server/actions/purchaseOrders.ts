@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/server/db";
-import { purchaseOrders, purchaseOrderLines, suppliers, policySettings, roles, rolePurchaseLimits, auditLog } from "@/server/db/schema";
+import { purchaseOrders, purchaseOrderLines, suppliers, policySettings, roles, rolePurchaseLimits, auditLog, poApprovalSteps, purchaseOrderApprovals } from "@/server/db/schema";
 import { assertPermission } from "@/server/auth/permissions";
 import { nextPoNumber } from "@/server/db/sequences";
 import { checkSupplierOrderingLimit, checkLocationOrderLimit, checkAbovePeLimit } from "@/server/policyChecks";
@@ -143,30 +143,60 @@ const STATUS_TRANSITIONS: Record<string, string[]> = {
   CANCELLED: [],
 };
 
-export async function updatePOStatus(id: string, newStatus: string): Promise<{ error?: string }> {
+export async function updatePOStatus(id: string, newStatus: string): Promise<{ error?: string; info?: string }> {
   const session = await assertPermission("orders", "edit");
   const [po] = await db.select({ status: purchaseOrders.status, poNumber: purchaseOrders.poNumber }).from(purchaseOrders).where(eq(purchaseOrders.id, id));
   if (!po) return { error: "Purchase order not found." };
   if (!STATUS_TRANSITIONS[po.status]?.includes(newStatus)) return { error: `Cannot move from ${po.status} to ${newStatus}.` };
 
   // Real block, not a warning — every other policy check in this app only
-  // ever surfaces a non-blocking message. A configured threshold+role
-  // actually prevents DRAFT -> APPROVED unless the acting user holds that role.
+  // ever surfaces a non-blocking message. A configured threshold + a
+  // non-empty approval chain (see poApprovalSteps) actually prevents
+  // DRAFT -> APPROVED until every step has signed off, in order — each
+  // "Mark as APPROVED" click from an authorized step's role records that
+  // step and, only once the last one clears, actually flips the status.
   if (po.status === "DRAFT" && newStatus === "APPROVED") {
-    const [settings] = await db
-      .select({ threshold: policySettings.poApprovalThreshold, roleId: policySettings.poApprovalRoleId })
-      .from(policySettings);
-    if (settings?.threshold != null && settings.roleId) {
+    const [settings] = await db.select({ threshold: policySettings.poApprovalThreshold }).from(policySettings);
+    const chain = await db
+      .select({ stepOrder: poApprovalSteps.stepOrder, roleId: poApprovalSteps.roleId, roleName: roles.name })
+      .from(poApprovalSteps)
+      .innerJoin(roles, eq(poApprovalSteps.roleId, roles.id))
+      .orderBy(poApprovalSteps.stepOrder);
+
+    if (settings?.threshold != null && chain.length > 0) {
       const lines = await db
         .select({ qty: purchaseOrderLines.qty, rate: purchaseOrderLines.rate, taxRate: purchaseOrderLines.taxRate })
         .from(purchaseOrderLines)
         .where(eq(purchaseOrderLines.purchaseOrderId, id));
       const total = lines.reduce((s, l) => s + l.qty * l.rate * (1 + l.taxRate / 100), 0);
-      if (total >= settings.threshold && session.role.id !== settings.roleId) {
-        const [role] = await db.select({ name: roles.name }).from(roles).where(eq(roles.id, settings.roleId));
-        return {
-          error: `This PO (AED ${total.toFixed(2)}) is at or above the AED ${settings.threshold} approval threshold — only ${role?.name ?? "an authorized role"} can approve it.`,
-        };
+
+      if (total >= settings.threshold) {
+        const doneSteps = await db.select({ stepOrder: purchaseOrderApprovals.stepOrder }).from(purchaseOrderApprovals).where(eq(purchaseOrderApprovals.purchaseOrderId, id));
+        const doneOrders = new Set(doneSteps.map((d) => d.stepOrder));
+        const nextStep = chain.find((s) => !doneOrders.has(s.stepOrder));
+
+        if (nextStep) {
+          if (session.role.id !== nextStep.roleId) {
+            return {
+              error: `This PO (AED ${total.toFixed(2)}) needs step ${nextStep.stepOrder} of ${chain.length} — ${nextStep.roleName} — to approve next. You are not authorized for this step.`,
+            };
+          }
+          await db.insert(purchaseOrderApprovals).values({ purchaseOrderId: id, stepOrder: nextStep.stepOrder, approvedBy: session.profile.id });
+          await db.insert(auditLog).values({
+            actorId: session.profile.id,
+            action: "Approval Step",
+            entity: "Purchase Order",
+            entityLabel: po.poNumber,
+            detail: `Step ${nextStep.stepOrder} of ${chain.length} approved by ${session.role.name}`,
+          });
+
+          const remaining = chain.length - (doneOrders.size + 1);
+          if (remaining > 0) {
+            revalidatePath(`/purchase-orders/${id}`);
+            return { info: `Step ${nextStep.stepOrder} of ${chain.length} approved. ${remaining} more step(s) needed before this PO is fully APPROVED.` };
+          }
+          // Chain complete — fall through to the real DRAFT -> APPROVED flip below.
+        }
       }
     }
   }

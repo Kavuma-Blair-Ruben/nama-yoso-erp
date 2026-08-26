@@ -1,6 +1,6 @@
 import "server-only";
 import { db } from "@/server/db";
-import { purchaseOrders, purchaseOrderLines, suppliers, stockItems, branches } from "@/server/db/schema";
+import { purchaseOrders, purchaseOrderLines, suppliers, stockItems, branches, policySettings, poApprovalSteps, purchaseOrderApprovals, roles, profiles } from "@/server/db/schema";
 import { and, eq, ilike, or, sql, desc } from "drizzle-orm";
 
 export async function listPurchaseOrders(filters: { q?: string; status?: string }) {
@@ -75,6 +75,49 @@ export async function getPurchaseOrderDetail(id: string) {
   const net = lines.reduce((s, l) => s + l.qty * l.rate, 0);
   const vat = lines.reduce((s, l) => s + l.qty * l.rate * (l.taxRate / 100), 0);
   return { po, lines, net, vat, total: net + vat };
+}
+
+export type PoApprovalStepProgress = { stepOrder: number; roleName: string; approvedByName: string | null; approvedAt: Date | null };
+
+// Whether this specific PO's total actually triggers the chain, and how far
+// through it this PO has gotten — null `applies` means the chain either
+// isn't configured or this PO's total doesn't reach the threshold, so the
+// UI can skip rendering the progress panel entirely rather than show an
+// always-empty one.
+export async function getPoApprovalProgress(id: string, total: number): Promise<{ applies: boolean; threshold: number | null; steps: PoApprovalStepProgress[] }> {
+  const [settings] = await db.select({ threshold: policySettings.poApprovalThreshold }).from(policySettings);
+  const chain = await db
+    .select({ stepOrder: poApprovalSteps.stepOrder, roleName: roles.name })
+    .from(poApprovalSteps)
+    .innerJoin(roles, eq(poApprovalSteps.roleId, roles.id))
+    .orderBy(poApprovalSteps.stepOrder);
+
+  const done = await db
+    .select({ stepOrder: purchaseOrderApprovals.stepOrder, approvedByName: profiles.name, approvedAt: purchaseOrderApprovals.approvedAt })
+    .from(purchaseOrderApprovals)
+    .innerJoin(profiles, eq(purchaseOrderApprovals.approvedBy, profiles.id))
+    .where(eq(purchaseOrderApprovals.purchaseOrderId, id));
+
+  // Two ways this panel is worth showing: the CURRENT chain config gates
+  // this PO's total, or this specific PO already has real approval history
+  // (recorded under a chain that may since have been reconfigured) — the
+  // latter keeps old POs' audit trail visible even after policy changes.
+  const currentlyApplies = settings?.threshold != null && chain.length > 0 && total >= settings.threshold;
+  const applies = currentlyApplies || done.length > 0;
+  if (!applies) return { applies: false, threshold: settings?.threshold ?? null, steps: [] };
+
+  const doneByStep = new Map(done.map((d) => [d.stepOrder, d]));
+
+  return {
+    applies: true,
+    threshold: settings!.threshold,
+    steps: chain.map((s) => ({
+      stepOrder: s.stepOrder,
+      roleName: s.roleName,
+      approvedByName: doneByStep.get(s.stepOrder)?.approvedByName ?? null,
+      approvedAt: doneByStep.get(s.stepOrder)?.approvedAt ?? null,
+    })),
+  };
 }
 
 export async function listPurchasableProductsForPicker() {

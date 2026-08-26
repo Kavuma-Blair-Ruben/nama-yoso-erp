@@ -309,6 +309,13 @@
       "when": 1787692653359,
       "tag": "0043_panoramic_jubilee",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1787739894551,
+      "tag": "0044_brave_silver_surfer",
+      "breakpoints": true
     }
   ]
 }

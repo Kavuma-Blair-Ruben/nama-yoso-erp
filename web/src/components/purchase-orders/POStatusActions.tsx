@@ -14,15 +14,18 @@ const NEXT_STATUSES: Record<string, string[]> = {
 
 export function POStatusActions({ id, status }: { id: string; status: string }) {
   const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const actions = NEXT_STATUSES[status] ?? [];
   if (actions.length === 0) return null;
 
   function handleClick(newStatus: string) {
     setError(null);
+    setInfo(null);
     startTransition(async () => {
       const result = await updatePOStatus(id, newStatus);
       if (result.error) setError(result.error);
+      else if (result.info) setInfo(result.info);
     });
   }
 
@@ -30,6 +33,7 @@ export function POStatusActions({ id, status }: { id: string; status: string }) 
     <div>
       <div className="section-title">Update Status</div>
       {error && <div className="login-error">{error}</div>}
+      {info && <div className="callout">{info}</div>}
       <div className="btn-row">
         {actions.map((a) => (
           <button key={a} className={`btn ${a === "CANCELLED" ? "ghost" : "accent"}`} disabled={pending} onClick={() => handleClick(a)}>

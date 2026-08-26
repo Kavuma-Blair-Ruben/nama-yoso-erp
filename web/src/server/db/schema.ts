@@ -216,6 +216,22 @@ export const policySettings = pgTable("policy_settings", {
   poApprovalRoleId: uuid("po_approval_role_id").references(() => roles.id),
 });
 
+// Ordered chain of up to 5 roles that must each sign off, in order, before a
+// PO at/above poApprovalThreshold reaches APPROVED — supersedes the single
+// poApprovalRoleId above (left in place, unused by new enforcement, rather
+// than dropped) once at least one step is configured. Configuring the whole
+// chain replaces its previous contents (see savePoApprovalSteps), so this
+// table is small and always represents the current chain, not history.
+export const poApprovalSteps = pgTable(
+  "po_approval_steps",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    stepOrder: integer("step_order").notNull().unique(),
+    roleId: uuid("role_id").notNull().references(() => roles.id, { onDelete: "cascade" }),
+  },
+  (t) => [check("po_approval_steps_order_check", sql`${t.stepOrder} between 1 and 5`)]
+);
+
 // Per-branch receiving cap — same location/frequency/amount shape as
 // locationOrderLimits, but keyed on GRN's real branchId FK rather than a
 // PO's free-text deliverTo (GRN has no deliverTo concept). Warn-only, same
@@ -556,6 +572,22 @@ export const purchaseOrderLines = pgTable("purchase_order_lines", {
   taxRate: numeric("tax_rate", { precision: 5, scale: 2, mode: "number" }).notNull().default(5),
   packagingVariantId: uuid("packaging_variant_id").references(() => productSupplierPackaging.id),
 });
+
+// One row per chain step this PO has cleared — a PO only reaches APPROVED
+// once it has a row here for every currently-configured poApprovalSteps
+// step. Rows are never removed once written (even if the chain config
+// changes later), so this doubles as the audit trail of who approved what.
+export const purchaseOrderApprovals = pgTable(
+  "purchase_order_approvals",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    purchaseOrderId: uuid("purchase_order_id").notNull().references(() => purchaseOrders.id, { onDelete: "cascade" }),
+    stepOrder: integer("step_order").notNull(),
+    approvedBy: uuid("approved_by").notNull().references(() => profiles.id),
+    approvedAt: timestamp("approved_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [unique("purchase_order_approvals_po_step_unique").on(t.purchaseOrderId, t.stepOrder)]
+);
 
 export const grns = pgTable(
   "grns",
