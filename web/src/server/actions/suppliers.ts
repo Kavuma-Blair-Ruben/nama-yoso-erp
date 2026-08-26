@@ -98,25 +98,23 @@ export type SupplierImportRow = {
   receivingLimitFrequency?: "daily" | "weekly" | "monthly";
 };
 
-export type SupplierBulkImportResult = { error?: string; imported?: number; skipped?: string[] };
+export type SupplierBulkImportResult = { error?: string; imported?: number; updated?: number };
 
 // Flattest of the bulk importers — no FK lookups. suppliers.name carries a
-// real unique constraint, so the duplicate-name skip also doubles as
-// avoiding an insert error.
+// real unique constraint, so a row matching an existing supplier by name
+// (case-insensitive) updates that supplier's details in place instead of
+// being skipped — this is what lets a refreshed supplier contact/terms
+// sheet be re-imported directly instead of erroring on the name collision.
 export async function bulkImportSuppliers(rows: SupplierImportRow[]): Promise<SupplierBulkImportResult> {
   const session = await assertPermission("suppliers", "edit");
   const validRows = rows.filter((r) => r.name.trim());
   if (validRows.length === 0) return { error: "No valid rows found — Name is required." };
 
-  const skipped: string[] = [];
+  let updated = 0;
   const toInsert: (typeof suppliers.$inferInsert)[] = [];
   for (const r of validRows) {
     const [existing] = await db.select({ id: suppliers.id }).from(suppliers).where(ilike(suppliers.name, r.name.trim()));
-    if (existing) {
-      skipped.push(r.name);
-      continue;
-    }
-    toInsert.push({
+    const values = {
       name: r.name.trim(),
       trn: r.trn,
       contactName: r.contactName,
@@ -129,14 +127,22 @@ export async function bulkImportSuppliers(rows: SupplierImportRow[]): Promise<Su
       orderLimitFrequency: r.orderLimitFrequency,
       receivingLimitAmount: r.receivingLimitAmount,
       receivingLimitFrequency: r.receivingLimitFrequency,
-    });
+    };
+    if (existing) {
+      await db.update(suppliers).set({ ...values, updatedAt: new Date() }).where(eq(suppliers.id, existing.id));
+      updated++;
+      continue;
+    }
+    toInsert.push(values);
   }
 
-  if (toInsert.length > 0) {
-    await db.insert(suppliers).values(toInsert);
-    await db.insert(auditLog).values({ actorId: session.profile.id, action: "Bulk Imported", entity: "Supplier", entityLabel: `${toInsert.length} supplier(s)`, detail: skipped.length ? `${skipped.length} skipped (duplicate name)` : undefined });
+  if (toInsert.length > 0) await db.insert(suppliers).values(toInsert);
+
+  if (toInsert.length > 0 || updated > 0) {
+    const detailParts = [toInsert.length > 0 ? `${toInsert.length} created` : null, updated > 0 ? `${updated} updated` : null].filter(Boolean);
+    await db.insert(auditLog).values({ actorId: session.profile.id, action: "Bulk Imported", entity: "Supplier", entityLabel: `${toInsert.length + updated} supplier(s)`, detail: detailParts.join(", ") });
     revalidatePath("/suppliers");
   }
 
-  return { imported: toInsert.length, skipped };
+  return { imported: toInsert.length, updated };
 }

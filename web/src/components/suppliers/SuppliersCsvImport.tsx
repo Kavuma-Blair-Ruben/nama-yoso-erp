@@ -49,8 +49,8 @@ export function SuppliersCsvImport() {
         const result = await bulkImportSuppliers(rows);
         if (result.error) setError(result.error);
         else {
-          const skippedMsg = result.skipped?.length ? `, ${result.skipped.length} skipped (already exists): ${result.skipped.join(", ")}` : "";
-          setInfo(`Imported ${result.imported} supplier(s)${skippedMsg}.`);
+          const updatedMsg = result.updated ? `, ${result.updated} updated (matched by name)` : "";
+          setInfo(`Imported ${result.imported} new supplier(s)${updatedMsg}.`);
           router.refresh();
         }
       });

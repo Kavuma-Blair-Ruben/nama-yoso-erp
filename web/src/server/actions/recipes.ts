@@ -267,7 +267,7 @@ export type RawRecipeImportGroup = {
   branches?: string[];
   lines: RawRecipeImportLine[];
 };
-export type RecipeBulkImportResult = { error?: string; imported?: string[]; failed?: { name: string; reason: string }[] };
+export type RecipeBulkImportResult = { error?: string; imported?: string[]; updated?: string[]; failed?: { name: string; reason: string }[] };
 
 // Ingredients are matched by code first (unambiguous — a stock item's
 // legacyCode, which a sub-recipe's backing stock item shares too, so this
@@ -311,11 +311,18 @@ function resolveIngredient(
 // Groups are pre-built client-side from the CSV's repeated header-fields-
 // per-ingredient-row shape (grouped by Type+Name) — this action just
 // resolves each group's ingredients against the real catalog and calls the
-// existing createRecipe() per group, so code generation, rate-at-build
-// computation, and the insert transaction all reuse that single code path
-// rather than duplicating it. A group fails as a whole (nothing written)
-// if any of its ingredients can't be resolved, or if createRecipe itself
-// errors (e.g. no lines) — the rest of the batch still proceeds.
+// existing createRecipe()/updateRecipe() per group, so code generation,
+// rate-at-build computation, and the insert transaction all reuse those
+// single code paths rather than duplicating them. A group fails as a whole
+// (nothing written) if any of its ingredients can't be resolved, or if
+// createRecipe/updateRecipe itself errors (e.g. no lines) — the rest of the
+// batch still proceeds.
+//
+// A group matching an existing recipe of the same type by name
+// (case-insensitive) updates that recipe in place — same
+// match-by-name-and-update behavior as the Products/Suppliers importers —
+// instead of the previous behavior of always creating a new recipe (which
+// meant re-importing the same CSV silently duplicated every recipe in it).
 export async function bulkImportRecipes(groups: RawRecipeImportGroup[]): Promise<RecipeBulkImportResult> {
   const session = await getSession();
   if (!session) return { error: "Not authenticated." };
@@ -326,12 +333,14 @@ export async function bulkImportRecipes(groups: RawRecipeImportGroup[]): Promise
   const validGroups = groups.filter((g) => g.name.trim());
   if (validGroups.length === 0) return { error: "No valid recipe rows found." };
 
-  const [items, recipes] = await Promise.all([
+  const [items, recipes, existingSubRecipes] = await Promise.all([
     db.select({ id: stockItems.id, legacyCode: stockItems.legacyCode, name: stockItems.name }).from(stockItems),
     db.select({ id: mainRecipes.id, legacyCode: mainRecipes.legacyCode, name: mainRecipes.name }).from(mainRecipes),
+    db.select({ id: subRecipes.id, legacyCode: subRecipes.legacyCode, name: subRecipes.name }).from(subRecipes),
   ]);
 
   const imported: string[] = [];
+  const updated: string[] = [];
   const failed: { name: string; reason: string }[] = [];
 
   for (const g of validGroups) {
@@ -356,7 +365,7 @@ export async function bulkImportRecipes(groups: RawRecipeImportGroup[]): Promise
       continue;
     }
 
-    const result = await createRecipe({
+    const input: RecipeInput = {
       type: g.type,
       name: g.name,
       section: g.section ?? "",
@@ -367,15 +376,22 @@ export async function bulkImportRecipes(groups: RawRecipeImportGroup[]): Promise
       targetFoodCostPct: null,
       branches: g.branches ?? [],
       lines: resolvedLines,
-    });
+    };
+
+    const existingList = g.type === "main" ? recipes : existingSubRecipes;
+    const existing = existingList.find((r) => r.name.toLowerCase() === g.name.trim().toLowerCase());
+
+    const result = existing ? await updateRecipe(existing.legacyCode, input) : await createRecipe(input);
     if (result.error) failed.push({ name: g.name, reason: result.error });
+    else if (existing) updated.push(`${result.code} — ${g.name}`);
     else imported.push(`${result.code} — ${g.name}`);
   }
 
-  if (imported.length > 0) {
-    await db.insert(auditLog).values({ actorId: session.profile.id, action: "Bulk Imported", entity: "Recipe", entityLabel: `${imported.length} recipe(s)`, detail: failed.length ? `${failed.length} failed` : undefined });
+  if (imported.length > 0 || updated.length > 0) {
+    const detailParts = [imported.length > 0 ? `${imported.length} created` : null, updated.length > 0 ? `${updated.length} updated` : null, failed.length ? `${failed.length} failed` : null].filter(Boolean);
+    await db.insert(auditLog).values({ actorId: session.profile.id, action: "Bulk Imported", entity: "Recipe", entityLabel: `${imported.length + updated.length} recipe(s)`, detail: detailParts.join(", ") });
     revalidatePath("/recipes");
   }
 
-  return { imported, failed };
+  return { imported, updated, failed };
 }

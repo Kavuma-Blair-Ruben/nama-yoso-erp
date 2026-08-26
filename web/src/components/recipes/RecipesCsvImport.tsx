@@ -74,7 +74,9 @@ export function RecipesCsvImport() {
         const result = await bulkImportRecipes(groups);
         if (result.error) setError(result.error);
         else {
-          setInfo(`Imported ${result.imported?.length ?? 0} recipe(s)${result.failed?.length ? `, ${result.failed.length} failed` : ""}.`);
+          const updatedMsg = result.updated?.length ? `, ${result.updated.length} updated (matched by name)` : "";
+          const failedMsg = result.failed?.length ? `, ${result.failed.length} failed` : "";
+          setInfo(`Imported ${result.imported?.length ?? 0} new recipe(s)${updatedMsg}${failedMsg}.`);
           setFailedRows(result.failed ?? []);
           router.refresh();
         }

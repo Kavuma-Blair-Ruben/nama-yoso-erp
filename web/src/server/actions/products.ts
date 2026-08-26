@@ -99,34 +99,65 @@ export type ProductImportRow = {
   parLevel?: number;
 };
 
-export type BulkImportResult = { error?: string; imported?: number; skipped?: { name: string; reason: string }[] };
+export type BulkImportResult = { error?: string; imported?: number; updated?: number; skipped?: { name: string; reason: string }[] };
 
 // Mirrors createProduct's insert shape exactly, minus the per-row redirect
 // (unusable in a batch) — codes are assigned one at a time via
 // nextProductCode() sequentially, not Promise.all'd, since it's a
 // max(existing)+1 lookup rather than a real DB sequence and concurrent
 // calls could collide on the same code.
+//
+// A row matching an existing product by name (case-insensitive) updates
+// that product in place instead of being skipped — this is what lets a
+// supplier's refreshed price list be re-imported directly rather than
+// requiring a name tweak to get past the duplicate check. A real rate
+// change is logged to price_history (source: "bulk") the same way a
+// manual rate edit is, so the audit trail doesn't go dark just because
+// the update came from a CSV.
 export async function bulkImportProducts(rows: ProductImportRow[]): Promise<BulkImportResult> {
   const session = await assertPermission("items", "edit");
   const validRows = rows.filter((r) => r.name.trim() && r.category.trim() && r.purchaseRate >= 0);
   if (validRows.length === 0) return { error: "No valid rows found — Name, Category, and Purchase Rate are required." };
 
-  const skipped: { name: string; reason: string }[] = [];
   let imported = 0;
+  let updated = 0;
 
   for (const r of validRows) {
-    const [existing] = await db.select({ id: stockItems.id }).from(stockItems).where(ilike(stockItems.name, r.name.trim()));
-    if (existing) {
-      skipped.push({ name: r.name, reason: "A product with this name already exists." });
-      continue;
-    }
+    const [existing] = await db.select().from(stockItems).where(ilike(stockItems.name, r.name.trim()));
 
     const categoryId = await findOrCreateCategory(r.category);
     const subcategoryId = r.subcategory?.trim() ? await findOrCreateSubcategory(categoryId, r.subcategory) : undefined;
     const supplierId = r.supplier?.trim() ? await findOrCreateSupplier(r.supplier) : undefined;
     const ratePerKgL = r.unitWeight ? (r.purchaseRate / r.unitWeight) * 1000 : r.purchaseRate;
-    const legacyCode = await nextProductCode();
 
+    if (existing) {
+      if (existing.purchaseRate !== r.purchaseRate) {
+        await db.insert(priceHistory).values({ stockItemId: existing.id, oldRate: existing.purchaseRate, newRate: r.purchaseRate, changedBy: session.profile.id, source: "bulk" });
+      }
+      await db
+        .update(stockItems)
+        .set({
+          categoryId,
+          subcategoryId,
+          supplierId,
+          storageType: r.storageType,
+          purchaseUnit: r.purchaseUnit,
+          issueUnit: r.issueUnit,
+          unitWeight: r.unitWeight,
+          purchaseRate: r.purchaseRate,
+          ratePerKgL,
+          ratePerGMl: ratePerKgL / 1000,
+          branches: r.branches?.length ? r.branches : undefined,
+          minLevel: r.minLevel,
+          parLevel: r.parLevel,
+          updatedAt: new Date(),
+        })
+        .where(eq(stockItems.id, existing.id));
+      updated++;
+      continue;
+    }
+
+    const legacyCode = await nextProductCode();
     await db.insert(stockItems).values({
       legacyCode,
       sourceType: "purchased",
@@ -148,12 +179,13 @@ export async function bulkImportProducts(rows: ProductImportRow[]): Promise<Bulk
     imported++;
   }
 
-  if (imported > 0) {
-    await db.insert(auditLog).values({ actorId: session.profile.id, action: "Bulk Imported", entity: "Product", entityLabel: `${imported} product(s)`, detail: skipped.length ? `${skipped.length} skipped (duplicate name)` : undefined });
+  if (imported > 0 || updated > 0) {
+    const detailParts = [imported > 0 ? `${imported} created` : null, updated > 0 ? `${updated} updated` : null].filter(Boolean);
+    await db.insert(auditLog).values({ actorId: session.profile.id, action: "Bulk Imported", entity: "Product", entityLabel: `${imported + updated} product(s)`, detail: detailParts.join(", ") });
     revalidatePath("/products");
   }
 
-  return { imported, skipped };
+  return { imported, updated };
 }
 
 const updateRateSchema = z.object({ code: z.string(), newRate: z.coerce.number().min(0), reason: z.string().optional() });

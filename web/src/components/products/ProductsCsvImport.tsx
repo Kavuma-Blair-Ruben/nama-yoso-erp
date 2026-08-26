@@ -47,8 +47,8 @@ export function ProductsCsvImport() {
         const result = await bulkImportProducts(rows);
         if (result.error) setError(result.error);
         else {
-          const skippedMsg = result.skipped?.length ? `, ${result.skipped.length} skipped (already exists): ${result.skipped.map((s) => s.name).join(", ")}` : "";
-          setInfo(`Imported ${result.imported} product(s)${skippedMsg}.`);
+          const updatedMsg = result.updated ? `, ${result.updated} updated (matched by name)` : "";
+          setInfo(`Imported ${result.imported} new product(s)${updatedMsg}.`);
           router.refresh();
         }
       });
