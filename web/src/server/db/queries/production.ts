@@ -150,6 +150,7 @@ export async function getProductionBatchDetail(id: string) {
       stockItemId: productionBatchIngredients.stockItemId,
       name: stockItems.name,
       legacyCode: stockItems.legacyCode,
+      issueUnit: stockItems.issueUnit,
       qty: productionBatchIngredients.qty,
       unitLabel: productionBatchIngredients.unitLabel,
       rateAtProduction: productionBatchIngredients.rateAtProduction,

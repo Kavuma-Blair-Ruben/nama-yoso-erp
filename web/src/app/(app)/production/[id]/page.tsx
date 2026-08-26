@@ -7,6 +7,7 @@ import { CloseProductionButton } from "@/components/production/CloseProductionBu
 import { DeleteProductionDraftButton } from "@/components/production/DeleteProductionDraftButton";
 import { ProductionTicketAutoPrint } from "@/components/production/ProductionTicketAutoPrint";
 import { fmt, money, formatDurationMinutes } from "@/lib/format";
+import { ledgerDisplayUnit, gramsDisplay } from "@/lib/unitMath";
 
 export default async function ProductionDetailPage({ params }: PageProps<"/production/[id]">) {
   const session = await requireSection("subrecipes", "view");
@@ -90,12 +91,21 @@ export default async function ProductionDetailPage({ params }: PageProps<"/produ
       </div>
 
       <div className="section-title">Ingredients Consumed</div>
-      {ingredients.map((i) => (
-        <div className="field-row" key={i.id}>
-          <span className="k">{i.legacyCode} — {i.name}</span>
-          <span className="v tabular">{fmt(i.qty, 2)} {i.unitLabel ?? ""} · {money(i.amountAtProduction, 2)}</span>
-        </div>
-      ))}
+      {ingredients.map((i) => {
+        // qty is stored canonical (KG/L for weight/volume items) — shown in
+        // grams/millilitres here since "115 g" reads far more usably on a
+        // production ticket than "0.115 KG", same conversion the cook book
+        // print page already uses for the same reason.
+        const canonicalUnit = ledgerDisplayUnit({ isSub: false, ingredientUnitLabel: i.unitLabel, productIssueUnit: i.issueUnit });
+        const display = gramsDisplay(i.qty, canonicalUnit);
+        const isFine = display.unit === "G" || display.unit === "ML";
+        return (
+          <div className="field-row" key={i.id}>
+            <span className="k">{i.legacyCode} — {i.name}</span>
+            <span className="v tabular">{fmt(display.qty, isFine ? 0 : 3)} {display.unit.toLowerCase()} · {money(i.amountAtProduction, 2)}</span>
+          </div>
+        );
+      })}
 
       <div className="section-title">Cost</div>
       <div className="field-row"><span className="k">Total Cost</span><span className="v tabular">{money(batch.totalCost, 2)}</span></div>
