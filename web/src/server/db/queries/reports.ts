@@ -346,7 +346,13 @@ export async function getStockPageRows() {
       })
       .from(stockItems)
       .leftJoin(categories, eq(stockItems.categoryId, categories.id)),
-    db.select({ stockItemId: stockBalances.stockItemId, qtyOnHand: stockBalances.qtyOnHand }).from(stockBalances),
+    // Excludes the Demo Branch so training/practice activity never shows up
+    // in the real Stock on Hand totals.
+    db
+      .select({ stockItemId: stockBalances.stockItemId, qtyOnHand: stockBalances.qtyOnHand })
+      .from(stockBalances)
+      .innerJoin(branches, eq(stockBalances.branchId, branches.id))
+      .where(eq(branches.isDemo, false)),
     db.selectDistinct({ stockItemId: recipeIngredients.stockItemId }).from(recipeIngredients).where(isNotNull(recipeIngredients.stockItemId)),
     // Most recent POSTED count per item, across every count ever taken —
     // "Last Count Qty" is a point-in-time snapshot from whenever that item

@@ -1,4 +1,5 @@
 import { requireSection } from "@/server/auth/permissions";
+import { allowedBranchCodes } from "@/server/auth/branchAccess";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { GRNBuilder } from "@/components/grn/GRNBuilder";
 import { getPOLinesForReceiving } from "@/server/db/queries/grn";
@@ -8,7 +9,7 @@ import { getOrCreateCashSupplierId } from "@/server/db/queries/suppliers";
 import { notFound } from "next/navigation";
 
 export default async function NewGrnPage({ searchParams }: PageProps<"/grn/new">) {
-  await requireSection("grn", "edit");
+  const session = await requireSection("grn", "edit");
   const sp = await searchParams;
   const poId = typeof sp.poId === "string" ? sp.poId : null;
 
@@ -55,7 +56,7 @@ export default async function NewGrnPage({ searchParams }: PageProps<"/grn/new">
   const [products, suppliers, branches, costCenters, cashSupplierId] = await Promise.all([
     listPurchasableProductsForPicker(),
     listAllSuppliers(),
-    listBranches(),
+    listBranches(allowedBranchCodes(session)),
     listAllActiveCostCenters(),
     getOrCreateCashSupplierId(),
   ]);

@@ -6,6 +6,7 @@ import { z } from "zod";
 import { db } from "@/server/db";
 import { grns, grnLines, purchaseOrders, purchaseOrderLines, stockItems, priceHistory, suppliers, branches, rolePurchaseLimits, auditLog } from "@/server/db/schema";
 import { assertPermission } from "@/server/auth/permissions";
+import { assertBranchAccess } from "@/server/auth/branchAccess";
 import { nextGrnNumber, nextBatchNumber, nextLotNumber } from "@/server/db/sequences";
 import { uploadPhoto, deletePhoto } from "@/lib/supabaseAdmin";
 import { recordStockMovement } from "@/server/db/stockLedger";
@@ -233,6 +234,7 @@ export async function postGRN(input: z.infer<typeof grnInputSchema>): Promise<Gr
   if (parsed.data.paymentMethod !== "PETTY_CASH" && !parsed.data.attachmentUrl?.trim()) {
     return { error: "Upload or scan the supplier invoice before posting — a GRN can't be closed without it." };
   }
+  await assertBranchAccess(session, parsed.data.branchId);
   const roleCapBreach = await checkRoleGrnCap(session.role.id, grnTotal(parsed.data));
   if (roleCapBreach) return { error: roleCapBreach };
 
@@ -267,6 +269,7 @@ export async function saveGrnDraft(input: z.infer<typeof grnInputSchema>): Promi
   const session = await assertPermission("grn", "edit");
   const parsed = grnInputSchema.safeParse(input);
   if (!parsed.success) return { error: "Add at least one valid item line." };
+  await assertBranchAccess(session, parsed.data.branchId);
 
   const { grnId } = await db.transaction(async (tx) => {
     const created = await insertGrn(tx, parsed.data, "DRAFT", session.profile.id);
@@ -284,6 +287,7 @@ export async function postDraftGrn(id: string): Promise<GrnActionResult> {
   const result = await db.transaction(async (tx) => {
     const [grn] = await tx.select().from(grns).where(and(eq(grns.id, id), eq(grns.status, "DRAFT")));
     if (!grn) return { error: "GRN not found or already posted." as const };
+    await assertBranchAccess(session, grn.branchId);
     if (grn.paymentMethod !== "PETTY_CASH" && !grn.attachmentUrl?.trim()) {
       return { error: "Upload or scan the supplier invoice before posting — a GRN can't be closed without it." as const };
     }
@@ -358,6 +362,8 @@ export async function updateGrnDraft(id: string, input: z.infer<typeof grnInputS
 
   const [existing] = await db.select().from(grns).where(and(eq(grns.id, id), eq(grns.status, "DRAFT")));
   if (!existing) return { error: "GRN not found or already posted — it can no longer be edited." };
+  await assertBranchAccess(session, existing.branchId);
+  await assertBranchAccess(session, parsed.data.branchId);
 
   await db.transaction(async (tx) => {
     let costCenterId: string | undefined;

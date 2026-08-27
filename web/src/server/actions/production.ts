@@ -6,6 +6,8 @@ import { z } from "zod";
 import { db } from "@/server/db";
 import { productionBatches, productionBatchIngredients, subRecipes, stockItems, auditLog } from "@/server/db/schema";
 import { assertPermission } from "@/server/auth/permissions";
+import { assertBranchAccess } from "@/server/auth/branchAccess";
+import type { Session } from "@/server/auth/session";
 import { nextProductionBatchNo, nextLotNumber } from "@/server/db/sequences";
 import { recordStockMovement } from "@/server/db/stockLedger";
 import { getDefaultCostCenterId } from "@/server/db/costCenterDefaults";
@@ -144,6 +146,7 @@ export async function openProductionBatch(input: z.infer<typeof productionInputS
   const session = await assertPermission("subrecipes", "edit");
   const parsed = productionInputSchema.safeParse(input);
   if (!parsed.success) return { error: "Add a valid yield and at least one ingredient line." };
+  await assertBranchAccess(session, parsed.data.branchId);
 
   const { batchId, batchNo, lotNo, subRecipe } = await db.transaction(async (tx) => {
     const created = await insertProductionBatch(tx, parsed.data, session.profile.id);
@@ -175,10 +178,12 @@ export async function openProductionBatch(input: z.infer<typeof productionInputS
 // the finished item's stock, locks the record from further edits, and
 // reports the open->close turnaround time. Shared by the manual "Close
 // Production" button and the scan-to-close flow below.
-async function closeProductionBatchCore(id: string, actorId: string, closeDetail: string): Promise<CloseProductionResult> {
+async function closeProductionBatchCore(id: string, session: Session, closeDetail: string): Promise<CloseProductionResult> {
+  const actorId = session.profile.id;
   const result = await db.transaction(async (tx) => {
     const [batch] = await tx.select().from(productionBatches).where(and(eq(productionBatches.id, id), eq(productionBatches.status, "OPEN")));
     if (!batch) return { error: "Production batch not found or already closed." as const };
+    await assertBranchAccess(session, batch.branchId);
 
     const [subRecipe] = await tx.select().from(subRecipes).where(eq(subRecipes.id, batch.subRecipeId));
     if (!subRecipe) return { error: "Sub-recipe not found." as const };
@@ -218,7 +223,7 @@ async function closeProductionBatchCore(id: string, actorId: string, closeDetail
 
 export async function closeProductionBatch(id: string): Promise<CloseProductionResult> {
   const session = await assertPermission("subrecipes", "edit");
-  return closeProductionBatchCore(id, session.profile.id, "Stock updated");
+  return closeProductionBatchCore(id, session, "Stock updated");
 }
 
 // Scan-to-close: staff scans the same barcode printed on the ticket when the
@@ -234,7 +239,7 @@ export async function closeProductionBatchByLot(lotNo: string): Promise<ClosePro
   if (!batch) return { error: `No production ticket found for lot "${trimmed}".` };
   if (batch.status !== "OPEN") return { error: `${batch.batchNo} (lot ${trimmed}) is already closed.` };
 
-  return closeProductionBatchCore(batch.id, session.profile.id, "Stock updated (scan-to-close)");
+  return closeProductionBatchCore(batch.id, session, "Stock updated (scan-to-close)");
 }
 
 // Fires once, right after the auto-print effect actually shows the browser's
@@ -253,6 +258,8 @@ export async function updateProductionBatch(id: string, input: z.infer<typeof pr
 
   const [existing] = await db.select().from(productionBatches).where(and(eq(productionBatches.id, id), eq(productionBatches.status, "OPEN")));
   if (!existing) return { error: "Production batch not found or already closed — it can no longer be edited." };
+  await assertBranchAccess(session, existing.branchId);
+  await assertBranchAccess(session, parsed.data.branchId);
 
   await db.transaction(async (tx) => {
     let totalCost = 0;

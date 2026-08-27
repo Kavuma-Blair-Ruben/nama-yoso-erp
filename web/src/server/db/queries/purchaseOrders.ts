@@ -1,14 +1,18 @@
 import "server-only";
 import { db } from "@/server/db";
 import { purchaseOrders, purchaseOrderLines, suppliers, stockItems, branches, policySettings, poApprovalSteps, purchaseOrderApprovals, roles, profiles } from "@/server/db/schema";
-import { and, eq, ilike, or, sql, desc, gte, lte } from "drizzle-orm";
+import { and, eq, ilike, or, sql, desc, gte, lte, inArray } from "drizzle-orm";
 
-export async function listPurchaseOrders(filters: { q?: string; status?: string; from?: string; to?: string }) {
+export async function listPurchaseOrders(filters: { q?: string; status?: string; from?: string; to?: string; excludeDemo?: boolean }) {
   const conditions = [];
   if (filters.q) conditions.push(or(ilike(purchaseOrders.poNumber, `%${filters.q}%`), ilike(suppliers.name, `%${filters.q}%`))!);
   if (filters.status) conditions.push(eq(purchaseOrders.status, filters.status));
   if (filters.from) conditions.push(gte(purchaseOrders.createdDate, filters.from));
   if (filters.to) conditions.push(lte(purchaseOrders.createdDate, filters.to));
+  // Only used by the Dashboard digest's "Upcoming Purchases" KPI — the plain
+  // PO list stays unfiltered (an occasional visibly-labeled Demo Branch PO
+  // there is fine; a silently-inflated owner-facing total isn't).
+  if (filters.excludeDemo) conditions.push(eq(branches.isDemo, false));
 
   const rows = await db
     .select({
@@ -27,6 +31,7 @@ export async function listPurchaseOrders(filters: { q?: string; status?: string;
     })
     .from(purchaseOrders)
     .innerJoin(suppliers, eq(purchaseOrders.supplierId, suppliers.id))
+    .leftJoin(branches, eq(purchaseOrders.branchId, branches.id))
     .where(conditions.length ? and(...conditions) : undefined)
     .orderBy(desc(purchaseOrders.poNumber));
 
@@ -143,8 +148,17 @@ export async function listPurchasableProductsForPicker() {
     .orderBy(stockItems.name);
 }
 
-export async function listBranches() {
-  return db.select({ id: branches.id, code: branches.code, name: branches.name }).from(branches);
+// allowedBranchCodes null = unrestricted user — still excludes the Demo
+// Branch (real staff should never see it as a selectable option). A
+// restricted user (the demo/trainee account) passes their own branch codes
+// explicitly (profiles.branches stores codes, not ids — see
+// server/auth/branchAccess.ts), which is how the Demo Branch becomes
+// visible to them specifically, without needing a separate carve-out here.
+export async function listBranches(allowedBranchCodes?: string[] | null) {
+  return db
+    .select({ id: branches.id, code: branches.code, name: branches.name })
+    .from(branches)
+    .where(allowedBranchCodes ? inArray(branches.code, allowedBranchCodes) : eq(branches.isDemo, false));
 }
 export async function listAllSuppliers() {
   return db.select({ id: suppliers.id, name: suppliers.name }).from(suppliers).orderBy(suppliers.name);

@@ -1,4 +1,5 @@
 import { requireSection } from "@/server/auth/permissions";
+import { allowedBranchCodes } from "@/server/auth/branchAccess";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StockCountBuilder } from "@/components/stockCount/StockCountBuilder";
 import { listIngredientPickerItems } from "@/server/db/queries/recipes";
@@ -9,10 +10,10 @@ import { listStockCountTemplatesWithItems } from "@/server/db/queries/stockCount
 import { getSystemSettings } from "@/server/db/queries/settings";
 
 export default async function NewStockCountPage() {
-  await requireSection("stockcount", "edit");
+  const session = await requireSection("stockcount", "edit");
   const [items, branches, stockBalances, costCenters, templates, settings] = await Promise.all([
     listIngredientPickerItems(),
-    listBranches(),
+    listBranches(allowedBranchCodes(session)),
     listStockBalancesBySector(),
     listAllActiveCostCenters(),
     listStockCountTemplatesWithItems(),

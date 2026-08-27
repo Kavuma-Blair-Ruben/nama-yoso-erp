@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { requireSection } from "@/server/auth/permissions";
+import { allowedBranchCodes } from "@/server/auth/branchAccess";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { WastageBuilder } from "@/components/wastage/WastageBuilder";
 import { getWastageEventForClone, listWastageReasons } from "@/server/db/queries/wastage";
@@ -8,14 +9,14 @@ import { listBranches } from "@/server/db/queries/purchaseOrders";
 import { listAllActiveCostCenters } from "@/server/db/queries/costCenters";
 
 export default async function CloneWastagePage({ params }: PageProps<"/wastage/[id]/clone">) {
-  await requireSection("wastage", "edit");
+  const session = await requireSection("wastage", "edit");
   const { id } = await params;
   const [data, items, mainRecipes, costCenters, branches, reasons] = await Promise.all([
     getWastageEventForClone(id),
     listIngredientPickerItems(),
     listMainRecipesForPicker(),
     listAllActiveCostCenters(),
-    listBranches(),
+    listBranches(allowedBranchCodes(session)),
     listWastageReasons(),
   ]);
   if (!data) notFound();

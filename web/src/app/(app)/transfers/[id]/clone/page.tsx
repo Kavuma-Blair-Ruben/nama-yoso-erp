@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { requireSection } from "@/server/auth/permissions";
+import { allowedBranchCodes } from "@/server/auth/branchAccess";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { TransferBuilder } from "@/components/transfers/TransferBuilder";
 import { getTransferForClone } from "@/server/db/queries/transfers";
@@ -8,9 +9,9 @@ import { listBranches } from "@/server/db/queries/purchaseOrders";
 import { listAllActiveCostCenters } from "@/server/db/queries/costCenters";
 
 export default async function CloneTransferPage({ params }: PageProps<"/transfers/[id]/clone">) {
-  await requireSection("transfers", "edit");
+  const session = await requireSection("transfers", "edit");
   const { id } = await params;
-  const [data, items, branches, costCenters] = await Promise.all([getTransferForClone(id), listIngredientPickerItems(), listBranches(), listAllActiveCostCenters()]);
+  const [data, items, branches, costCenters] = await Promise.all([getTransferForClone(id), listIngredientPickerItems(), listBranches(allowedBranchCodes(session)), listAllActiveCostCenters()]);
   if (!data) notFound();
   const { transfer, lines } = data;
 

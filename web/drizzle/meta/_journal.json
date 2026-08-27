@@ -351,6 +351,13 @@
       "when": 1787784227170,
       "tag": "0049_spooky_sandman",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1787790304565,
+      "tag": "0050_left_queen_noir",
+      "breakpoints": true
     }
   ]
 }

@@ -112,10 +112,10 @@ export async function getDashboardDigestStats() {
   const today = todayStr();
   const reorderAlertCount = await getReorderAlertCount();
   const salesToday = await getSalesTodayStats(today);
-  const approvedPOs = await listPurchaseOrders({ status: "APPROVED" });
-  const orderedPOs = await listPurchaseOrders({ status: "ORDERED" });
-  const openBatches = await listProductionBatches({ status: "OPEN" });
-  const wastageEvents = await listWastageEvents({ status: "POSTED" });
+  const approvedPOs = await listPurchaseOrders({ status: "APPROVED", excludeDemo: true });
+  const orderedPOs = await listPurchaseOrders({ status: "ORDERED", excludeDemo: true });
+  const openBatches = await listProductionBatches({ status: "OPEN", excludeDemo: true });
+  const wastageEvents = await listWastageEvents({ status: "POSTED", excludeDemo: true });
 
   const upcomingPOs = [...approvedPOs, ...orderedPOs];
   const upcomingPurchases = { count: upcomingPOs.length, value: upcomingPOs.reduce((s, po) => s + po.net + po.vat, 0) };

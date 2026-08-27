@@ -6,6 +6,7 @@ import { z } from "zod";
 import { db } from "@/server/db";
 import { purchaseOrders, purchaseOrderLines, suppliers, policySettings, roles, rolePurchaseLimits, auditLog, poApprovalSteps, purchaseOrderApprovals } from "@/server/db/schema";
 import { assertPermission } from "@/server/auth/permissions";
+import { assertBranchAccess } from "@/server/auth/branchAccess";
 import { nextPoNumber } from "@/server/db/sequences";
 import { checkSupplierOrderingLimit, checkLocationOrderLimit, checkAbovePeLimit } from "@/server/policyChecks";
 import { buildPoPdfBuffer } from "@/server/pdf/purchaseOrderPdf";
@@ -50,6 +51,7 @@ export async function createPurchaseOrders(input: z.infer<typeof createSchema>):
   const parsed = createSchema.safeParse(input);
   if (!parsed.success) return { error: "Add at least one valid line item." };
   const { lines, branchId, costCenterId, deliverTo, fallbackSupplierId, notes } = parsed.data;
+  await assertBranchAccess(session, branchId);
 
   if (deliverTo) {
     const [settings] = await db.select().from(policySettings);

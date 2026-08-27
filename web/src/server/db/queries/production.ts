@@ -76,7 +76,7 @@ export async function listStockBalancesBySector() {
     .from(stockBalances);
 }
 
-export async function listProductionBatches(filters: { status?: string; q?: string; from?: string; to?: string }) {
+export async function listProductionBatches(filters: { status?: string; q?: string; from?: string; to?: string; excludeDemo?: boolean }) {
   const conditions = [];
   if (filters.status) conditions.push(eq(productionBatches.status, filters.status));
   if (filters.q) {
@@ -86,6 +86,9 @@ export async function listProductionBatches(filters: { status?: string; q?: stri
   }
   if (filters.from) conditions.push(gte(productionBatches.producedDate, filters.from));
   if (filters.to) conditions.push(lte(productionBatches.producedDate, filters.to));
+  // Only used by the Dashboard digest's "Production In Progress" KPI — the
+  // plain Production list stays unfiltered.
+  if (filters.excludeDemo) conditions.push(eq(branches.isDemo, false));
 
   return db
     .select({

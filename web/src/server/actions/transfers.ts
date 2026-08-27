@@ -6,6 +6,7 @@ import { z } from "zod";
 import { db } from "@/server/db";
 import { stockTransfers, stockTransferLines, stockItems, auditLog, branches } from "@/server/db/schema";
 import { assertPermission } from "@/server/auth/permissions";
+import { assertBranchAccess } from "@/server/auth/branchAccess";
 import { nextTransferNo } from "@/server/db/sequences";
 import { recordStockMovement } from "@/server/db/stockLedger";
 
@@ -116,6 +117,8 @@ export async function sendTransfer(input: z.infer<typeof transferInputSchema>): 
   const parsed = transferInputSchema.safeParse(input);
   if (!parsed.success) return { error: "Add at least one item to transfer." };
   if (parsed.data.fromBranchId === parsed.data.toBranchId) return { error: "From and To branch must be different." };
+  await assertBranchAccess(session, parsed.data.fromBranchId);
+  await assertBranchAccess(session, parsed.data.toBranchId);
 
   const { transferId } = await db.transaction(async (tx) => {
     const created = await insertTransfer(tx, parsed.data, "IN_TRANSIT", session.profile.id);
@@ -143,6 +146,8 @@ export async function saveTransferDraft(input: z.infer<typeof transferInputSchem
   const parsed = transferInputSchema.safeParse(input);
   if (!parsed.success) return { error: "Add at least one item to transfer." };
   if (parsed.data.fromBranchId === parsed.data.toBranchId) return { error: "From and To branch must be different." };
+  await assertBranchAccess(session, parsed.data.fromBranchId);
+  await assertBranchAccess(session, parsed.data.toBranchId);
 
   const { transferId } = await db.transaction(async (tx) => {
     const created = await insertTransfer(tx, parsed.data, "DRAFT", session.profile.id);
@@ -162,6 +167,8 @@ export async function sendTransferDraft(id: string): Promise<TransferActionResul
   const result = await db.transaction(async (tx) => {
     const [transfer] = await tx.select().from(stockTransfers).where(and(eq(stockTransfers.id, id), eq(stockTransfers.status, "DRAFT")));
     if (!transfer) return { error: "Transfer not found or already sent." as const };
+    await assertBranchAccess(session, transfer.fromBranchId);
+    await assertBranchAccess(session, transfer.toBranchId);
     if (!transfer.fromCostCenterId || !transfer.toCostCenterId) return { error: "This draft has no sector set — edit it and pick one before sending." as const };
 
     const lines = await tx.select().from(stockTransferLines).where(eq(stockTransferLines.stockTransferId, id));
@@ -198,6 +205,8 @@ export async function receiveTransfer(id: string): Promise<TransferActionResult>
   const result = await db.transaction(async (tx) => {
     const [transfer] = await tx.select().from(stockTransfers).where(and(eq(stockTransfers.id, id), eq(stockTransfers.status, "IN_TRANSIT")));
     if (!transfer) return { error: "Transfer not found or not awaiting receipt." as const };
+    await assertBranchAccess(session, transfer.fromBranchId);
+    await assertBranchAccess(session, transfer.toBranchId);
     if (!transfer.fromCostCenterId || !transfer.toCostCenterId) return { error: "This transfer has no sector set — it can't be received." as const };
 
     const lines = await tx.select().from(stockTransferLines).where(eq(stockTransferLines.stockTransferId, id));
@@ -231,6 +240,10 @@ export async function updateTransferDraft(id: string, input: z.infer<typeof tran
 
   const [existing] = await db.select().from(stockTransfers).where(and(eq(stockTransfers.id, id), eq(stockTransfers.status, "DRAFT")));
   if (!existing) return { error: "Transfer not found or already sent — it can no longer be edited." };
+  await assertBranchAccess(session, existing.fromBranchId);
+  await assertBranchAccess(session, existing.toBranchId);
+  await assertBranchAccess(session, parsed.data.fromBranchId);
+  await assertBranchAccess(session, parsed.data.toBranchId);
 
   await db.transaction(async (tx) => {
     let totalCost = 0;

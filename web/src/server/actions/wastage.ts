@@ -6,6 +6,7 @@ import { z } from "zod";
 import { db } from "@/server/db";
 import { wastageEvents, wastageLines, stockItems, auditLog, costCenters } from "@/server/db/schema";
 import { assertPermission } from "@/server/auth/permissions";
+import { assertBranchAccess } from "@/server/auth/branchAccess";
 import { nextWastageNo } from "@/server/db/sequences";
 import { recordStockMovement } from "@/server/db/stockLedger";
 import { uploadPhoto, deletePhoto } from "@/lib/supabaseAdmin";
@@ -116,6 +117,7 @@ export async function postWastageEvent(input: z.infer<typeof wastageInputSchema>
   const session = await assertPermission("wastage", "edit");
   const parsed = wastageInputSchema.safeParse(input);
   if (!parsed.success) return { error: "Add at least one wasted item." };
+  await assertBranchAccess(session, parsed.data.branchId);
 
   const { eventId, wastageNo, costCenterName, totalCost } = await db.transaction(async (tx) => {
     const created = await insertWastageEvent(tx, parsed.data, "POSTED", session.profile.id);
@@ -142,6 +144,7 @@ export async function saveWastageDraft(input: z.infer<typeof wastageInputSchema>
   const session = await assertPermission("wastage", "edit");
   const parsed = wastageInputSchema.safeParse(input);
   if (!parsed.success) return { error: "Add at least one wasted item." };
+  await assertBranchAccess(session, parsed.data.branchId);
 
   const { eventId } = await db.transaction(async (tx) => {
     const created = await insertWastageEvent(tx, parsed.data, "DRAFT", session.profile.id);
@@ -159,6 +162,7 @@ export async function postWastageDraft(id: string): Promise<WastageActionResult>
   const result = await db.transaction(async (tx) => {
     const [event] = await tx.select().from(wastageEvents).where(and(eq(wastageEvents.id, id), eq(wastageEvents.status, "DRAFT")));
     if (!event) return { error: "Wastage event not found or already posted." as const };
+    await assertBranchAccess(session, event.branchId);
     if (!event.costCenterId) return { error: "This draft has no sector set — edit it and pick one before posting." as const };
 
     const lines = await tx.select().from(wastageLines).where(eq(wastageLines.wastageEventId, id));
@@ -192,6 +196,8 @@ export async function updateWastageDraft(id: string, input: z.infer<typeof wasta
 
   const [existing] = await db.select().from(wastageEvents).where(and(eq(wastageEvents.id, id), eq(wastageEvents.status, "DRAFT")));
   if (!existing) return { error: "Wastage event not found or already posted — it can no longer be edited." };
+  await assertBranchAccess(session, existing.branchId);
+  await assertBranchAccess(session, parsed.data.branchId);
 
   await db.transaction(async (tx) => {
     const [costCenter] = await tx.select({ name: costCenters.name }).from(costCenters).where(eq(costCenters.id, parsed.data.costCenterId));

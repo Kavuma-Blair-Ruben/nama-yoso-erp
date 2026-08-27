@@ -7,12 +7,15 @@ export async function listWastageReasons() {
   return db.select({ id: wastageReasons.id, name: wastageReasons.name, isExpense: wastageReasons.isExpense }).from(wastageReasons).orderBy(wastageReasons.name);
 }
 
-export async function listWastageEvents(filters: { status?: string; costCenterId?: string; from?: string; to?: string }) {
+export async function listWastageEvents(filters: { status?: string; costCenterId?: string; from?: string; to?: string; excludeDemo?: boolean }) {
   const conditions = [];
   if (filters.status) conditions.push(eq(wastageEvents.status, filters.status));
   if (filters.costCenterId) conditions.push(eq(wastageEvents.costCenterId, filters.costCenterId));
   if (filters.from) conditions.push(gte(wastageEvents.eventDate, filters.from));
   if (filters.to) conditions.push(lte(wastageEvents.eventDate, filters.to));
+  // Only used by the Dashboard digest's "Wastage Today" KPI — the plain
+  // Wastage list stays unfiltered.
+  if (filters.excludeDemo) conditions.push(eq(branches.isDemo, false));
 
   return db
     .select({

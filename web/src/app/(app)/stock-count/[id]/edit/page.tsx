@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { requireSection } from "@/server/auth/permissions";
+import { allowedBranchCodes } from "@/server/auth/branchAccess";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StockCountBuilder } from "@/components/stockCount/StockCountBuilder";
 import { getStockCountForEdit, listStockCountTemplatesWithItems } from "@/server/db/queries/stockCount";
@@ -10,12 +11,12 @@ import { listAllActiveCostCenters } from "@/server/db/queries/costCenters";
 import { getSystemSettings } from "@/server/db/queries/settings";
 
 export default async function EditStockCountDraftPage({ params }: PageProps<"/stock-count/[id]/edit">) {
-  await requireSection("stockcount", "edit");
+  const session = await requireSection("stockcount", "edit");
   const { id } = await params;
   const [data, items, branches, stockBalances, costCenters, templates, settings] = await Promise.all([
     getStockCountForEdit(id),
     listIngredientPickerItems(),
-    listBranches(),
+    listBranches(allowedBranchCodes(session)),
     listStockBalancesBySector(),
     listAllActiveCostCenters(),
     listStockCountTemplatesWithItems(),

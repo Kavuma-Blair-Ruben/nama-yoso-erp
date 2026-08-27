@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { requireSection } from "@/server/auth/permissions";
+import { allowedBranchCodes } from "@/server/auth/branchAccess";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { GRNBuilder } from "@/components/grn/GRNBuilder";
 import { getGrnForEdit } from "@/server/db/queries/grn";
@@ -8,14 +9,14 @@ import { listAllActiveCostCenters } from "@/server/db/queries/costCenters";
 import { getOrCreateCashSupplierId } from "@/server/db/queries/suppliers";
 
 export default async function EditGrnPage({ params }: PageProps<"/grn/[id]/edit">) {
-  await requireSection("grn", "edit");
+  const session = await requireSection("grn", "edit");
   const { id } = await params;
 
   const [data, products, suppliers, branches, costCenters, cashSupplierId] = await Promise.all([
     getGrnForEdit(id),
     listPurchasableProductsForPicker(),
     listAllSuppliers(),
-    listBranches(),
+    listBranches(allowedBranchCodes(session)),
     listAllActiveCostCenters(),
     getOrCreateCashSupplierId(),
   ]);

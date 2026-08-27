@@ -6,6 +6,7 @@ import { z } from "zod";
 import { db } from "@/server/db";
 import { stockCounts, stockCountLines, stockItems, stockBalances, auditLog, costCenters } from "@/server/db/schema";
 import { assertPermission } from "@/server/auth/permissions";
+import { assertBranchAccess } from "@/server/auth/branchAccess";
 import { nextStockCountNo } from "@/server/db/sequences";
 import { recordStockMovement } from "@/server/db/stockLedger";
 import { getStockCountDraftLines } from "@/server/db/queries/stockCount";
@@ -109,6 +110,7 @@ export async function postStockCount(input: z.infer<typeof stockCountInputSchema
   const session = await assertPermission("stockcount", "edit");
   const parsed = stockCountInputSchema.safeParse(input);
   if (!parsed.success) return { error: "Add at least one counted item." };
+  await assertBranchAccess(session, parsed.data.branchId);
 
   const { countId } = await db.transaction(async (tx) => {
     const created = await insertStockCount(tx, parsed.data, "POSTED", session.profile.id);
@@ -133,6 +135,7 @@ export async function saveStockCountDraft(input: z.infer<typeof stockCountInputS
   const session = await assertPermission("stockcount", "edit");
   const parsed = stockCountInputSchema.safeParse(input);
   if (!parsed.success) return { error: "Add at least one item to the count." };
+  await assertBranchAccess(session, parsed.data.branchId);
 
   const { countId } = await db.transaction(async (tx) => {
     const created = await insertStockCount(tx, parsed.data, "DRAFT", session.profile.id);
@@ -150,6 +153,7 @@ export async function postStockCountDraft(id: string): Promise<StockCountActionR
   const result = await db.transaction(async (tx) => {
     const [stockCount] = await tx.select().from(stockCounts).where(and(eq(stockCounts.id, id), eq(stockCounts.status, "DRAFT")));
     if (!stockCount) return { error: "Stock count not found or already posted." as const };
+    await assertBranchAccess(session, stockCount.branchId);
     if (!stockCount.costCenterId) return { error: "This draft has no sector set — edit it and pick one before posting." as const };
 
     const lines = await tx.select().from(stockCountLines).where(eq(stockCountLines.stockCountId, id));
@@ -190,6 +194,8 @@ export async function updateStockCountDraft(id: string, input: z.infer<typeof st
 
   const [existing] = await db.select().from(stockCounts).where(and(eq(stockCounts.id, id), eq(stockCounts.status, "DRAFT")));
   if (!existing) return { error: "Stock count not found or already posted — it can no longer be edited." };
+  await assertBranchAccess(session, existing.branchId);
+  await assertBranchAccess(session, parsed.data.branchId);
 
   await db.transaction(async (tx) => {
     const [costCenter] = await tx.select({ name: costCenters.name }).from(costCenters).where(eq(costCenters.id, parsed.data.costCenterId));

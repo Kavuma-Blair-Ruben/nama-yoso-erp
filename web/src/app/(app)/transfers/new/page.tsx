@@ -1,4 +1,5 @@
 import { requireSection } from "@/server/auth/permissions";
+import { allowedBranchCodes } from "@/server/auth/branchAccess";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { TransferBuilder } from "@/components/transfers/TransferBuilder";
 import { listIngredientPickerItems } from "@/server/db/queries/recipes";
@@ -6,8 +7,8 @@ import { listBranches } from "@/server/db/queries/purchaseOrders";
 import { listAllActiveCostCenters } from "@/server/db/queries/costCenters";
 
 export default async function NewTransferPage() {
-  await requireSection("transfers", "edit");
-  const [items, branches, costCenters] = await Promise.all([listIngredientPickerItems(), listBranches(), listAllActiveCostCenters()]);
+  const session = await requireSection("transfers", "edit");
+  const [items, branches, costCenters] = await Promise.all([listIngredientPickerItems(), listBranches(allowedBranchCodes(session)), listAllActiveCostCenters()]);
 
   return (
     <>

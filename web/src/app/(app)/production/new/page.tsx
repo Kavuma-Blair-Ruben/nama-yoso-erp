@@ -1,4 +1,5 @@
 import { requireSection } from "@/server/auth/permissions";
+import { allowedBranchCodes } from "@/server/auth/branchAccess";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ProductionBuilder } from "@/components/production/ProductionBuilder";
 import { listEligibleSubRecipesWithIngredients, listAllStockBalances } from "@/server/db/queries/production";
@@ -6,11 +7,11 @@ import { listBranches } from "@/server/db/queries/purchaseOrders";
 import { listAllActiveCostCenters } from "@/server/db/queries/costCenters";
 
 export default async function NewProductionPage({ searchParams }: PageProps<"/production/new">) {
-  await requireSection("subrecipes", "edit");
+  const session = await requireSection("subrecipes", "edit");
   const sp = await searchParams;
   const [subRecipes, branches, costCenters, stockBalances] = await Promise.all([
     listEligibleSubRecipesWithIngredients(),
-    listBranches(),
+    listBranches(allowedBranchCodes(session)),
     listAllActiveCostCenters(),
     listAllStockBalances(),
   ]);

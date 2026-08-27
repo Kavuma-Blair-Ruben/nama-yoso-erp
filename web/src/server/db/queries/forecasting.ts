@@ -176,7 +176,9 @@ export async function getPredictiveOrderSuggestions(
 // Dashboard's already-busy Overview tab (same class of issue as the earlier
 // Cost Dashboard fix — see getDashboardDigestStats below).
 export async function getReorderAlertCount(): Promise<number> {
-  const allBranches = await db.select({ id: branches.id }).from(branches);
+  // Excludes the Demo Branch — its practice stock levels shouldn't drive a
+  // real reorder alert on the owner-facing dashboard digest.
+  const allBranches = await db.select({ id: branches.id }).from(branches).where(eq(branches.isDemo, false));
   let total = 0;
   for (const b of allBranches) {
     const { rows } = await getPredictiveOrderSuggestions(b.id);

@@ -37,6 +37,11 @@ export const branches = pgTable("branches", {
   code: text("code").notNull().unique(), // NAMAYOSO MIRDIFF, NAMAYOSO MARSA, plus any added by an admin
   name: text("name").notNull(),
   isActive: boolean("is_active").notNull().default(true),
+  // A training sandbox branch — real users can never select it (see
+  // allowedBranchCodes/listBranches), and its activity is excluded from the
+  // Stock Page and Dashboard digest KPIs so practice runs never touch real
+  // business numbers.
+  isDemo: boolean("is_demo").notNull().default(false),
 });
 
 export const suppliers = pgTable(
