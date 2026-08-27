@@ -7,9 +7,12 @@ name: Keep Render app awake
 # Render service to a plan that doesn't spin down, this workflow can just
 # be deleted — it's the free-tier workaround, not something needed on a
 # paid plan.
+# Offset from the top of each 10-minute mark (:03, :13, :23...) rather than
+# :00/:10/:20 — GitHub's own docs note jobs scheduled exactly on the mark are
+# the most likely to get delayed, since that's when Actions load peaks globally.
 on:
   schedule:
-    - cron: "*/10 * * * *"
+    - cron: "3,13,23,33,43,53 * * * *"
   workflow_dispatch: {}
 
 jobs:
