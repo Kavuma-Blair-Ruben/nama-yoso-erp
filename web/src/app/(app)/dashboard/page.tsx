@@ -62,7 +62,7 @@ async function OverviewTab() {
           <div className="l">Reorder Alerts</div>
           <div className="d">{digest.reorderAlertCount ? "Items below safe stock coverage" : "All items on track"}</div>
         </Link>
-        <Link href="/reports?tab=sales" className="kpi">
+        <Link href={`/reports?tab=sales&from=${todayStr()}&to=${todayStr()}`} className="kpi">
           <div className="kpi-icon">💵</div>
           <div className="n">{money(digest.salesToday.revenue, 0)}</div>
           <div className="l">Sales Today</div>
@@ -104,7 +104,7 @@ async function OverviewTab() {
           <div className="l">Main Recipes</div>
           <div className="d">{fmt(d.mainSectionCount, 0)} menu sections</div>
         </Link>
-        <Link href="/recipes" className="kpi">
+        <Link href="/recipes?tab=sub" className="kpi">
           <div className="kpi-icon">🧾</div>
           <div className="n">{fmt(d.subRecipeCount, 0)}</div>
           <div className="l">Sub-Recipes</div>

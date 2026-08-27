@@ -20,13 +20,14 @@ import {
 } from "@/server/db/schema";
 import { and, eq, ilike, or, sql, desc, inArray, notInArray, gte, lte } from "drizzle-orm";
 
-export async function listGrns(filters: { q?: string; costCenterId?: string; from?: string; to?: string }) {
+export async function listGrns(filters: { q?: string; status?: string; costCenterId?: string; from?: string; to?: string }) {
   const conditions = [];
   if (filters.q) {
     conditions.push(
       or(ilike(grns.grnNumber, `%${filters.q}%`), ilike(suppliers.name, `%${filters.q}%`), ilike(purchaseOrders.poNumber, `%${filters.q}%`))!
     );
   }
+  if (filters.status) conditions.push(eq(grns.status, filters.status));
   if (filters.costCenterId) conditions.push(eq(grns.costCenterId, filters.costCenterId));
   if (filters.from) conditions.push(gte(grns.receivedDate, filters.from));
   if (filters.to) conditions.push(lte(grns.receivedDate, filters.to));

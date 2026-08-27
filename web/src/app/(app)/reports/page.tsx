@@ -52,7 +52,7 @@ export default async function ReportsPage({ searchParams }: PageProps<"/reports"
       <PageHeader title="Reports" subtitle="Printable and exportable reports across your live and historical data." />
       <ReportExportBar tab={tab} sp={sp} />
 
-      {tab === "sales" && <RecipeSalesTab from={from} to={to} />}
+      {tab === "sales" && <RecipeSalesTab from={from} to={to} view={typeof sp.view === "string" ? sp.view : undefined} />}
       {tab === "stock" && <StockTab q={typeof sp.q === "string" ? sp.q : undefined} view={typeof sp.view === "string" ? (sp.view as StockView) : undefined} />}
       {tab === "varianceanalysis" && (
         <VarianceAnalysisTab
@@ -64,11 +64,11 @@ export default async function ReportsPage({ searchParams }: PageProps<"/reports"
         />
       )}
       {tab === "slowmoving" && <SlowMovingTab minDays={typeof sp.minDays === "string" ? Number(sp.minDays) : 0} />}
-      {tab === "pricechange" && <PriceChangeTab from={from} to={to} />}
+      {tab === "pricechange" && <PriceChangeTab from={from} to={to} view={typeof sp.view === "string" ? sp.view : undefined} />}
       {tab === "costadjustments" && <CostAdjustmentsTab q={typeof sp.q === "string" ? sp.q : undefined} from={from} to={to} />}
       {tab === "sections" && <SectionsTab sector={typeof sp.sector === "string" ? sp.sector : undefined} />}
       {tab === "purchaseorders" && <PurchaseOrdersTab q={typeof sp.q === "string" ? sp.q : undefined} status={typeof sp.status === "string" ? sp.status : undefined} from={from} to={to} />}
-      {tab === "grns" && <GrnsTab q={typeof sp.q === "string" ? sp.q : undefined} from={from} to={to} />}
+      {tab === "grns" && <GrnsTab q={typeof sp.q === "string" ? sp.q : undefined} status={typeof sp.status === "string" ? sp.status : undefined} from={from} to={to} />}
       {tab === "supplierreturns" && <SupplierReturnsTab from={from} to={to} />}
       {tab === "invoices" && <InvoicesReportTab q={typeof sp.q === "string" ? sp.q : undefined} status={typeof sp.status === "string" ? sp.status : undefined} from={from} to={to} />}
       {tab === "wastage" && <WastageReportTab status={typeof sp.status === "string" ? sp.status : undefined} from={from} to={to} />}
@@ -79,7 +79,7 @@ export default async function ReportsPage({ searchParams }: PageProps<"/reports"
   );
 }
 
-async function RecipeSalesTab({ from, to }: { from: string; to: string }) {
+async function RecipeSalesTab({ from, to, view }: { from: string; to: string; view?: string }) {
   const [report, foodicsIntegration, branches, costCenters, recipes, branchMappings, itemMappings, recentEvents] = await Promise.all([
     getRecipeSalesReport({ from, to }),
     getPosIntegration("foodics"),
@@ -118,40 +118,64 @@ async function RecipeSalesTab({ from, to }: { from: string; to: string }) {
         <div className="callout">No sales data imported yet — upload a POS export above to see this report.</div>
       ) : (
         <>
-          <div className="kpi-grid">
-            <div className="kpi"><div className="n">{money(report.totalRevenue, 0)}</div><div className="l">Total Revenue</div><div className="d">{fmt(report.totalQty, 0)} items sold</div></div>
-            <div className="kpi"><div className="n">{money(report.totalCost, 0)}</div><div className="l">Total Food Cost</div><div className="d">{report.totalRevenue ? fmt((report.totalCost / report.totalRevenue) * 100, 1) : "—"}% of revenue</div></div>
-            <div className="kpi"><div className="n" style={{ color: report.totalProfit >= 0 ? "var(--good)" : "var(--bad)" }}>{money(report.totalProfit, 0)}</div><div className="l">Gross Profit</div><div className="d">Across matched recipes</div></div>
-            <div className="kpi"><div className="n" style={{ color: report.unmatchedCount ? "var(--bad)" : "inherit" }}>{report.unmatchedCount}</div><div className="l">Unmatched Item Labels</div><div className="d">Not linked to a recipe</div></div>
-          </div>
-          <div className="panel">
-            <div className="panel-head"><h3>Top Sellers by Revenue</h3></div>
-            <div className="panel-body chart-card">
-              <HorizontalBarChart data={report.rows.slice(0, 10).map((r) => ({ label: r.name, value: r.revenue }))} format="money0" color="var(--chart-1)" />
-            </div>
-          </div>
-          <div style={{ height: 16 }} />
-          <div className="panel">
-            <div className="panel-head"><h3>Recipe Sales Report</h3></div>
-            <div className="table-wrap" style={{ maxHeight: 520 }}>
-              <table className="data">
-                <thead><tr><th>Recipe</th><th className="right">Qty Sold</th><th className="right">Avg Price</th><th className="right">Revenue</th><th className="right">Food Cost</th><th className="right">Food Cost %</th><th className="right">Gross Profit</th></tr></thead>
-                <tbody>
-                  {report.rows.map((r, i) => (
-                    <tr key={i}>
-                      <td>{r.code ? <Link href={`/recipes/main/${r.code}`}>{r.name}</Link> : <span>{r.name} <span className="tag bad" style={{ marginLeft: 4 }}>unmatched</span></span>}</td>
-                      <td className="mono-r">{fmt(r.qty, 0)}</td>
-                      <td className="mono-r">{money(r.avgPrice, 2)}</td>
-                      <td className="mono-r">{money(r.revenue, 0)}</td>
-                      <td className="mono-r">{r.totalCost != null ? money(r.totalCost, 0) : "—"}</td>
-                      <td className="right">{r.foodCostPct != null ? <span className={`tag ${r.foodCostPct > 35 ? "bad" : "good"}`}>{fmt(r.foodCostPct, 1)}%</span> : "—"}</td>
-                      <td className="mono-r" style={{ color: r.grossProfit != null && r.grossProfit < 0 ? "var(--bad)" : "inherit" }}>{r.grossProfit != null ? money(r.grossProfit, 0) : "—"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          {(() => {
+            const activeView = view === "unmatched" ? "unmatched" : "all";
+            const displayRows = activeView === "unmatched" ? report.rows.filter((r) => !r.code) : report.rows;
+            function kpiHref(v: string) {
+              const params = new URLSearchParams({ tab: "sales" });
+              if (v) params.set("view", v);
+              params.set("from", from);
+              params.set("to", to);
+              return `/reports?${params.toString()}`;
+            }
+            return (
+              <>
+                <div className="kpi-grid">
+                  <div className="kpi"><div className="n">{money(report.totalRevenue, 0)}</div><div className="l">Total Revenue</div><div className="d">{fmt(report.totalQty, 0)} items sold</div></div>
+                  <div className="kpi"><div className="n">{money(report.totalCost, 0)}</div><div className="l">Total Food Cost</div><div className="d">{report.totalRevenue ? fmt((report.totalCost / report.totalRevenue) * 100, 1) : "—"}% of revenue</div></div>
+                  <div className="kpi"><div className="n" style={{ color: report.totalProfit >= 0 ? "var(--good)" : "var(--bad)" }}>{money(report.totalProfit, 0)}</div><div className="l">Gross Profit</div><div className="d">Across matched recipes</div></div>
+                  <Link href={kpiHref("unmatched")} className={`kpi${activeView === "unmatched" ? " accent-bad" : ""}`}>
+                    <div className="n" style={{ color: report.unmatchedCount ? "var(--bad)" : "inherit" }}>{report.unmatchedCount}</div>
+                    <div className="l">Unmatched Item Labels</div>
+                    <div className="d">Not linked to a recipe</div>
+                  </Link>
+                </div>
+                {activeView === "unmatched" && (
+                  <div className="filterbar">
+                    <Link href={kpiHref("")} className="btn ghost">← Back to all recipes</Link>
+                  </div>
+                )}
+                <div className="panel">
+                  <div className="panel-head"><h3>Top Sellers by Revenue</h3></div>
+                  <div className="panel-body chart-card">
+                    <HorizontalBarChart data={report.rows.slice(0, 10).map((r) => ({ label: r.name, value: r.revenue }))} format="money0" color="var(--chart-1)" />
+                  </div>
+                </div>
+                <div style={{ height: 16 }} />
+                <div className="panel">
+                  <div className="panel-head"><h3>Recipe Sales Report</h3></div>
+                  <div className="table-wrap" style={{ maxHeight: 520 }}>
+                    <table className="data">
+                      <thead><tr><th>Recipe</th><th className="right">Qty Sold</th><th className="right">Avg Price</th><th className="right">Revenue</th><th className="right">Food Cost</th><th className="right">Food Cost %</th><th className="right">Gross Profit</th></tr></thead>
+                      <tbody>
+                        {displayRows.map((r, i) => (
+                          <tr key={i}>
+                            <td>{r.code ? <Link href={`/recipes/main/${r.code}`}>{r.name}</Link> : <span>{r.name} <span className="tag bad" style={{ marginLeft: 4 }}>unmatched</span></span>}</td>
+                            <td className="mono-r">{fmt(r.qty, 0)}</td>
+                            <td className="mono-r">{money(r.avgPrice, 2)}</td>
+                            <td className="mono-r">{money(r.revenue, 0)}</td>
+                            <td className="mono-r">{r.totalCost != null ? money(r.totalCost, 0) : "—"}</td>
+                            <td className="right">{r.foodCostPct != null ? <span className={`tag ${r.foodCostPct > 35 ? "bad" : "good"}`}>{fmt(r.foodCostPct, 1)}%</span> : "—"}</td>
+                            <td className="mono-r" style={{ color: r.grossProfit != null && r.grossProfit < 0 ? "var(--bad)" : "inherit" }}>{r.grossProfit != null ? money(r.grossProfit, 0) : "—"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </>
+            );
+          })()}
         </>
       )}
     </>
@@ -461,10 +485,20 @@ async function SlowMovingTab({ minDays }: { minDays: number }) {
   );
 }
 
-async function PriceChangeTab({ from, to }: { from: string; to: string }) {
+async function PriceChangeTab({ from, to, view }: { from: string; to: string; view?: string }) {
   const rows = await listPriceChangeEvents({ from, to });
   const totalImpact = rows.reduce((s, e) => s + e.varianceValue, 0);
   const increases = rows.filter((e) => e.variancePct > 0).length;
+  const activeView = view === "increases" ? "increases" : "all";
+  const displayRows = activeView === "increases" ? rows.filter((e) => e.variancePct > 0) : rows;
+
+  function kpiHref(v: string) {
+    const params = new URLSearchParams({ tab: "pricechange" });
+    if (v) params.set("view", v);
+    params.set("from", from);
+    params.set("to", to);
+    return `/reports?${params.toString()}`;
+  }
 
   return (
     <>
@@ -475,17 +509,17 @@ async function PriceChangeTab({ from, to }: { from: string; to: string }) {
         <button className="btn ghost" type="submit">Apply</button>
       </form>
       <div className="kpi-grid">
-        <div className="kpi"><div className="n">{rows.length}</div><div className="l">Total Discrepancies</div><div className="d">All-time</div></div>
+        <Link href={kpiHref("")} className={`kpi${activeView === "all" ? " accent-neutral" : ""}`}><div className="n">{rows.length}</div><div className="l">Total Discrepancies</div><div className="d">All-time</div></Link>
         <div className="kpi"><div className="n" style={{ color: totalImpact >= 0 ? "var(--bad)" : "var(--good)" }}>{money(totalImpact, 0)}</div><div className="l">Net Cost Impact</div><div className="d">{totalImpact >= 0 ? "Cost you" : "Saved you"}</div></div>
-        <div className="kpi"><div className="n">{increases}</div><div className="l">Price Increases</div><div className="d">of {rows.length} discrepancies</div></div>
+        <Link href={kpiHref("increases")} className={`kpi${activeView === "increases" ? " accent-bad" : ""}`}><div className="n">{increases}</div><div className="l">Price Increases</div><div className="d">of {rows.length} discrepancies</div></Link>
       </div>
       <div className="panel">
         <div className="table-wrap" style={{ maxHeight: 500 }}>
           <table className="data">
             <thead><tr><th>Date</th><th>GRN #</th><th>Supplier</th><th>Item</th><th className="right">Ordered Rate</th><th className="right">Received Rate</th><th className="right">Variance %</th><th className="right">Cost Impact</th></tr></thead>
             <tbody>
-              {rows.length ? (
-                rows.map((e, i) => (
+              {displayRows.length ? (
+                displayRows.map((e, i) => (
                   <tr key={i}>
                     <td>{e.receivedDate}</td>
                     <td className="mono-r" style={{ textAlign: "left" }}><Link href={`/grn/${e.grnId}`}>{e.grnNumber}</Link></td>
@@ -498,7 +532,7 @@ async function PriceChangeTab({ from, to }: { from: string; to: string }) {
                   </tr>
                 ))
               ) : (
-                <tr className="empty-row"><td colSpan={8}>No price discrepancies found — every posted GRN matched its LPO rate exactly.</td></tr>
+                <tr className="empty-row"><td colSpan={8}>{activeView === "increases" ? "No price increases in this range." : "No price discrepancies found — every posted GRN matched its LPO rate exactly."}</td></tr>
               )}
             </tbody>
           </table>
@@ -627,11 +661,24 @@ async function SectionsTab({ sector }: { sector?: string }) {
 async function PurchaseOrdersTab({ q, status, from, to }: { q?: string; status?: string; from: string; to: string }) {
   const rows = await listPurchaseOrders({ q, status, from, to });
   const totalValue = rows.reduce((s, r) => s + r.total, 0);
+  const draftCount = rows.filter((r) => r.status === "DRAFT").length;
+  const orderedCount = rows.filter((r) => r.status === "ORDERED").length;
+
+  function kpiHref(s: string) {
+    const params = new URLSearchParams({ tab: "purchaseorders" });
+    if (s) params.set("status", s);
+    if (q) params.set("q", q);
+    params.set("from", from);
+    params.set("to", to);
+    return `/reports?${params.toString()}`;
+  }
 
   return (
     <>
       <div className="kpi-grid">
-        <div className="kpi"><div className="n">{rows.length}</div><div className="l">Purchase Orders</div></div>
+        <Link href={kpiHref("")} className={`kpi${!status ? " accent-neutral" : ""}`}><div className="n">{rows.length}</div><div className="l">Purchase Orders</div></Link>
+        <Link href={kpiHref("DRAFT")} className={`kpi${status === "DRAFT" ? " accent-neutral" : ""}`}><div className="n">{draftCount}</div><div className="l">Draft</div></Link>
+        <Link href={kpiHref("ORDERED")} className={`kpi${status === "ORDERED" ? " accent-neutral" : ""}`}><div className="n">{orderedCount}</div><div className="l">Ordered</div></Link>
         <div className="kpi"><div className="n">{money(totalValue, 0)}</div><div className="l">Total Value</div></div>
       </div>
       <form className="filterbar" method="get">
@@ -678,20 +725,38 @@ async function PurchaseOrdersTab({ q, status, from, to }: { q?: string; status?:
   );
 }
 
-async function GrnsTab({ q, from, to }: { q?: string; from: string; to: string }) {
-  const rows = await listGrns({ q, from, to });
+async function GrnsTab({ q, status, from, to }: { q?: string; status?: string; from: string; to: string }) {
+  const rows = await listGrns({ q, status, from, to });
   const totalValue = rows.reduce((s, r) => s + r.total, 0);
+  const draftCount = rows.filter((r) => r.status === "DRAFT").length;
+  const postedCount = rows.filter((r) => r.status === "POSTED").length;
+
+  function kpiHref(s: string) {
+    const params = new URLSearchParams({ tab: "grns" });
+    if (s) params.set("status", s);
+    if (q) params.set("q", q);
+    params.set("from", from);
+    params.set("to", to);
+    return `/reports?${params.toString()}`;
+  }
 
   return (
     <>
       <div className="kpi-grid">
-        <div className="kpi"><div className="n">{rows.length}</div><div className="l">GRNs</div></div>
+        <Link href={kpiHref("")} className={`kpi${!status ? " accent-neutral" : ""}`}><div className="n">{rows.length}</div><div className="l">GRNs</div></Link>
+        <Link href={kpiHref("DRAFT")} className={`kpi${status === "DRAFT" ? " accent-neutral" : ""}`}><div className="n">{draftCount}</div><div className="l">Draft</div></Link>
+        <Link href={kpiHref("POSTED")} className={`kpi${status === "POSTED" ? " accent-neutral" : ""}`}><div className="n">{postedCount}</div><div className="l">Posted</div></Link>
         <div className="kpi"><div className="n">{money(totalValue, 0)}</div><div className="l">Total Value</div></div>
       </div>
       <form className="filterbar" method="get">
         <input type="hidden" name="tab" value="grns" />
         <div className="daterange">📅<input type="date" name="from" defaultValue={from} /><span>–</span><input type="date" name="to" defaultValue={to} /></div>
         <input type="text" name="q" placeholder="Search GRN/PO number or supplier..." defaultValue={q ?? ""} />
+        <select name="status" defaultValue={status ?? ""}>
+          <option value="">All statuses</option>
+          <option value="DRAFT">Draft</option>
+          <option value="POSTED">Posted</option>
+        </select>
         <button className="btn ghost" type="submit">Search</button>
         <span style={{ marginLeft: "auto", alignSelf: "center", fontSize: 12, color: "var(--ink-soft)" }}>{rows.length} GRN(s)</span>
       </form>
@@ -771,14 +836,30 @@ async function SupplierReturnsTab({ from, to }: { from: string; to: string }) {
 async function InvoicesReportTab({ q, status, from, to }: { q?: string; status?: string; from: string; to: string }) {
   const rows = await listInvoices({ q, status, from, to, limit: 1_000_000 });
   const totalValue = rows.reduce((s, r) => s + (r.total ?? 0), 0);
-  const outstanding = rows.filter((r) => r.status === "OUTSTANDING").reduce((s, r) => s + (r.total ?? 0), 0);
+  const outstandingRows = rows.filter((r) => r.status === "OUTSTANDING");
+  const outstanding = outstandingRows.reduce((s, r) => s + (r.total ?? 0), 0);
+  const paidCount = rows.filter((r) => r.status === "PAID").length;
+
+  function kpiHref(s: string) {
+    const params = new URLSearchParams({ tab: "invoices" });
+    if (s) params.set("status", s);
+    if (q) params.set("q", q);
+    params.set("from", from);
+    params.set("to", to);
+    return `/reports?${params.toString()}`;
+  }
 
   return (
     <>
       <div className="kpi-grid">
-        <div className="kpi"><div className="n">{rows.length}</div><div className="l">Invoices</div></div>
+        <Link href={kpiHref("")} className={`kpi${!status ? " accent-neutral" : ""}`}><div className="n">{rows.length}</div><div className="l">Invoices</div></Link>
         <div className="kpi"><div className="n">{money(totalValue, 0)}</div><div className="l">Total Value</div></div>
-        <div className="kpi"><div className="n" style={{ color: outstanding > 0 ? "var(--bad)" : "inherit" }}>{money(outstanding, 0)}</div><div className="l">Outstanding</div></div>
+        <Link href={kpiHref("OUTSTANDING")} className={`kpi${status === "OUTSTANDING" ? " accent-bad" : ""}`}>
+          <div className="n" style={{ color: outstanding > 0 ? "var(--bad)" : "inherit" }}>{money(outstanding, 0)}</div>
+          <div className="l">Outstanding</div>
+          <div className="d">{outstandingRows.length} invoice(s)</div>
+        </Link>
+        <Link href={kpiHref("PAID")} className={`kpi${status === "PAID" ? " accent-neutral" : ""}`}><div className="n">{paidCount}</div><div className="l">Paid</div></Link>
       </div>
       <form className="filterbar" method="get">
         <input type="hidden" name="tab" value="invoices" />
@@ -825,11 +906,23 @@ async function InvoicesReportTab({ q, status, from, to }: { q?: string; status?:
 async function WastageReportTab({ status, from, to }: { status?: string; from: string; to: string }) {
   const rows = await listWastageEvents({ status, from, to });
   const totalCost = rows.reduce((s, r) => s + r.totalCost, 0);
+  const draftCount = rows.filter((r) => r.status === "DRAFT").length;
+  const postedCount = rows.filter((r) => r.status === "POSTED").length;
+
+  function kpiHref(s: string) {
+    const params = new URLSearchParams({ tab: "wastage" });
+    if (s) params.set("status", s);
+    params.set("from", from);
+    params.set("to", to);
+    return `/reports?${params.toString()}`;
+  }
 
   return (
     <>
       <div className="kpi-grid">
-        <div className="kpi"><div className="n">{rows.length}</div><div className="l">Wastage Logs</div></div>
+        <Link href={kpiHref("")} className={`kpi${!status ? " accent-neutral" : ""}`}><div className="n">{rows.length}</div><div className="l">Wastage Logs</div></Link>
+        <Link href={kpiHref("DRAFT")} className={`kpi${status === "DRAFT" ? " accent-neutral" : ""}`}><div className="n">{draftCount}</div><div className="l">Draft</div></Link>
+        <Link href={kpiHref("POSTED")} className={`kpi${status === "POSTED" ? " accent-neutral" : ""}`}><div className="n">{postedCount}</div><div className="l">Posted</div></Link>
         <div className="kpi"><div className="n">{money(totalCost, 0)}</div><div className="l">Total Wastage Cost</div></div>
       </div>
       <form className="filterbar" method="get">
@@ -874,11 +967,25 @@ async function WastageReportTab({ status, from, to }: { status?: string; from: s
 async function TransfersReportTab({ status, from, to }: { status?: string; from: string; to: string }) {
   const rows = await listTransfers({ status, from, to });
   const totalValue = rows.reduce((s, r) => s + r.totalCost, 0);
+  const draftCount = rows.filter((r) => r.status === "DRAFT").length;
+  const inTransitCount = rows.filter((r) => r.status === "IN_TRANSIT").length;
+  const postedCount = rows.filter((r) => r.status === "POSTED").length;
+
+  function kpiHref(s: string) {
+    const params = new URLSearchParams({ tab: "transfers" });
+    if (s) params.set("status", s);
+    params.set("from", from);
+    params.set("to", to);
+    return `/reports?${params.toString()}`;
+  }
 
   return (
     <>
       <div className="kpi-grid">
-        <div className="kpi"><div className="n">{rows.length}</div><div className="l">Transfers</div></div>
+        <Link href={kpiHref("")} className={`kpi${!status ? " accent-neutral" : ""}`}><div className="n">{rows.length}</div><div className="l">Transfers</div></Link>
+        <Link href={kpiHref("DRAFT")} className={`kpi${status === "DRAFT" ? " accent-neutral" : ""}`}><div className="n">{draftCount}</div><div className="l">Draft</div></Link>
+        <Link href={kpiHref("IN_TRANSIT")} className={`kpi${status === "IN_TRANSIT" ? " accent-neutral" : ""}`}><div className="n">{inTransitCount}</div><div className="l">In Transit</div></Link>
+        <Link href={kpiHref("POSTED")} className={`kpi${status === "POSTED" ? " accent-neutral" : ""}`}><div className="n">{postedCount}</div><div className="l">Posted</div></Link>
         <div className="kpi"><div className="n">{money(totalValue, 0)}</div><div className="l">Total Value</div></div>
       </div>
       <form className="filterbar" method="get">
@@ -924,11 +1031,23 @@ async function TransfersReportTab({ status, from, to }: { status?: string; from:
 async function StockCountsTab({ status, from, to }: { status?: string; from: string; to: string }) {
   const rows = await listStockCounts({ status, from, to });
   const totalVariance = rows.reduce((s, r) => s + r.totalVarianceValue, 0);
+  const draftCount = rows.filter((r) => r.status === "DRAFT").length;
+  const postedCount = rows.filter((r) => r.status === "POSTED").length;
+
+  function kpiHref(s: string) {
+    const params = new URLSearchParams({ tab: "stockcounts" });
+    if (s) params.set("status", s);
+    params.set("from", from);
+    params.set("to", to);
+    return `/reports?${params.toString()}`;
+  }
 
   return (
     <>
       <div className="kpi-grid">
-        <div className="kpi"><div className="n">{rows.length}</div><div className="l">Stock Counts</div></div>
+        <Link href={kpiHref("")} className={`kpi${!status ? " accent-neutral" : ""}`}><div className="n">{rows.length}</div><div className="l">Stock Counts</div></Link>
+        <Link href={kpiHref("DRAFT")} className={`kpi${status === "DRAFT" ? " accent-neutral" : ""}`}><div className="n">{draftCount}</div><div className="l">Draft</div></Link>
+        <Link href={kpiHref("POSTED")} className={`kpi${status === "POSTED" ? " accent-neutral" : ""}`}><div className="n">{postedCount}</div><div className="l">Posted</div></Link>
         <div className="kpi"><div className="n" style={{ color: totalVariance < 0 ? "var(--bad)" : "inherit" }}>{money(totalVariance, 0)}</div><div className="l">Total Variance Value</div></div>
       </div>
       <form className="filterbar" method="get">
@@ -973,11 +1092,23 @@ async function StockCountsTab({ status, from, to }: { status?: string; from: str
 async function ProductionReportTab({ status, from, to }: { status?: string; from: string; to: string }) {
   const rows = await listProductionBatches({ status, from, to });
   const totalCost = rows.reduce((s, r) => s + r.totalCost, 0);
+  const openCount = rows.filter((r) => r.status === "OPEN").length;
+  const closedCount = rows.filter((r) => r.status === "CLOSED").length;
+
+  function kpiHref(s: string) {
+    const params = new URLSearchParams({ tab: "production" });
+    if (s) params.set("status", s);
+    params.set("from", from);
+    params.set("to", to);
+    return `/reports?${params.toString()}`;
+  }
 
   return (
     <>
       <div className="kpi-grid">
-        <div className="kpi"><div className="n">{rows.length}</div><div className="l">Production Batches</div></div>
+        <Link href={kpiHref("")} className={`kpi${!status ? " accent-neutral" : ""}`}><div className="n">{rows.length}</div><div className="l">Production Batches</div></Link>
+        <Link href={kpiHref("OPEN")} className={`kpi${status === "OPEN" ? " accent-neutral" : ""}`}><div className="n">{openCount}</div><div className="l">Open</div></Link>
+        <Link href={kpiHref("CLOSED")} className={`kpi${status === "CLOSED" ? " accent-neutral" : ""}`}><div className="n">{closedCount}</div><div className="l">Closed</div></Link>
         <div className="kpi"><div className="n">{money(totalCost, 0)}</div><div className="l">Total Cost</div></div>
       </div>
       <form className="filterbar" method="get">
