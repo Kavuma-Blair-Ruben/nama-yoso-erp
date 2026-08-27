@@ -17,6 +17,11 @@ import { and, eq, ilike, or, sql, desc, count, isNull } from "drizzle-orm";
 
 export type ProductFilters = { q?: string; category?: string; subcategory?: string; storage?: string; supplier?: string; missingPrice?: boolean };
 
+// priceChangeCount/qtyOnHand used to be correlated subqueries evaluated once
+// PER stock item row — measured at 5.3s for 600 rows on the live DB. Same
+// fix as listSuppliers (see its comment): each aggregate becomes its own
+// GROUP BY over its own table, joined once as a derived table, instead of
+// one subquery execution per outer row.
 export async function listProducts(filters: ProductFilters) {
   const conditions = [eq(stockItems.isActive, true)];
   if (filters.q) {
@@ -27,6 +32,26 @@ export async function listProducts(filters: ProductFilters) {
   if (filters.storage) conditions.push(eq(stockItems.storageType, filters.storage as "DRY" | "CHILLED" | "FROZEN"));
   if (filters.supplier) conditions.push(eq(suppliers.name, filters.supplier));
   if (filters.missingPrice) conditions.push(isNull(stockItems.ratePerKgL));
+
+  const priceCountAgg = db
+    .select({
+      stockItemId: priceHistory.stockItemId,
+      cnt: sql<number>`count(*)::int`.as("cnt"),
+    })
+    .from(priceHistory)
+    .groupBy(priceHistory.stockItemId)
+    .as("price_count_agg");
+
+  // Summed across branches — Product Master isn't branch-scoped yet, so a
+  // single total is the right first cut (per-branch appears on the detail page).
+  const qtyAgg = db
+    .select({
+      stockItemId: stockBalances.stockItemId,
+      qty: sql<number>`sum(${stockBalances.qtyOnHand})::float8`.as("qty"),
+    })
+    .from(stockBalances)
+    .groupBy(stockBalances.stockItemId)
+    .as("qty_agg");
 
   const rows = await db
     .select({
@@ -43,19 +68,15 @@ export async function listProducts(filters: ProductFilters) {
       purchaseRate: stockItems.purchaseRate,
       ratePerKgL: stockItems.ratePerKgL,
       ratePerGMl: stockItems.ratePerGMl,
-      // This query joins categories/subcategories/suppliers, all of which have their own
-      // "id" column — interpolating ${stockItems.id} inside the subquery renders as a bare
-      // "id", which Postgres silently resolves to the LOCAL price_history.id instead of the
-      // outer correlation (wrong data, no error). Must use literal qualified text.
-      priceChangeCount: sql<number>`(select count(*) from price_history where price_history.stock_item_id = stock_items.id)::int`,
-      // Summed across branches — Product Master isn't branch-scoped yet, so a
-      // single total is the right first cut (per-branch appears on the detail page).
-      qtyOnHand: sql<number>`coalesce((select sum(qty_on_hand) from stock_balances where stock_balances.stock_item_id = stock_items.id), 0)::float8`,
+      priceChangeCount: sql<number>`coalesce(${priceCountAgg.cnt}, 0)`,
+      qtyOnHand: sql<number>`coalesce(${qtyAgg.qty}, 0)`,
     })
     .from(stockItems)
     .leftJoin(categories, eq(stockItems.categoryId, categories.id))
     .leftJoin(subcategories, eq(stockItems.subcategoryId, subcategories.id))
     .leftJoin(suppliers, eq(stockItems.supplierId, suppliers.id))
+    .leftJoin(priceCountAgg, eq(priceCountAgg.stockItemId, stockItems.id))
+    .leftJoin(qtyAgg, eq(qtyAgg.stockItemId, stockItems.id))
     .where(and(...conditions))
     .orderBy(stockItems.legacyCode)
     .limit(600);
