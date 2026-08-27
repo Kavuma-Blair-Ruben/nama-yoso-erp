@@ -297,10 +297,10 @@ async function StockTab({ q, view }: { q?: string; view?: StockView }) {
                   return (
                     <tr key={r.id}>
                       <td className="mono-r" style={{ textAlign: "left", whiteSpace: "nowrap" }}>
-                        <Link href={`/products/${r.legacyCode}`}>{r.legacyCode}</Link>
+                        <Link href={`/products/${r.legacyCode}`} prefetch={false}>{r.legacyCode}</Link>
                       </td>
                       <td>
-                        <Link href={`/products/${r.legacyCode}`}>{r.name}</Link>
+                        <Link href={`/products/${r.legacyCode}`} prefetch={false}>{r.name}</Link>
                         <div style={{ fontSize: 10.5, color: "var(--ink-faint)" }}>{r.categoryName ?? "-"}</div>
                       </td>
                       <td className="mono-r">

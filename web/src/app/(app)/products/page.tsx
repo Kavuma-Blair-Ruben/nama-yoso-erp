@@ -87,10 +87,10 @@ export default async function ProductsPage({ searchParams }: PageProps<"/product
                 rows.map((p) => (
                   <tr key={p.id}>
                     <td className="mono-r" style={{ textAlign: "left" }}>
-                      <Link href={`/products/${p.legacyCode}`}>{p.legacyCode}</Link>
+                      <Link href={`/products/${p.legacyCode}`} prefetch={false}>{p.legacyCode}</Link>
                     </td>
                     <td>
-                      <Link href={`/products/${p.legacyCode}`}>{p.name}</Link>
+                      <Link href={`/products/${p.legacyCode}`} prefetch={false}>{p.name}</Link>
                       {p.priceChangeCount > 0 && <span className="tag good" style={{ marginLeft: 6 }}>edited</span>}
                     </td>
                     <td>{p.category ?? "-"}</td>
