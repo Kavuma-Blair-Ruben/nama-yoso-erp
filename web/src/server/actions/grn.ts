@@ -244,16 +244,18 @@ export async function postGRN(input: z.infer<typeof grnInputSchema>): Promise<Gr
   const session = await assertPermission("grn", "edit");
   const parsed = grnInputSchema.safeParse(input);
   if (!parsed.success) return { error: "Add at least one valid item line." };
+  // Checked before the attachment requirement — no point sending someone off
+  // to find the invoice for an order that isn't even approved yet.
+  if (parsed.data.purchaseOrderId) {
+    const poBreach = await checkPoReceivable(parsed.data.purchaseOrderId);
+    if (poBreach) return { error: poBreach };
+  }
   if (parsed.data.paymentMethod !== "PETTY_CASH" && !parsed.data.attachmentUrl?.trim()) {
     return { error: "Upload or scan the supplier invoice before posting — a GRN can't be closed without it." };
   }
   await assertBranchAccess(session, parsed.data.branchId);
   const roleCapBreach = await checkRoleGrnCap(session.role.id, grnTotal(parsed.data));
   if (roleCapBreach) return { error: roleCapBreach };
-  if (parsed.data.purchaseOrderId) {
-    const poBreach = await checkPoReceivable(parsed.data.purchaseOrderId);
-    if (poBreach) return { error: poBreach };
-  }
 
   // Atomic: a failure partway through (e.g. the PO-status query) must not
   // leave a POSTED GRN with no price_history / PO-status side effects applied.
@@ -305,13 +307,15 @@ export async function postDraftGrn(id: string): Promise<GrnActionResult> {
     const [grn] = await tx.select().from(grns).where(and(eq(grns.id, id), eq(grns.status, "DRAFT")));
     if (!grn) return { error: "GRN not found or already posted." as const };
     await assertBranchAccess(session, grn.branchId);
-    if (grn.paymentMethod !== "PETTY_CASH" && !grn.attachmentUrl?.trim()) {
-      return { error: "Upload or scan the supplier invoice before posting — a GRN can't be closed without it." as const };
-    }
+    // Checked before the attachment requirement — no point sending someone
+    // off to find the invoice for an order that isn't even approved yet.
     if (grn.purchaseOrderId) {
       const [po] = await tx.select({ status: purchaseOrders.status, poNumber: purchaseOrders.poNumber }).from(purchaseOrders).where(eq(purchaseOrders.id, grn.purchaseOrderId));
       if (po?.status === "DRAFT") return { error: `${po.poNumber} hasn't been approved yet — approve it before receiving against it.` as const };
       if (po?.status === "CANCELLED") return { error: `${po.poNumber} has been cancelled — it can't be received against.` as const };
+    }
+    if (grn.paymentMethod !== "PETTY_CASH" && !grn.attachmentUrl?.trim()) {
+      return { error: "Upload or scan the supplier invoice before posting — a GRN can't be closed without it." as const };
     }
 
     const lines = await tx.select().from(grnLines).where(eq(grnLines.grnId, id));
