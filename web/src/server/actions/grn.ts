@@ -91,6 +91,19 @@ async function checkRoleGrnCap(roleId: string, total: number): Promise<string | 
   return `This GRN (AED ${total.toFixed(2)}) is over your role's AED ${limit.maxGrnAmount} per-GRN limit — ask someone with a higher limit to post it.`;
 }
 
+// Real block — an LPO-backed GRN can't be posted until its PO has actually
+// cleared the DRAFT -> APPROVED transition (see updatePOStatus's approval
+// chain in purchaseOrders.ts). Without this, the multi-step approval chain
+// only ever gated the PO's own status field, not the receiving it exists to
+// control. Direct GRNs (no purchaseOrderId) are unaffected.
+async function checkPoReceivable(purchaseOrderId: string): Promise<string | null> {
+  const [po] = await db.select({ status: purchaseOrders.status, poNumber: purchaseOrders.poNumber }).from(purchaseOrders).where(eq(purchaseOrders.id, purchaseOrderId));
+  if (!po) return null;
+  if (po.status === "DRAFT") return `${po.poNumber} hasn't been approved yet — approve it before receiving against it.`;
+  if (po.status === "CANCELLED") return `${po.poNumber} has been cancelled — it can't be received against.`;
+  return null;
+}
+
 async function insertGrn(tx: Db, input: z.infer<typeof grnInputSchema>, status: "DRAFT" | "POSTED", actorId: string) {
   const grnNumber = await nextGrnNumber();
 
@@ -237,6 +250,10 @@ export async function postGRN(input: z.infer<typeof grnInputSchema>): Promise<Gr
   await assertBranchAccess(session, parsed.data.branchId);
   const roleCapBreach = await checkRoleGrnCap(session.role.id, grnTotal(parsed.data));
   if (roleCapBreach) return { error: roleCapBreach };
+  if (parsed.data.purchaseOrderId) {
+    const poBreach = await checkPoReceivable(parsed.data.purchaseOrderId);
+    if (poBreach) return { error: poBreach };
+  }
 
   // Atomic: a failure partway through (e.g. the PO-status query) must not
   // leave a POSTED GRN with no price_history / PO-status side effects applied.
@@ -290,6 +307,11 @@ export async function postDraftGrn(id: string): Promise<GrnActionResult> {
     await assertBranchAccess(session, grn.branchId);
     if (grn.paymentMethod !== "PETTY_CASH" && !grn.attachmentUrl?.trim()) {
       return { error: "Upload or scan the supplier invoice before posting — a GRN can't be closed without it." as const };
+    }
+    if (grn.purchaseOrderId) {
+      const [po] = await tx.select({ status: purchaseOrders.status, poNumber: purchaseOrders.poNumber }).from(purchaseOrders).where(eq(purchaseOrders.id, grn.purchaseOrderId));
+      if (po?.status === "DRAFT") return { error: `${po.poNumber} hasn't been approved yet — approve it before receiving against it.` as const };
+      if (po?.status === "CANCELLED") return { error: `${po.poNumber} has been cancelled — it can't be received against.` as const };
     }
 
     const lines = await tx.select().from(grnLines).where(eq(grnLines.grnId, id));
