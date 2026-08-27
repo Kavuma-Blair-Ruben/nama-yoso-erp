@@ -33,9 +33,10 @@ export default async function ProductsPage({ searchParams }: PageProps<"/product
   const subcategory = typeof sp.sub === "string" ? sp.sub : undefined;
   const storage = typeof sp.st === "string" ? sp.st : undefined;
   const supplier = typeof sp.sup === "string" ? sp.sup : undefined;
+  const missingPrice = sp.missingPrice === "1";
 
   const [rows, categories, subcategories, suppliers] = await Promise.all([
-    listProducts({ q, category, subcategory, storage, supplier }),
+    listProducts({ q, category, subcategory, storage, supplier, missingPrice }),
     listCategoriesForFilter(),
     listSubcategoriesForFilter(),
     listSuppliersForFilter(),

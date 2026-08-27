@@ -13,9 +13,9 @@ import {
   stockBalances,
   branches,
 } from "@/server/db/schema";
-import { and, eq, ilike, or, sql, desc, count } from "drizzle-orm";
+import { and, eq, ilike, or, sql, desc, count, isNull } from "drizzle-orm";
 
-export type ProductFilters = { q?: string; category?: string; subcategory?: string; storage?: string; supplier?: string };
+export type ProductFilters = { q?: string; category?: string; subcategory?: string; storage?: string; supplier?: string; missingPrice?: boolean };
 
 export async function listProducts(filters: ProductFilters) {
   const conditions = [eq(stockItems.isActive, true)];
@@ -26,6 +26,7 @@ export async function listProducts(filters: ProductFilters) {
   if (filters.subcategory) conditions.push(eq(subcategories.name, filters.subcategory));
   if (filters.storage) conditions.push(eq(stockItems.storageType, filters.storage as "DRY" | "CHILLED" | "FROZEN"));
   if (filters.supplier) conditions.push(eq(suppliers.name, filters.supplier));
+  if (filters.missingPrice) conditions.push(isNull(stockItems.ratePerKgL));
 
   const rows = await db
     .select({

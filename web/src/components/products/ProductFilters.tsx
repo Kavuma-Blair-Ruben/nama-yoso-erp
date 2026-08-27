@@ -66,6 +66,14 @@ export function ProductFilters({
           </option>
         ))}
       </select>
+      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 500 }}>
+        <input
+          type="checkbox"
+          checked={searchParams.get("missingPrice") === "1"}
+          onChange={(e) => setParam("missingPrice", e.target.checked ? "1" : "")}
+        />
+        Missing price only
+      </label>
     </div>
   );
 }

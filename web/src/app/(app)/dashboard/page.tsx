@@ -36,8 +36,8 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
       {canSeeAnalytics && tab === "purchasing" && <PurchasingTab />}
       {canSeeAnalytics && tab === "suppliers" && <SupplierDashboardTab />}
       {canSeeAnalytics && tab === "cost" && <CostDashboardTab />}
-      {canSeeAnalytics && tab === "cogs" && <CogsAnalysisTab from={from} to={to} />}
-      {canSeeAnalytics && tab === "menuengineering" && <MenuEngineeringTab from={from} to={to} />}
+      {canSeeAnalytics && tab === "cogs" && <CogsAnalysisTab from={from} to={to} view={typeof sp.view === "string" ? sp.view : undefined} />}
+      {canSeeAnalytics && tab === "menuengineering" && <MenuEngineeringTab from={from} to={to} view={typeof sp.view === "string" ? sp.view : undefined} />}
       {canSeeAnalytics && tab === "costcenter" && <CostCenterTab from={from} to={to} />}
       {canSeeAnalytics && tab === "salesdashboard" && <SalesDashboardTab from={from} to={to} />}
     </>
@@ -124,7 +124,7 @@ async function OverviewTab() {
           <div className="l">Outstanding Payables</div>
           <div className="d">Across {fmt(d.outstandingSupplierCount, 0)} suppliers</div>
         </Link>
-        <Link href="/products" className="kpi">
+        <Link href="/products?missingPrice=1" className="kpi">
           <div className="kpi-icon">❓</div>
           <div className="n">{fmt(d.missingIngredientCount, 0)}</div>
           <div className="l">Ingredients w/o master price</div>
@@ -292,8 +292,8 @@ async function SupplierDashboardTab() {
       <div className="kpi-grid">
         <Link href="/suppliers" className="kpi"><div className="kpi-icon">🚚</div><div className="n">{suppliers.length}</div><div className="l">Active Suppliers</div><div className="d">{bySpend.length} with purchase history</div></Link>
         <Link href="/suppliers" className="kpi"><div className="kpi-icon">💰</div><div className="n">{money(totalSpend, 0)}</div><div className="l">Total Spend</div><div className="d">All-time, historical + live</div></Link>
-        <Link href="/suppliers" className="kpi"><div className="kpi-icon">🏆</div><div className="n">{totalSpend ? fmt((top5Spend / totalSpend) * 100, 0) : 0}%</div><div className="l">Spend in Top 5 Suppliers</div><div className="d">Concentration risk</div></Link>
-        <Link href="/suppliers" className={`kpi${flaggedSuppliers.length ? " accent-bad" : ""}`}><div className="kpi-icon">⭐</div><div className="n" style={{ color: flaggedSuppliers.length ? "var(--bad)" : "inherit" }}>{flaggedSuppliers.length}</div><div className="l">Below 90% Quality</div><div className="d">{avgLeadTime != null ? `${fmt(avgLeadTime, 1)}d avg lead time` : "No lead-time data yet"}</div></Link>
+        <Link href="/suppliers?view=top5" className="kpi"><div className="kpi-icon">🏆</div><div className="n">{totalSpend ? fmt((top5Spend / totalSpend) * 100, 0) : 0}%</div><div className="l">Spend in Top 5 Suppliers</div><div className="d">Concentration risk</div></Link>
+        <Link href="/suppliers?view=lowquality" className={`kpi${flaggedSuppliers.length ? " accent-bad" : ""}`}><div className="kpi-icon">⭐</div><div className="n" style={{ color: flaggedSuppliers.length ? "var(--bad)" : "inherit" }}>{flaggedSuppliers.length}</div><div className="l">Below 90% Quality</div><div className="d">{avgLeadTime != null ? `${fmt(avgLeadTime, 1)}d avg lead time` : "No lead-time data yet"}</div></Link>
       </div>
       <div className="grid-2">
         <div className="panel">
@@ -493,9 +493,19 @@ async function CostDashboardTab() {
   );
 }
 
-async function CogsAnalysisTab({ from, to }: { from: string; to: string }) {
+async function CogsAnalysisTab({ from, to, view }: { from: string; to: string; view?: string }) {
   const data = await getCogsAnalysis({ from, to });
   const overTarget = data.targetCogsPct != null && data.cogsPct != null && data.cogsPct > data.targetCogsPct;
+  const activeCategory = view === "food" || view === "beverage" ? view : undefined;
+  const topRecipes = activeCategory
+    ? data.recipeList.filter((r) => r.costCategory === activeCategory).slice(0, 10)
+    : data.topByCogs;
+
+  function categoryHref(c: "food" | "beverage") {
+    const params = new URLSearchParams({ tab: "cogs", from, to });
+    if (c !== activeCategory) params.set("view", c);
+    return `/dashboard?${params.toString()}`;
+  }
 
   return (
     <>
@@ -542,8 +552,12 @@ async function CogsAnalysisTab({ from, to }: { from: string; to: string }) {
                     <thead><tr><th>Category</th><th className="right">Revenue</th><th className="right">COGS</th><th className="right">COGS %</th></tr></thead>
                     <tbody>
                       {data.byCategory.map((c) => (
-                        <tr key={c.category}>
-                          <td style={{ textTransform: "capitalize" }}>{c.category === "food" ? "🍽 Food" : "🍹 Beverage"}</td>
+                        <tr key={c.category} style={{ cursor: "pointer", background: activeCategory === c.category ? "var(--bg-panel-alt)" : undefined }}>
+                          <td style={{ textTransform: "capitalize" }}>
+                            <Link href={categoryHref(c.category)} style={{ color: "inherit", fontWeight: activeCategory === c.category ? 700 : 400 }}>
+                              {c.category === "food" ? "🍽 Food" : "🍹 Beverage"}{activeCategory === c.category ? " (showing below)" : ""}
+                            </Link>
+                          </td>
                           <td className="mono-r">{money(c.revenue, 0)}</td>
                           <td className="mono-r">{money(c.cogs, 0)}</td>
                           <td className="right">{c.cogsPct != null ? <span className={`tag ${c.cogsPct > 35 ? "bad" : "good"}`}>{fmt(c.cogsPct, 1)}%</span> : "—"}</td>
@@ -574,18 +588,25 @@ async function CogsAnalysisTab({ from, to }: { from: string; to: string }) {
               </div>
             </div>
             <div className="panel">
-              <div className="panel-head"><h3>Top Recipes by COGS $</h3></div>
+              <div className="panel-head">
+                <h3>Top Recipes by COGS $</h3>
+                {activeCategory && <span style={{ fontSize: 11, color: "var(--ink-faint)" }}>{activeCategory === "food" ? "Food only" : "Beverage only"} — <Link href={categoryHref(activeCategory)}>clear</Link></span>}
+              </div>
               <div className="table-wrap" style={{ maxHeight: 320 }}>
                 <table className="data">
                   <thead><tr><th>Recipe</th><th className="right">COGS</th><th className="right">COGS %</th></tr></thead>
                   <tbody>
-                    {data.topByCogs.map((r, i) => (
-                      <tr key={i}>
-                        <td>{r.code ? <Link href={`/recipes/main/${r.code}`}>{r.name}</Link> : r.name}</td>
-                        <td className="mono-r">{money(r.cogs, 0)}</td>
-                        <td className="right">{r.cogsPct != null ? <span className={`tag ${r.cogsPct > 35 ? "bad" : "good"}`}>{fmt(r.cogsPct, 1)}%</span> : "—"}</td>
-                      </tr>
-                    ))}
+                    {topRecipes.length ? (
+                      topRecipes.map((r, i) => (
+                        <tr key={i}>
+                          <td>{r.code ? <Link href={`/recipes/main/${r.code}`}>{r.name}</Link> : r.name}</td>
+                          <td className="mono-r">{money(r.cogs, 0)}</td>
+                          <td className="right">{r.cogsPct != null ? <span className={`tag ${r.cogsPct > 35 ? "bad" : "good"}`}>{fmt(r.cogsPct, 1)}%</span> : "—"}</td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr className="empty-row"><td colSpan={3}>No {activeCategory} recipes sold in this range.</td></tr>
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -597,10 +618,19 @@ async function CogsAnalysisTab({ from, to }: { from: string; to: string }) {
   );
 }
 
-async function MenuEngineeringTab({ from, to }: { from: string; to: string }) {
+async function MenuEngineeringTab({ from, to, view }: { from: string; to: string; view?: string }) {
   const { items, avgQty, avgMargin } = await getMenuEngineeringData({ from, to });
   const byClass = { Star: 0, "Plow-Horse": 0, Puzzle: 0, Dog: 0 } as Record<string, number>;
   for (const it of items) byClass[it.classification]++;
+  const CLASSES = ["Star", "Plow-Horse", "Puzzle", "Dog"] as const;
+  const activeClass = CLASSES.find((c) => c === view);
+  const displayItems = activeClass ? items.filter((it) => it.classification === activeClass) : items;
+
+  function kpiHref(c: string) {
+    const params = new URLSearchParams({ tab: "menuengineering", from, to });
+    if (c) params.set("view", c);
+    return `/dashboard?${params.toString()}`;
+  }
 
   return (
     <>
@@ -614,15 +644,44 @@ async function MenuEngineeringTab({ from, to }: { from: string; to: string }) {
       ) : (
         <>
           <div className="kpi-grid">
-            <Link href="/recipes" className="kpi accent-good"><div className="kpi-icon">⭐</div><div className="n" style={{ color: "var(--good)" }}>{byClass.Star}</div><div className="l">Stars</div></Link>
-            <Link href="/recipes" className="kpi"><div className="kpi-icon">🐎</div><div className="n" style={{ color: "var(--chart-5)" }}>{byClass["Plow-Horse"]}</div><div className="l">Plow-Horses</div></Link>
-            <Link href="/recipes" className="kpi"><div className="kpi-icon">🧩</div><div className="n" style={{ color: "var(--chart-4)" }}>{byClass.Puzzle}</div><div className="l">Puzzles</div></Link>
-            <Link href="/recipes" className="kpi accent-bad"><div className="kpi-icon">🐶</div><div className="n" style={{ color: "var(--bad)" }}>{byClass.Dog}</div><div className="l">Dogs</div></Link>
+            <Link href={kpiHref("Star")} className={`kpi accent-good${activeClass === "Star" ? " accent-neutral" : ""}`}><div className="kpi-icon">⭐</div><div className="n" style={{ color: "var(--good)" }}>{byClass.Star}</div><div className="l">Stars</div></Link>
+            <Link href={kpiHref("Plow-Horse")} className={`kpi${activeClass === "Plow-Horse" ? " accent-neutral" : ""}`}><div className="kpi-icon">🐎</div><div className="n" style={{ color: "var(--chart-5)" }}>{byClass["Plow-Horse"]}</div><div className="l">Plow-Horses</div></Link>
+            <Link href={kpiHref("Puzzle")} className={`kpi${activeClass === "Puzzle" ? " accent-neutral" : ""}`}><div className="kpi-icon">🧩</div><div className="n" style={{ color: "var(--chart-4)" }}>{byClass.Puzzle}</div><div className="l">Puzzles</div></Link>
+            <Link href={kpiHref("Dog")} className={`kpi accent-bad${activeClass === "Dog" ? " accent-neutral" : ""}`}><div className="kpi-icon">🐶</div><div className="n" style={{ color: "var(--bad)" }}>{byClass.Dog}</div><div className="l">Dogs</div></Link>
           </div>
           <div className="panel">
             <div className="panel-head"><h3>Menu Engineering — Popularity vs. Profitability</h3></div>
             <div className="panel-body chart-card">
               <MenuEngineeringScatter items={items} avgQty={avgQty} avgMargin={avgMargin} />
+            </div>
+          </div>
+          <div style={{ height: 16 }} />
+          <div className="panel">
+            <div className="panel-head">
+              <h3>{activeClass ? `${activeClass}s` : "All Recipes"}</h3>
+              {activeClass && <span style={{ fontSize: 11, color: "var(--ink-faint)" }}><Link href={kpiHref("")}>clear filter</Link></span>}
+            </div>
+            <div className="table-wrap" style={{ maxHeight: 400 }}>
+              <table className="data">
+                <thead><tr><th>Recipe</th><th className="right">Qty Sold</th><th className="right">Revenue</th><th className="right">Margin</th><th>Classification</th></tr></thead>
+                <tbody>
+                  {displayItems.length ? (
+                    displayItems.map((it, i) => (
+                      <tr key={i}>
+                        <td>{it.code ? <Link href={`/recipes/main/${it.code}`}>{it.name}</Link> : it.name}</td>
+                        <td className="mono-r">{fmt(it.qty, 0)}</td>
+                        <td className="mono-r">{money(it.revenue, 0)}</td>
+                        <td className="mono-r" style={{ color: it.margin < 0 ? "var(--bad)" : "inherit" }}>{money(it.margin, 2)}</td>
+                        <td>
+                          <span className={`tag ${it.classification === "Star" ? "good" : it.classification === "Dog" ? "bad" : "neutral"}`}>{it.classification}</span>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr className="empty-row"><td colSpan={5}>No recipes in this classification.</td></tr>
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
         </>

@@ -65,7 +65,7 @@ export default async function ReportsPage({ searchParams }: PageProps<"/reports"
       )}
       {tab === "slowmoving" && <SlowMovingTab minDays={typeof sp.minDays === "string" ? Number(sp.minDays) : 0} />}
       {tab === "pricechange" && <PriceChangeTab from={from} to={to} view={typeof sp.view === "string" ? sp.view : undefined} />}
-      {tab === "costadjustments" && <CostAdjustmentsTab q={typeof sp.q === "string" ? sp.q : undefined} from={from} to={to} />}
+      {tab === "costadjustments" && <CostAdjustmentsTab q={typeof sp.q === "string" ? sp.q : undefined} view={typeof sp.view === "string" ? sp.view : undefined} from={from} to={to} />}
       {tab === "sections" && <SectionsTab sector={typeof sp.sector === "string" ? sp.sector : undefined} />}
       {tab === "purchaseorders" && <PurchaseOrdersTab q={typeof sp.q === "string" ? sp.q : undefined} status={typeof sp.status === "string" ? sp.status : undefined} from={from} to={to} />}
       {tab === "grns" && <GrnsTab q={typeof sp.q === "string" ? sp.q : undefined} status={typeof sp.status === "string" ? sp.status : undefined} from={from} to={to} />}
@@ -542,12 +542,30 @@ async function PriceChangeTab({ from, to, view }: { from: string; to: string; vi
   );
 }
 
-async function CostAdjustmentsTab({ q, from, to }: { q?: string; from: string; to: string }) {
-  const rows = await listCostAdjustmentEvents({ q, from, to });
+async function CostAdjustmentsTab({ q, view, from, to }: { q?: string; view?: string; from: string; to: string }) {
+  const allRows = await listCostAdjustmentEvents({ q, from, to });
+  const increasesCount = allRows.filter((e) => e.pctChange > 0).length;
+  const decreasesCount = allRows.filter((e) => e.pctChange < 0).length;
+  const activeView = view === "increases" || view === "decreases" ? view : "all";
+  const rows = activeView === "increases" ? allRows.filter((e) => e.pctChange > 0) : activeView === "decreases" ? allRows.filter((e) => e.pctChange < 0) : allRows;
+
+  function kpiHref(v: string) {
+    const params = new URLSearchParams({ tab: "costadjustments" });
+    if (v) params.set("view", v);
+    if (q) params.set("q", q);
+    params.set("from", from);
+    params.set("to", to);
+    return `/reports?${params.toString()}`;
+  }
 
   return (
     <>
       <div className="callout">Every ingredient price change, and which recipes it moved the cost of — e.g. &quot;recipe cost went up 2% because chicken breast rose 20%.&quot;</div>
+      <div className="kpi-grid">
+        <Link href={kpiHref("")} className={`kpi${activeView === "all" ? " accent-neutral" : ""}`}><div className="n">{allRows.length}</div><div className="l">Total Adjustments</div></Link>
+        <Link href={kpiHref("increases")} className={`kpi${activeView === "increases" ? " accent-bad" : ""}`}><div className="n">{increasesCount}</div><div className="l">Price Increases</div></Link>
+        <Link href={kpiHref("decreases")} className={`kpi${activeView === "decreases" ? " accent-good" : ""}`}><div className="n">{decreasesCount}</div><div className="l">Price Decreases</div></Link>
+      </div>
       <form className="filterbar" method="get">
         <input type="hidden" name="tab" value="costadjustments" />
         <div className="daterange">📅<input type="date" name="from" defaultValue={from} /><span>–</span><input type="date" name="to" defaultValue={to} /></div>

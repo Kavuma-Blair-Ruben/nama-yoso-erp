@@ -113,6 +113,7 @@ export type CogsTrendPoint = { label: string; revenue: number; cogs: number; cog
 export type CogsSectionRow = { section: string; revenue: number; cogs: number; cogsPct: number | null };
 export type CogsTopRow = { code: string | null; name: string; revenue: number; cogs: number; cogsPct: number | null };
 export type CogsCategoryRow = { category: "food" | "beverage"; revenue: number; cogs: number; cogsPct: number | null };
+export type CogsRecipeRow = { code: string | null; name: string; costCategory: "food" | "beverage"; qty: number; revenue: number; cogs: number; cogsPct: number | null };
 export type CogsAnalysis = {
   hasData: boolean;
   totalRevenue: number;
@@ -124,6 +125,7 @@ export type CogsAnalysis = {
   bySection: CogsSectionRow[];
   byCategory: CogsCategoryRow[]; // Food vs Beverage, from mainRecipes.costCategory
   topByCogs: CogsTopRow[]; // top 10, highest COGS $ contribution first
+  recipeList: CogsRecipeRow[]; // every sold recipe, highest COGS $ first — backs the food/beverage drill-down
 };
 
 // The actual "what's my food cost costing me" view — Recipe Sales Report
@@ -141,7 +143,7 @@ export async function getCogsAnalysis(filters: DateRangeFilter = {}): Promise<Co
     .from(recipeSales)
     .where(conditions.length ? and(...conditions) : undefined);
 
-  const empty: CogsAnalysis = { hasData: false, totalRevenue: 0, totalCogs: 0, cogsPct: null, targetCogsPct: null, grossProfit: 0, trend: [], bySection: [], byCategory: [], topByCogs: [] };
+  const empty: CogsAnalysis = { hasData: false, totalRevenue: 0, totalCogs: 0, cogsPct: null, targetCogsPct: null, grossProfit: 0, trend: [], bySection: [], byCategory: [], topByCogs: [], recipeList: [] };
   if (rows.length === 0) return empty;
 
   const graph = await loadCostingGraph();
@@ -218,10 +220,19 @@ export async function getCogsAnalysis(filters: DateRangeFilter = {}): Promise<Co
       return { category, revenue: v.revenue, cogs: v.cogs, cogsPct: v.revenue > 0 ? (v.cogs / v.revenue) * 100 : null };
     });
 
-  const topByCogs: CogsTopRow[] = [...recipeList]
-    .sort((a, b) => b.cogs - a.cogs)
+  const recipeListSorted = [...recipeList].sort((a, b) => b.cogs - a.cogs);
+  const topByCogs: CogsTopRow[] = recipeListSorted
     .slice(0, 10)
     .map((r) => ({ code: r.code, name: r.name, revenue: r.revenue, cogs: r.cogs, cogsPct: r.revenue > 0 ? (r.cogs / r.revenue) * 100 : null }));
+  const recipeListRows: CogsRecipeRow[] = recipeListSorted.map((r) => ({
+    code: r.code,
+    name: r.name,
+    costCategory: r.costCategory,
+    qty: r.qty,
+    revenue: r.revenue,
+    cogs: r.cogs,
+    cogsPct: r.revenue > 0 ? (r.cogs / r.revenue) * 100 : null,
+  }));
 
   return {
     hasData: true,
@@ -234,5 +245,6 @@ export async function getCogsAnalysis(filters: DateRangeFilter = {}): Promise<Co
     bySection,
     byCategory,
     topByCogs,
+    recipeList: recipeListRows,
   };
 }

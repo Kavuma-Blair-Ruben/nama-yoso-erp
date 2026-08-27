@@ -10,7 +10,14 @@ export default async function SuppliersPage({ searchParams }: PageProps<"/suppli
   const session = await requireSection("suppliers", "view");
   const sp = await searchParams;
   const q = typeof sp.q === "string" ? sp.q : undefined;
-  const list = await listSuppliers(q);
+  const view = typeof sp.view === "string" ? sp.view : undefined;
+  const allList = await listSuppliers(q);
+  const list =
+    view === "top5"
+      ? allList.filter((s) => s.totalSpend > 0).slice(0, 5)
+      : view === "lowquality"
+        ? allList.filter((s) => s.qualityPct != null && s.qualityPct < 90)
+        : allList;
   const canEdit = hasAccess(session, "suppliers", "edit");
 
   return (
@@ -28,10 +35,17 @@ export default async function SuppliersPage({ searchParams }: PageProps<"/suppli
         }
       />
       <form className="filterbar" method="get">
+        {view && <input type="hidden" name="view" value={view} />}
         <input type="text" name="q" placeholder="Search supplier..." defaultValue={q ?? ""} />
         <button className="btn ghost" type="submit">Search</button>
-        <span style={{ alignSelf: "center", fontSize: 12, color: "var(--ink-soft)" }}>{list.length} suppliers</span>
+        <span style={{ alignSelf: "center", fontSize: 12, color: "var(--ink-soft)" }}>{list.length} supplier(s)</span>
       </form>
+      {view && (
+        <div className="callout">
+          {view === "top5" ? "Showing your top 5 suppliers by spend." : "Showing suppliers below 90% quality."}{" "}
+          <Link href={q ? `/suppliers?q=${encodeURIComponent(q)}` : "/suppliers"}>Clear filter</Link>
+        </div>
+      )}
       <div className="callout">
         Spend and payables come from your purchase ledger. Quality and star ratings are computed from actual Goods
         Receiving (GRN) records, so a supplier only gets a rating once you&apos;ve received something from them
@@ -65,7 +79,7 @@ export default async function SuppliersPage({ searchParams }: PageProps<"/suppli
                   </tr>
                 ))
               ) : (
-                <tr className="empty-row"><td colSpan={7}>No suppliers match this search.</td></tr>
+                <tr className="empty-row"><td colSpan={7}>{view ? "No suppliers match this filter." : "No suppliers match this search."}</td></tr>
               )}
             </tbody>
           </table>
