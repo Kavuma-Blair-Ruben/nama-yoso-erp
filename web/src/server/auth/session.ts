@@ -2,6 +2,7 @@ import "server-only";
 import { cache } from "react";
 import { eq } from "drizzle-orm";
 import { createSupabaseServerClient } from "@/lib/supabaseServer";
+import { withTimeout } from "@/lib/withTimeout";
 import { db } from "@/server/db";
 import { profiles, roles, rolePermissions, type PermissionSectionKey, type PermissionLevel } from "@/server/db/schema";
 
@@ -18,9 +19,19 @@ export const getSession = cache(async (): Promise<Session | null> => {
   const supabase = await createSupabaseServerClient();
   // getUser() (not getSession()) — it revalidates the JWT against Supabase
   // Auth rather than trusting a cookie value that could've been tampered with.
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // Timed out rather than left unguarded: with no timeout, a slow/degraded
+  // Supabase Auth upstream (e.g. their own connection-pooler incidents) made
+  // every single page in the app hang forever with zero feedback, since this
+  // runs on every authenticated page load. Falling back to "no session" on
+  // timeout means a real session can get bounced to /login during a bad
+  // patch — a real (rare) cost, but far better than an infinite frozen page.
+  let user: Awaited<ReturnType<typeof supabase.auth.getUser>>["data"]["user"];
+  try {
+    const result = await withTimeout(supabase.auth.getUser(), 10000, "TIMEOUT");
+    user = result.data.user;
+  } catch {
+    return null;
+  }
   if (!user) return null;
 
   const rows = await db

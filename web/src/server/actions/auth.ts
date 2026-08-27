@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabaseServer";
+import { withTimeout } from "@/lib/withTimeout";
 
 export type LoginState = { error?: string } | undefined;
 
@@ -11,15 +12,25 @@ export async function login(_prevState: LoginState, formData: FormData): Promise
   if (!email || !password) return { error: "Enter your email and password." };
 
   const supabase = await createSupabaseServerClient();
-  const { error } = await supabase.auth.signInWithPassword({ email, password });
-  if (error) return { error: "Invalid email or password." };
+  let result: Awaited<ReturnType<typeof supabase.auth.signInWithPassword>>;
+  try {
+    result = await withTimeout(supabase.auth.signInWithPassword({ email, password }), 15000, "TIMEOUT");
+  } catch {
+    return { error: "The sign-in service is taking too long to respond right now — please try again in a moment." };
+  }
+  if (result.error) return { error: "Invalid email or password." };
 
   redirect("/apps");
 }
 
 export async function logout() {
   const supabase = await createSupabaseServerClient();
-  await supabase.auth.signOut();
+  try {
+    await withTimeout(supabase.auth.signOut(), 8000, "TIMEOUT");
+  } catch {
+    // Best-effort — the user is leaving regardless; don't let a slow
+    // upstream trap them on a "Signing out..." screen that never resolves.
+  }
   redirect("/login");
 }
 
@@ -35,11 +46,16 @@ export async function setInitialPassword(_prevState: SetPasswordState, formData:
   if (password !== confirm) return { error: "Passwords don't match." };
 
   const supabase = await createSupabaseServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { error: "This invite link has expired — ask your admin to resend it." };
-
-  const { error } = await supabase.auth.updateUser({ password });
-  if (error) return { error: error.message };
+  let userResult: Awaited<ReturnType<typeof supabase.auth.getUser>>;
+  let updateResult: Awaited<ReturnType<typeof supabase.auth.updateUser>>;
+  try {
+    userResult = await withTimeout(supabase.auth.getUser(), 10000, "TIMEOUT");
+    if (!userResult.data.user) return { error: "This invite link has expired — ask your admin to resend it." };
+    updateResult = await withTimeout(supabase.auth.updateUser({ password }), 10000, "TIMEOUT");
+  } catch {
+    return { error: "The sign-in service is taking too long to respond right now — please try again in a moment." };
+  }
+  if (updateResult.error) return { error: updateResult.error.message };
 
   redirect("/apps");
 }
