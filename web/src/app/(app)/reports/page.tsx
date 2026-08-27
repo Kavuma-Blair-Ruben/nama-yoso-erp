@@ -237,16 +237,27 @@ async function StockTab({ q, view }: { q?: string; view?: StockView }) {
       )}
       <div className="panel">
         <div className="table-wrap" style={{ maxHeight: 560 }}>
-          <table className="data">
+          <table className="data" style={{ tableLayout: "fixed" }}>
+            <colgroup>
+              <col style={{ width: "7%" }} />
+              <col style={{ width: "25%" }} />
+              <col style={{ width: "13%" }} />
+              <col style={{ width: "13%" }} />
+              <col style={{ width: "9%" }} />
+              <col style={{ width: "11%" }} />
+              <col style={{ width: "10%" }} />
+              <col style={{ width: "12%" }} />
+            </colgroup>
             <thead>
               <tr>
+                <th>Code</th>
                 <th>Item</th>
                 <th className="right">Cost</th>
                 <th>Storage Unit</th>
                 <th className="right">On Hand</th>
                 <th className="right">Stock Value</th>
                 <th className="right">Last Count</th>
-                <th>Status</th>
+                <th style={{ whiteSpace: "nowrap" }}>Status</th>
               </tr>
             </thead>
             <tbody>
@@ -261,6 +272,9 @@ async function StockTab({ q, view }: { q?: string; view?: StockView }) {
                         : { color: "var(--good)", label: "In Stock" };
                   return (
                     <tr key={r.id}>
+                      <td className="mono-r" style={{ textAlign: "left", whiteSpace: "nowrap" }}>
+                        <Link href={`/products/${r.legacyCode}`}>{r.legacyCode}</Link>
+                      </td>
                       <td>
                         <Link href={`/products/${r.legacyCode}`}>{r.name}</Link>
                         <div style={{ fontSize: 10.5, color: "var(--ink-faint)" }}>{r.categoryName ?? "-"}</div>
@@ -276,8 +290,8 @@ async function StockTab({ q, view }: { q?: string; view?: StockView }) {
                       <td className="mono-r" style={{ color: r.onHand < 0 ? "var(--bad)" : "inherit" }}>{fmt(r.onHand, 2)}</td>
                       <td className="mono-r">{money(r.value, 2)}</td>
                       <td className="mono-r">{r.lastCountQty != null ? fmt(r.lastCountQty, 2) : "—"}</td>
-                      <td>
-                        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, color: statusMeta.color }}>
+                      <td style={{ whiteSpace: "nowrap" }}>
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, color: statusMeta.color, whiteSpace: "nowrap" }}>
                           <span style={{ width: 7, height: 7, borderRadius: "50%", background: statusMeta.color, flex: "none" }} />
                           {statusMeta.label}
                         </span>
@@ -286,7 +300,7 @@ async function StockTab({ q, view }: { q?: string; view?: StockView }) {
                   );
                 })
               ) : (
-                <tr className="empty-row"><td colSpan={7}>No items match this filter.</td></tr>
+                <tr className="empty-row"><td colSpan={8}>No items match this filter.</td></tr>
               )}
             </tbody>
           </table>
