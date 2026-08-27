@@ -23,6 +23,7 @@ export function ProductsCsvImport() {
           const storageType = pickField(r, ["storage type"]).trim().toUpperCase();
           const branches = pickField(r, ["branches"]).split(",").map((b) => b.trim()).filter(Boolean);
           return {
+            code: pickField(r, ["code", "item code", "sku"]) || undefined,
             name: pickField(r, ["name", "product", "product name"]),
             category: pickField(r, ["category"]),
             subcategory: pickField(r, ["subcategory"]) || undefined,
@@ -47,7 +48,7 @@ export function ProductsCsvImport() {
         const result = await bulkImportProducts(rows);
         if (result.error) setError(result.error);
         else {
-          const updatedMsg = result.updated ? `, ${result.updated} updated (matched by name)` : "";
+          const updatedMsg = result.updated ? `, ${result.updated} updated (matched by code or name)` : "";
           setInfo(`Imported ${result.imported} new product(s)${updatedMsg}.`);
           router.refresh();
         }

@@ -25,6 +25,8 @@ function groupRows(csvRows: Record<string, string>[]): RawRecipeImportGroup[] {
       group = { type, name, lines: [] };
       groups.set(key, group);
     }
+    const code = pickField(r, ["recipe code", "code"]);
+    if (code) group.code = code;
     const section = pickField(r, ["section"]);
     if (section) group.section = section;
     const yieldQty = pickField(r, ["yield qty"]);
@@ -74,7 +76,7 @@ export function RecipesCsvImport() {
         const result = await bulkImportRecipes(groups);
         if (result.error) setError(result.error);
         else {
-          const updatedMsg = result.updated?.length ? `, ${result.updated.length} updated (matched by name)` : "";
+          const updatedMsg = result.updated?.length ? `, ${result.updated.length} updated (matched by code or name)` : "";
           const failedMsg = result.failed?.length ? `, ${result.failed.length} failed` : "";
           setInfo(`Imported ${result.imported?.length ?? 0} new recipe(s)${updatedMsg}${failedMsg}.`);
           setFailedRows(result.failed ?? []);

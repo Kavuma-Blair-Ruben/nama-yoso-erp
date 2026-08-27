@@ -101,6 +101,7 @@ export async function createProduct(_prev: CreateProductState, formData: FormDat
 }
 
 export type ProductImportRow = {
+  code?: string;
   name: string;
   category: string;
   subcategory?: string;
@@ -139,7 +140,16 @@ export async function bulkImportProducts(rows: ProductImportRow[]): Promise<Bulk
   let updated = 0;
 
   for (const r of validRows) {
-    const [existing] = await db.select().from(stockItems).where(ilike(stockItems.name, r.name.trim()));
+    const code = r.code?.trim() || undefined;
+    // A provided code is the authoritative match — it's what the user's
+    // own spreadsheet uses to identify the item, more reliable than a name
+    // that might have small spelling/formatting differences. Falls back to
+    // name-match (old behavior) when no code is given, so existing
+    // code-less CSVs keep working unchanged.
+    let existing = code ? (await db.select().from(stockItems).where(eq(stockItems.legacyCode, code)))[0] : undefined;
+    if (!existing) {
+      [existing] = await db.select().from(stockItems).where(ilike(stockItems.name, r.name.trim()));
+    }
 
     const categoryId = await findOrCreateCategory(r.category);
     const subcategoryId = r.subcategory?.trim() ? await findOrCreateSubcategory(categoryId, r.subcategory) : undefined;
@@ -173,7 +183,7 @@ export async function bulkImportProducts(rows: ProductImportRow[]): Promise<Bulk
       continue;
     }
 
-    const legacyCode = await nextProductCode();
+    const legacyCode = code || (await nextProductCode());
     await db.insert(stockItems).values({
       legacyCode,
       sourceType: "purchased",

@@ -19,6 +19,10 @@ export type RecipeLineInput = { stockItemId: string | null; ingredientMainRecipe
 
 export type RecipeInput = {
   type: RecipeType;
+  // Only ever set by bulk import (a code from the user's own spreadsheet) —
+  // the manual Recipe Builder never sends one, so a fresh code is always
+  // auto-assigned there, unchanged from before.
+  code?: string;
   name: string;
   secondaryName?: string | null;
   section: string;
@@ -107,7 +111,7 @@ export async function createRecipe(input: RecipeInput): Promise<RecipeActionResu
     let recipeId: string;
     let code: string;
     if (input.type === "main") {
-      code = await nextRecipeCode("MR");
+      code = input.code?.trim() || (await nextRecipeCode("MR"));
       const [created] = await tx
         .insert(mainRecipes)
         .values({
@@ -133,7 +137,7 @@ export async function createRecipe(input: RecipeInput): Promise<RecipeActionResu
       // A sub-recipe is the "recipe view" of a produced stock item — it shares
       // the same code as its underlying stock_items row (mirrors the original
       // source data, where ~151 codes existed as both a product and a recipe).
-      code = await nextProductCode();
+      code = input.code?.trim() || (await nextProductCode());
       const [stockItem] = await tx
         .insert(stockItems)
         .values({ legacyCode: code, sourceType: "produced", name: input.name, issueUnit: input.yieldUnit || undefined })
@@ -340,6 +344,7 @@ export async function uploadRecipePhoto(type: RecipeType, code: string, formData
 export type RawRecipeImportLine = { ingredientCode?: string; ingredientName?: string; qtyNeeded: number; wastagePct: number; unitLabel: string };
 export type RawRecipeImportGroup = {
   type: RecipeType;
+  code?: string;
   name: string;
   section?: string;
   yieldQty?: number | null;
@@ -446,8 +451,10 @@ export async function bulkImportRecipes(groups: RawRecipeImportGroup[]): Promise
       continue;
     }
 
+    const code = g.code?.trim() || undefined;
     const input: RecipeInput = {
       type: g.type,
+      code,
       name: g.name,
       section: g.section ?? "",
       yieldQty: g.yieldQty ?? null,
@@ -459,8 +466,13 @@ export async function bulkImportRecipes(groups: RawRecipeImportGroup[]): Promise
       lines: resolvedLines,
     };
 
+    // A provided code is the authoritative match, same reasoning as the
+    // products bulk import — falls back to name-match when no code is
+    // given, so existing code-less CSVs keep working unchanged.
     const existingList = g.type === "main" ? recipes : existingSubRecipes;
-    const existing = existingList.find((r) => r.name.toLowerCase() === g.name.trim().toLowerCase());
+    const existing =
+      (code ? existingList.find((r) => r.legacyCode.toLowerCase() === code.toLowerCase()) : undefined) ??
+      existingList.find((r) => r.name.toLowerCase() === g.name.trim().toLowerCase());
 
     const result = existing ? await updateRecipe(existing.legacyCode, input) : await createRecipe(input);
     if (result.error) failed.push({ name: g.name, reason: result.error });

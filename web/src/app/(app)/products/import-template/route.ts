@@ -5,8 +5,8 @@ import { toCsv } from "@/lib/csv";
 export async function GET() {
   await requireSection("items", "edit");
 
-  const headers = ["Name", "Category", "Subcategory", "Supplier", "Storage Type", "Purchase Unit", "Issue Unit", "Unit Weight", "Purchase Rate", "Branches", "Min Level", "Par Level"];
-  const example = ["Tomato", "Vegetables", "Fresh Produce", "Fresh Farms LLC", "CHILLED", "KG", "gm", 1, 12.5, "", 5, 20];
+  const headers = ["Code", "Name", "Category", "Subcategory", "Supplier", "Storage Type", "Purchase Unit", "Issue Unit", "Unit Weight", "Purchase Rate", "Branches", "Min Level", "Par Level"];
+  const example = ["2000", "Tomato", "Vegetables", "Fresh Produce", "Fresh Farms LLC", "CHILLED", "KG", "gm", 1, 12.5, "", 5, 20];
 
   const csv = toCsv(headers, [example]);
   return new NextResponse(csv, {
