@@ -1,0 +1,25 @@
+name: Keep Render app awake
+
+# Render's free tier spins the service down after ~15 minutes with no
+# traffic, and the next real visitor then eats a 20-60s cold-start delay
+# (Render's own "waking up" splash screen). Pinging every 10 minutes keeps
+# it inside that window so it never fully sleeps. If you ever upgrade the
+# Render service to a plan that doesn't spin down, this workflow can just
+# be deleted — it's the free-tier workaround, not something needed on a
+# paid plan.
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping the app
+        run: |
+          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 60 https://nama-yoso-erp.onrender.com/login)
+          echo "Response: HTTP $code"
+          if [ "$code" -lt 200 ] || [ "$code" -ge 400 ]; then
+            echo "::warning::Unexpected status code from keep-alive ping: $code"
+          fi
