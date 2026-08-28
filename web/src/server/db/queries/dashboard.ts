@@ -9,6 +9,7 @@ import { getSalesTodayStats } from "@/server/db/queries/sales";
 import { listPurchaseOrders } from "@/server/db/queries/purchaseOrders";
 import { listProductionBatches } from "@/server/db/queries/production";
 import { listWastageEvents } from "@/server/db/queries/wastage";
+import { listCostAdjustmentEvents } from "@/server/db/queries/reports";
 import { todayStr } from "@/lib/format";
 
 // Accepts an optional pre-loaded costing graph so callers that already need
@@ -148,5 +149,21 @@ export const getCachedOverviewData = unstable_cache(
     return { d, digest };
   },
   ["dashboard-overview-v1"],
+  { revalidate: 45 }
+);
+
+// Same reasoning as getCachedOverviewData, applied to the Cost Dashboard
+// tab specifically — loadCostingGraph() alone measured at 5.4s. NOT applied
+// to loadCostingGraph itself (which is also used by recipe editing/detail
+// pages, where a price update is explicitly supposed to "recost
+// automatically" — caching it there would break that live-recompute
+// promise). Scoped narrowly to just this tab's own combined view.
+export const getCachedCostDashboardData = unstable_cache(
+  async () => {
+    const graph = await loadCostingGraph();
+    const [d, adjustments] = await Promise.all([getDashboardData(graph), listCostAdjustmentEvents({}, graph)]);
+    return { d, adjustments };
+  },
+  ["dashboard-cost-tab-v1"],
   { revalidate: 45 }
 );

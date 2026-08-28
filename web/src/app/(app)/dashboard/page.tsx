@@ -1,12 +1,11 @@
 import Link from "next/link";
 import { requireAuth, hasAccess } from "@/server/auth/permissions";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { getDashboardData, getCachedOverviewData } from "@/server/db/queries/dashboard";
-import { getPurchasingStats, getCostCenterStats, listCostAdjustmentEvents } from "@/server/db/queries/reports";
+import { getCachedOverviewData, getCachedCostDashboardData } from "@/server/db/queries/dashboard";
+import { getPurchasingStats, getCostCenterStats } from "@/server/db/queries/reports";
 import { listSuppliers } from "@/server/db/queries/suppliers";
 import { getMenuEngineeringData, getCogsAnalysis } from "@/server/db/queries/sales";
 import { getSalesDashboardStats } from "@/server/db/queries/posOrders";
-import { loadCostingGraph } from "@/server/costing/recipeCost";
 import { buildDailySummary } from "@/lib/dailySummary";
 import { fmt, money, pct, todayStr } from "@/lib/format";
 import { DateRangeBar } from "@/components/dashboard/DateRangeBar";
@@ -414,8 +413,9 @@ async function SupplierDashboardTab() {
 }
 
 async function CostDashboardTab() {
-  const graph = await loadCostingGraph();
-  const [d, adjustments] = await Promise.all([getDashboardData(graph), listCostAdjustmentEvents({}, graph)]);
+  // Cached for 45s (see getCachedCostDashboardData) — loadCostingGraph()
+  // alone measured at 5.4s; repeat views within the window are instant.
+  const { d, adjustments } = await getCachedCostDashboardData();
   const totalDrift = adjustments.reduce((s, e) => s + e.affected.reduce((s2, a) => s2 + a.impact, 0), 0);
   const increases = adjustments.filter((e) => e.pctChange > 0).length;
   const decreases = adjustments.filter((e) => e.pctChange < 0).length;
