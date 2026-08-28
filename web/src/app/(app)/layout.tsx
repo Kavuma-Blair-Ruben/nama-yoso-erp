@@ -6,7 +6,18 @@ import { getNotifications } from "@/server/db/queries/notifications";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession();
-  const notifications = session ? await getNotifications(session) : [];
+  // This runs on EVERY page via the layout — a non-essential attention feed
+  // must never be allowed to crash the entire app if its queries fail (e.g.
+  // a DB statement timeout during a degraded/slow database). Degrade to an
+  // empty bell rather than an unhandled error taking down every page.
+  let notifications: Awaited<ReturnType<typeof getNotifications>> = [];
+  if (session) {
+    try {
+      notifications = await getNotifications(session);
+    } catch {
+      notifications = [];
+    }
+  }
   const initials = session
     ? session.profile.name
         .split(/\s+/)
