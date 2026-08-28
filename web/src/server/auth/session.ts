@@ -34,7 +34,14 @@ export const getSession = cache(async (): Promise<Session | null> => {
   }
   if (!user) return null;
 
-  const rows = await db
+  // Same reasoning as the getUser() call above, and just as critical — this
+  // query runs on every authenticated page too, and an unguarded failure
+  // here (e.g. a statement-timeout cancellation under a degraded database)
+  // was an UNHANDLED error that crashed the entire app, not just one
+  // feature: getSession() has no caller that catches it, so it took down
+  // every single route through the (app) layout. Falls back to "no
+  // session" on failure, same as an empty result already does below.
+  const profileQuery = db
     .select({
       profileId: profiles.id,
       name: profiles.name,
@@ -50,6 +57,13 @@ export const getSession = cache(async (): Promise<Session | null> => {
     .innerJoin(roles, eq(profiles.roleId, roles.id))
     .innerJoin(rolePermissions, eq(rolePermissions.roleId, roles.id))
     .where(eq(profiles.id, user.id));
+
+  let rows: Awaited<typeof profileQuery>;
+  try {
+    rows = await withTimeout(profileQuery, 10000, "TIMEOUT");
+  } catch {
+    return null;
+  }
 
   if (rows.length === 0 || !rows[0].active) return null;
 
