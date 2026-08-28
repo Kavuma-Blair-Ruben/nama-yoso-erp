@@ -1,4 +1,5 @@
 import "server-only";
+import { unstable_cache } from "next/cache";
 import { db } from "@/server/db";
 import { stockItems, mainRecipes, subRecipes, categories, suppliers, invoicesHistorical, priceHistory } from "@/server/db/schema";
 import { eq, sql, count, sum, isNotNull } from "drizzle-orm";
@@ -130,3 +131,22 @@ export async function getDashboardDigestStats() {
     wastageTodayCost,
   };
 }
+
+// Cached for the Dashboard Overview tab specifically — these are aggregate,
+// business-wide numbers (not per-user), and nothing about a KPI dashboard
+// needs to be fresher than ~45 seconds. Under a healthy database this was
+// already fast; under a degraded one (e.g. an upstream provider incident)
+// this is the difference between every single click re-paying the full
+// query cost versus paying it once per 45s window regardless of how many
+// times the page is opened in between. Not applied to getDashboardData's
+// other caller (Cost Dashboard, which passes a preloaded costing graph) —
+// that call shape doesn't fit a cache key the same way.
+export const getCachedOverviewData = unstable_cache(
+  async () => {
+    const d = await getDashboardData();
+    const digest = await getDashboardDigestStats();
+    return { d, digest };
+  },
+  ["dashboard-overview-v1"],
+  { revalidate: 45 }
+);

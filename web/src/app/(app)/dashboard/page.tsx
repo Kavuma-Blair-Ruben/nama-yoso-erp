@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireAuth, hasAccess } from "@/server/auth/permissions";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { getDashboardData, getDashboardDigestStats } from "@/server/db/queries/dashboard";
+import { getDashboardData, getCachedOverviewData } from "@/server/db/queries/dashboard";
 import { getPurchasingStats, getCostCenterStats, listCostAdjustmentEvents } from "@/server/db/queries/reports";
 import { listSuppliers } from "@/server/db/queries/suppliers";
 import { getMenuEngineeringData, getCogsAnalysis } from "@/server/db/queries/sales";
@@ -45,11 +45,12 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
 }
 
 async function OverviewTab() {
-  // Sequential, not Promise.all'd — both of these already run several
-  // queries internally, and running them fully concurrently was enough
+  // Cached for 45s (see getCachedOverviewData) — repeat views of this tab
+  // within that window are instant instead of re-running ~15 queries every
+  // single time. Internally still sequential on a cache miss, same
+  // reasoning as before: running these fully concurrently was enough
   // combined load to trip the Supabase pooler's statement_timeout.
-  const d = await getDashboardData();
-  const digest = await getDashboardDigestStats();
+  const { d, digest } = await getCachedOverviewData();
 
   return (
     <>
