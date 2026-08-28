@@ -142,48 +142,49 @@ export async function getProductByCode(code: string) {
     .limit(1);
   if (!item) return null;
 
-  const variants = await db
-    .select({
-      id: productSupplierPackaging.id,
-      purchaseUnit: productSupplierPackaging.purchaseUnit,
-      unitWeight: productSupplierPackaging.unitWeight,
-      rate: productSupplierPackaging.rate,
-      supplierName: suppliers.name,
-      supplierItemName: productSupplierPackaging.supplierItemName,
-      supplierItemCode: productSupplierPackaging.supplierItemCode,
-      isPriority: productSupplierPackaging.isPriority,
-    })
-    .from(productSupplierPackaging)
-    .innerJoin(suppliers, eq(productSupplierPackaging.supplierId, suppliers.id))
-    .where(eq(productSupplierPackaging.stockItemId, item.id));
-
-  const history = await db
-    .select()
-    .from(priceHistory)
-    .where(eq(priceHistory.stockItemId, item.id))
-    .orderBy(desc(priceHistory.changedAt))
-    .limit(20);
-
-  const usedInMain = await db
-    .select({ code: mainRecipes.legacyCode, name: mainRecipes.name })
-    .from(recipeIngredients)
-    .innerJoin(mainRecipes, eq(recipeIngredients.mainRecipeId, mainRecipes.id))
-    .where(eq(recipeIngredients.stockItemId, item.id));
-  const usedInSub = await db
-    .select({ code: subRecipes.legacyCode, name: subRecipes.name })
-    .from(recipeIngredients)
-    .innerJoin(subRecipes, eq(recipeIngredients.subRecipeId, subRecipes.id))
-    .where(eq(recipeIngredients.stockItemId, item.id));
-
-  // Summed across every sector at that branch — a stock item can now have a
-  // separate stock_balances row per cost center (Kitchen/Bar/etc), but the
-  // product detail page shows one total per branch.
-  const stockByBranch = await db
-    .select({ branchId: stockBalances.branchId, branchName: branches.name, qtyOnHand: sql<number>`sum(${stockBalances.qtyOnHand})::float8` })
-    .from(stockBalances)
-    .innerJoin(branches, eq(stockBalances.branchId, branches.id))
-    .where(eq(stockBalances.stockItemId, item.id))
-    .groupBy(stockBalances.branchId, branches.name);
+  // Independent of each other — all keyed only off item.id — so fetched
+  // concurrently instead of five sequential round trips.
+  const [variants, history, usedInMain, usedInSub, stockByBranch] = await Promise.all([
+    db
+      .select({
+        id: productSupplierPackaging.id,
+        purchaseUnit: productSupplierPackaging.purchaseUnit,
+        unitWeight: productSupplierPackaging.unitWeight,
+        rate: productSupplierPackaging.rate,
+        supplierName: suppliers.name,
+        supplierItemName: productSupplierPackaging.supplierItemName,
+        supplierItemCode: productSupplierPackaging.supplierItemCode,
+        isPriority: productSupplierPackaging.isPriority,
+      })
+      .from(productSupplierPackaging)
+      .innerJoin(suppliers, eq(productSupplierPackaging.supplierId, suppliers.id))
+      .where(eq(productSupplierPackaging.stockItemId, item.id)),
+    db
+      .select()
+      .from(priceHistory)
+      .where(eq(priceHistory.stockItemId, item.id))
+      .orderBy(desc(priceHistory.changedAt))
+      .limit(20),
+    db
+      .select({ code: mainRecipes.legacyCode, name: mainRecipes.name })
+      .from(recipeIngredients)
+      .innerJoin(mainRecipes, eq(recipeIngredients.mainRecipeId, mainRecipes.id))
+      .where(eq(recipeIngredients.stockItemId, item.id)),
+    db
+      .select({ code: subRecipes.legacyCode, name: subRecipes.name })
+      .from(recipeIngredients)
+      .innerJoin(subRecipes, eq(recipeIngredients.subRecipeId, subRecipes.id))
+      .where(eq(recipeIngredients.stockItemId, item.id)),
+    // Summed across every sector at that branch — a stock item can now have
+    // a separate stock_balances row per cost center (Kitchen/Bar/etc), but
+    // the product detail page shows one total per branch.
+    db
+      .select({ branchId: stockBalances.branchId, branchName: branches.name, qtyOnHand: sql<number>`sum(${stockBalances.qtyOnHand})::float8` })
+      .from(stockBalances)
+      .innerJoin(branches, eq(stockBalances.branchId, branches.id))
+      .where(eq(stockBalances.stockItemId, item.id))
+      .groupBy(stockBalances.branchId, branches.name),
+  ]);
 
   return {
     item,

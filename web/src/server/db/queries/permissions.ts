@@ -4,12 +4,14 @@ import { roles, rolePermissions, profiles, PERMISSION_SECTION_KEYS, type Permiss
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export async function listRolesWithPermissions() {
-  const roleRows = await db.select().from(roles).orderBy(roles.name);
-  const permRows = await db.select().from(rolePermissions);
-  const userCounts = await db
-    .select({ roleId: profiles.roleId, count: sql<number>`count(*)::int` })
-    .from(profiles)
-    .groupBy(profiles.roleId);
+  const [roleRows, permRows, userCounts] = await Promise.all([
+    db.select().from(roles).orderBy(roles.name),
+    db.select().from(rolePermissions),
+    db
+      .select({ roleId: profiles.roleId, count: sql<number>`count(*)::int` })
+      .from(profiles)
+      .groupBy(profiles.roleId),
+  ]);
   const countByRole = new Map(userCounts.map((c) => [c.roleId, c.count]));
 
   return roleRows.map((r) => {

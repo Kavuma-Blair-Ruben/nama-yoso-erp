@@ -92,18 +92,19 @@ export type PoApprovalStepProgress = { stepOrder: number; roleName: string; appr
 // UI can skip rendering the progress panel entirely rather than show an
 // always-empty one.
 export async function getPoApprovalProgress(id: string, total: number): Promise<{ applies: boolean; threshold: number | null; steps: PoApprovalStepProgress[] }> {
-  const [settings] = await db.select({ threshold: policySettings.poApprovalThreshold }).from(policySettings);
-  const chain = await db
-    .select({ stepOrder: poApprovalSteps.stepOrder, roleName: roles.name })
-    .from(poApprovalSteps)
-    .innerJoin(roles, eq(poApprovalSteps.roleId, roles.id))
-    .orderBy(poApprovalSteps.stepOrder);
-
-  const done = await db
-    .select({ stepOrder: purchaseOrderApprovals.stepOrder, approvedByName: profiles.name, approvedAt: purchaseOrderApprovals.approvedAt })
-    .from(purchaseOrderApprovals)
-    .innerJoin(profiles, eq(purchaseOrderApprovals.approvedBy, profiles.id))
-    .where(eq(purchaseOrderApprovals.purchaseOrderId, id));
+  const [[settings], chain, done] = await Promise.all([
+    db.select({ threshold: policySettings.poApprovalThreshold }).from(policySettings),
+    db
+      .select({ stepOrder: poApprovalSteps.stepOrder, roleName: roles.name })
+      .from(poApprovalSteps)
+      .innerJoin(roles, eq(poApprovalSteps.roleId, roles.id))
+      .orderBy(poApprovalSteps.stepOrder),
+    db
+      .select({ stepOrder: purchaseOrderApprovals.stepOrder, approvedByName: profiles.name, approvedAt: purchaseOrderApprovals.approvedAt })
+      .from(purchaseOrderApprovals)
+      .innerJoin(profiles, eq(purchaseOrderApprovals.approvedBy, profiles.id))
+      .where(eq(purchaseOrderApprovals.purchaseOrderId, id)),
+  ]);
 
   // Two ways this panel is worth showing: the CURRENT chain config gates
   // this PO's total, or this specific PO already has real approval history

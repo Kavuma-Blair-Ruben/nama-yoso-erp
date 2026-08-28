@@ -128,32 +128,33 @@ export async function getSupplierDetail(id: string) {
   const [supplier] = await db.select().from(suppliers).where(eq(suppliers.id, id));
   if (!supplier) return null;
 
-  const [invoiceAgg] = await db
-    .select({ count: count(), total: sum(invoicesHistorical.total), outstanding: sql<number>`coalesce(sum(case when ${invoicesHistorical.status} = 'OUTSTANDING' then ${invoicesHistorical.total} else 0 end), 0)` })
-    .from(invoicesHistorical)
-    .where(eq(invoicesHistorical.supplierId, id));
-
-  const invoices = await db
-    .select()
-    .from(invoicesHistorical)
-    .where(eq(invoicesHistorical.supplierId, id))
-    .orderBy(desc(invoicesHistorical.invoiceDate))
-    .limit(100);
-
-  const topItems = await db
-    .select({ item: purchaseLinesHistorical.itemLabel, spend: sum(purchaseLinesHistorical.amount) })
-    .from(purchaseLinesHistorical)
-    .where(eq(purchaseLinesHistorical.supplierId, id))
-    .groupBy(purchaseLinesHistorical.itemLabel)
-    .orderBy(sql`sum(${purchaseLinesHistorical.amount}) desc`)
-    .limit(10);
-
-  const recentGrns = await db
-    .select({ id: grns.id, grnNumber: grns.grnNumber, receivedDate: grns.receivedDate, status: grns.status })
-    .from(grns)
-    .where(eq(grns.supplierId, id))
-    .orderBy(desc(grns.receivedDate))
-    .limit(20);
+  // Independent of each other — all keyed only off id — so fetched
+  // concurrently instead of four sequential round trips.
+  const [[invoiceAgg], invoices, topItems, recentGrns] = await Promise.all([
+    db
+      .select({ count: count(), total: sum(invoicesHistorical.total), outstanding: sql<number>`coalesce(sum(case when ${invoicesHistorical.status} = 'OUTSTANDING' then ${invoicesHistorical.total} else 0 end), 0)` })
+      .from(invoicesHistorical)
+      .where(eq(invoicesHistorical.supplierId, id)),
+    db
+      .select()
+      .from(invoicesHistorical)
+      .where(eq(invoicesHistorical.supplierId, id))
+      .orderBy(desc(invoicesHistorical.invoiceDate))
+      .limit(100),
+    db
+      .select({ item: purchaseLinesHistorical.itemLabel, spend: sum(purchaseLinesHistorical.amount) })
+      .from(purchaseLinesHistorical)
+      .where(eq(purchaseLinesHistorical.supplierId, id))
+      .groupBy(purchaseLinesHistorical.itemLabel)
+      .orderBy(sql`sum(${purchaseLinesHistorical.amount}) desc`)
+      .limit(10),
+    db
+      .select({ id: grns.id, grnNumber: grns.grnNumber, receivedDate: grns.receivedDate, status: grns.status })
+      .from(grns)
+      .where(eq(grns.supplierId, id))
+      .orderBy(desc(grns.receivedDate))
+      .limit(20),
+  ]);
 
   return {
     supplier,

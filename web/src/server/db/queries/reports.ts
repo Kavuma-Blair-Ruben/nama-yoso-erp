@@ -279,14 +279,18 @@ function weekStart(dateStr: string): string {
 // dedicated, unlimited fetch (unlike listInvoices's 500-row UI cap) so the
 // totals here are exact, not a truncated sample.
 export async function getPurchasingStats() {
-  const invoices = await db.select({ total: invoicesHistorical.total, status: invoicesHistorical.status, terms: invoicesHistorical.termsNormalized, invoiceDate: invoicesHistorical.invoiceDate, weekLabel: invoicesHistorical.weekLabel }).from(invoicesHistorical);
-  const lines = await db.select({ itemLabel: purchaseLinesHistorical.itemLabel, amount: purchaseLinesHistorical.amount }).from(purchaseLinesHistorical);
-  // Historical purchase lines carry only a free-text item label, no
-  // stockItemId — resolve to a real product page by exact name match where
-  // one exists (same lookup pattern as listSlowMovingItems above), so the
-  // dashboard's "Top Purchased Items" can link straight to the product
-  // instead of a text search when the label happens to match verbatim.
-  const items = await db.select({ legacyCode: stockItems.legacyCode, name: stockItems.name }).from(stockItems);
+  // Independent whole-table scans — fetched concurrently instead of three
+  // sequential round trips.
+  const [invoices, lines, items] = await Promise.all([
+    db.select({ total: invoicesHistorical.total, status: invoicesHistorical.status, terms: invoicesHistorical.termsNormalized, invoiceDate: invoicesHistorical.invoiceDate, weekLabel: invoicesHistorical.weekLabel }).from(invoicesHistorical),
+    db.select({ itemLabel: purchaseLinesHistorical.itemLabel, amount: purchaseLinesHistorical.amount }).from(purchaseLinesHistorical),
+    // Historical purchase lines carry only a free-text item label, no
+    // stockItemId — resolve to a real product page by exact name match where
+    // one exists (same lookup pattern as listSlowMovingItems above), so the
+    // dashboard's "Top Purchased Items" can link straight to the product
+    // instead of a text search when the label happens to match verbatim.
+    db.select({ legacyCode: stockItems.legacyCode, name: stockItems.name }).from(stockItems),
+  ]);
   const codeByName = new Map(items.map((i) => [i.name, i.legacyCode]));
 
   const totalSpend = invoices.reduce((s, i) => s + (i.total ?? 0), 0);
