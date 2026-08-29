@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import { withTimeout } from "@/lib/withTimeout";
 
 // /api/webhooks/* is called by external services (Foodics, etc.) with no
 // Supabase session at all — it authenticates itself (a secret embedded in
@@ -34,9 +35,25 @@ export async function proxy(request: NextRequest) {
     }
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // Timed out rather than left unguarded: a flaky/degraded Supabase Auth
+  // upstream could make this call flip-flop between "user found" and
+  // "user not found" from one request to the next, and since this runs on
+  // EVERY request before any page renders, that flip-flopping showed up
+  // live as an actual redirect loop — /dashboard bounces to /login because
+  // this call happened to come back empty, /login immediately bounces back
+  // to /dashboard because the very next call happened to succeed, repeat
+  // until the browser gives up with ERR_TOO_MANY_REDIRECTS. On timeout or
+  // any failure here, don't guess — pass the request through uncontested
+  // and let the page-level guard (requireAuth/requireSection, which calls
+  // the already timeout-guarded getSession() in src/server/auth/session.ts)
+  // make the real, authoritative call.
+  let user: Awaited<ReturnType<typeof supabase.auth.getUser>>["data"]["user"] = null;
+  try {
+    const result = await withTimeout(supabase.auth.getUser(), 8000, "TIMEOUT");
+    user = result.data.user;
+  } catch {
+    return response;
+  }
 
   const isPublic = PUBLIC_PATHS.some((p) => request.nextUrl.pathname.startsWith(p));
 
