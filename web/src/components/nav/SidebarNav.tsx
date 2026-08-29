@@ -22,7 +22,7 @@ export function SidebarNav({ apps }: { apps: SidebarApp[] }) {
 
   return (
     <div className="nav">
-      <Link href="/apps" className="nav-all-apps">
+      <Link href="/apps" className="nav-all-apps" prefetch={false}>
         <span className="ico">⊞</span>
         All Apps
       </Link>

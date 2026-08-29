@@ -26,7 +26,7 @@ export async function Sidebar() {
   return (
     <div className="sidebar">
       <div className="brand">
-        <Link href="/apps" className="brand-text">
+        <Link href="/apps" className="brand-text" prefetch={false}>
           <Logo height={42} white />
           <span>Inventory Management</span>
         </Link>
@@ -40,7 +40,7 @@ export async function Sidebar() {
               <br />
               {session.role.name}
               <br />
-              <Link href="/set-password" style={{ fontSize: 11 }}>Change Password</Link>
+              <Link href="/set-password" style={{ fontSize: 11 }} prefetch={false}>Change Password</Link>
             </span>
             <form action={logout}>
               <button type="submit" className="logout-btn">

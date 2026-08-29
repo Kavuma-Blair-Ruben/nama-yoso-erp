@@ -18,7 +18,7 @@ export function NavLink({ href, label, ico, viewOnly }: { href: string; label: s
   const active = pathMatches && queryMatches;
 
   return (
-    <Link href={href} className={active ? "active" : ""}>
+    <Link href={href} className={active ? "active" : ""} prefetch={false}>
       <span className="ico">{ico}</span>
       {label}
       {viewOnly && <span className="viewonly-badge">view</span>}

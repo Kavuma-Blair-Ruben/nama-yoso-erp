@@ -48,7 +48,7 @@ export default async function AppsPage() {
         </div>
         <div className="apps-grid">
           {visibleTiles.map((tile, i) => (
-            <Link key={tile.id} href={tile.href} className="apps-tile" style={{ animationDelay: `${i * 35}ms` }}>
+            <Link key={tile.id} href={tile.href} className="apps-tile" prefetch={false} style={{ animationDelay: `${i * 35}ms` }}>
               <div
                 className="apps-tile-icon"
                 style={{ background: `linear-gradient(140deg, ${tile.color}, ${tile.colorDark})`, boxShadow: `0 10px 20px -8px ${tile.color}99` }}
