@@ -4,12 +4,13 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { getCkWarehouseData } from "@/server/db/queries/ckWarehouse";
 import { fmt, money } from "@/lib/format";
 import { canonicalUnitLabel } from "@/lib/unitMath";
+import { withTimeout } from "@/lib/withTimeout";
 
 export default async function CkWarehousePage({ searchParams }: PageProps<"/ck-warehouse">) {
   await requireSection("ckwarehouse", "view");
   const sp = await searchParams;
   const dest = typeof sp.dest === "string" ? sp.dest : undefined;
-  const data = await getCkWarehouseData(dest);
+  const data = await withTimeout(getCkWarehouseData(dest), 20000, "This is taking longer than expected — please try again in a moment.");
 
   return (
     <>

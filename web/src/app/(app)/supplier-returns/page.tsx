@@ -3,10 +3,11 @@ import { requireSection } from "@/server/auth/permissions";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { listAllSupplierReturns } from "@/server/db/queries/grn";
 import { money } from "@/lib/format";
+import { withTimeout } from "@/lib/withTimeout";
 
 export default async function SupplierReturnsPage() {
   await requireSection("grn", "view");
-  const returns = await listAllSupplierReturns();
+  const returns = await withTimeout(listAllSupplierReturns(), 20000, "This is taking longer than expected — please try again in a moment.");
 
   return (
     <>

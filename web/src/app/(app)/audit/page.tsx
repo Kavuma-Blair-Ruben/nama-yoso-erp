@@ -1,13 +1,14 @@
 import { requireSection } from "@/server/auth/permissions";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { listAuditLog, listAuditEntityTypes } from "@/server/db/queries/audit";
+import { withTimeout } from "@/lib/withTimeout";
 
 export default async function AuditPage({ searchParams }: PageProps<"/audit">) {
   await requireSection("system", "view");
   const sp = await searchParams;
   const q = typeof sp.q === "string" ? sp.q : undefined;
   const entity = typeof sp.entity === "string" ? sp.entity : undefined;
-  const [rows, entities] = await Promise.all([listAuditLog({ q, entity }), listAuditEntityTypes()]);
+  const [rows, entities] = await withTimeout(Promise.all([listAuditLog({ q, entity }), listAuditEntityTypes()]), 20000, "This is taking longer than expected — please try again in a moment.");
 
   return (
     <>

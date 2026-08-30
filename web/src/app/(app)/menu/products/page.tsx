@@ -3,10 +3,11 @@ import { requireSection } from "@/server/auth/permissions";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { listMenuProducts } from "@/server/db/queries/recipes";
 import { money } from "@/lib/format";
+import { withTimeout } from "@/lib/withTimeout";
 
 export default async function MenuProductsPage() {
   await requireSection("recipes", "view");
-  const groups = await listMenuProducts();
+  const groups = await withTimeout(listMenuProducts(), 20000, "This is taking longer than expected — please try again in a moment.");
 
   return (
     <>

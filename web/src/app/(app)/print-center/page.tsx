@@ -6,6 +6,7 @@ import { listGrns } from "@/server/db/queries/grn";
 import { listPurchaseOrders } from "@/server/db/queries/purchaseOrders";
 import { listRecipesForPrintCenter } from "@/server/db/queries/recipes";
 import { listProductionBatches } from "@/server/db/queries/production";
+import { withTimeout } from "@/lib/withTimeout";
 
 function HiddenFields({ values }: { values: Record<string, string> }) {
   return (
@@ -27,13 +28,17 @@ export default async function PrintCenterPage({ searchParams }: PageProps<"/prin
   const pbq = str("pbq");
   const otherOf = (skip: string) => ({ pq, gq, poq, rq, pbq, [skip]: "" });
 
-  const [products, grnsAll, posAll, recipes, batchesAll] = await Promise.all([
-    pq ? listProducts({ q: pq }) : Promise.resolve([]),
-    listGrns({ q: gq || undefined }),
-    listPurchaseOrders({ q: poq || undefined }),
-    listRecipesForPrintCenter(rq || undefined),
-    listProductionBatches({ q: pbq || undefined }),
-  ]);
+  const [products, grnsAll, posAll, recipes, batchesAll] = await withTimeout(
+    Promise.all([
+      pq ? listProducts({ q: pq }) : Promise.resolve([]),
+      listGrns({ q: gq || undefined }),
+      listPurchaseOrders({ q: poq || undefined }),
+      listRecipesForPrintCenter(rq || undefined),
+      listProductionBatches({ q: pbq || undefined }),
+    ]),
+    20000,
+    "This is taking longer than expected — please try again in a moment."
+  );
 
   const grnRows = gq ? grnsAll.slice(0, 30) : grnsAll.slice(0, 15);
   const poRows = poq ? posAll.slice(0, 30) : posAll.slice(0, 15);

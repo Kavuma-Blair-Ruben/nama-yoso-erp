@@ -3,11 +3,12 @@ import { requireSection, hasAccess } from "@/server/auth/permissions";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { listConsolidatedInvoices } from "@/server/db/queries/grn";
 import { money } from "@/lib/format";
+import { withTimeout } from "@/lib/withTimeout";
 
 export default async function ConsolidatedInvoicesPage() {
   const session = await requireSection("grn", "view");
   const canEdit = hasAccess(session, "grn", "edit");
-  const invoices = await listConsolidatedInvoices();
+  const invoices = await withTimeout(listConsolidatedInvoices(), 20000, "This is taking longer than expected — please try again in a moment.");
 
   return (
     <>

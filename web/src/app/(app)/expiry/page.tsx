@@ -5,6 +5,7 @@ import { listExpiringBatches, EXPIRY_BUCKET_ORDER, EXPIRY_BUCKET_LABELS, type Ex
 import { fmt } from "@/lib/format";
 import { ExpiryTicketAutoPrint } from "@/components/expiry/ExpiryTicketAutoPrint";
 import { ExtendExpiryButton } from "@/components/expiry/ExtendExpiryButton";
+import { withTimeout } from "@/lib/withTimeout";
 
 export default async function ExpiryPage({ searchParams }: PageProps<"/expiry">) {
   await requireSection("items", "view");
@@ -12,7 +13,7 @@ export default async function ExpiryPage({ searchParams }: PageProps<"/expiry">)
   const q = typeof sp.q === "string" ? sp.q.trim().toLowerCase() : "";
   const bucket = typeof sp.bucket === "string" ? (sp.bucket as ExpiryBucket) : "";
 
-  const all = await listExpiringBatches();
+  const all = await withTimeout(listExpiringBatches(), 20000, "This is taking longer than expected — please try again in a moment.");
   const counts: Record<ExpiryBucket, number> = { EXPIRED: 0, TODAY: 0, TOMORROW: 0, "7 DAYS": 0, "15 DAYS": 0, "30 DAYS": 0, LATER: 0 };
   all.forEach((b) => counts[b.bucket]++);
 

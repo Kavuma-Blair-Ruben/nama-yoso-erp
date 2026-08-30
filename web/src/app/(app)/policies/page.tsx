@@ -9,19 +9,24 @@ import { RolePurchaseLimits } from "@/components/policies/RolePurchaseLimits";
 import { PolicyPercentSettings } from "@/components/policies/PolicyPercentSettings";
 import { InternalOnlyLocations } from "@/components/policies/InternalOnlyLocations";
 import { ApprovalPolicySettings } from "@/components/policies/ApprovalPolicySettings";
+import { withTimeout } from "@/lib/withTimeout";
 
 export default async function PoliciesPage() {
   const session = await requireSection("policies", "view");
   const canEdit = hasAccess(session, "policies", "edit");
-  const [limits, branchLimits, roleLimits, settings, roles, branches, approvalSteps] = await Promise.all([
-    listLocationOrderLimits(),
-    listBranchReceivingLimits(),
-    listRolePurchaseLimits(),
-    getPolicySettings(),
-    listRoles(),
-    listBranches(),
-    listPoApprovalSteps(),
-  ]);
+  const [limits, branchLimits, roleLimits, settings, roles, branches, approvalSteps] = await withTimeout(
+    Promise.all([
+      listLocationOrderLimits(),
+      listBranchReceivingLimits(),
+      listRolePurchaseLimits(),
+      getPolicySettings(),
+      listRoles(),
+      listBranches(),
+      listPoApprovalSteps(),
+    ]),
+    20000,
+    "This is taking longer than expected — please try again in a moment."
+  );
 
   return (
     <>

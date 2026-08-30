@@ -3,10 +3,11 @@ import { requireSection, hasAccess } from "@/server/auth/permissions";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { listMenuModifiers } from "@/server/db/queries/recipes";
 import { money } from "@/lib/format";
+import { withTimeout } from "@/lib/withTimeout";
 
 export default async function MenuModifiersPage() {
   const session = await requireSection("recipes", "view");
-  const modifiers = await listMenuModifiers();
+  const modifiers = await withTimeout(listMenuModifiers(), 20000, "This is taking longer than expected — please try again in a moment.");
   const canEdit = hasAccess(session, "subrecipes", "edit");
 
   const byCategory = new Map<string, typeof modifiers>();

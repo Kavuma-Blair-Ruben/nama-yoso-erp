@@ -3,10 +3,11 @@ import { requireSection, hasAccess } from "@/server/auth/permissions";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { listMenuCombos } from "@/server/db/queries/recipes";
 import { money } from "@/lib/format";
+import { withTimeout } from "@/lib/withTimeout";
 
 export default async function MenuCombosPage() {
   const session = await requireSection("recipes", "view");
-  const combos = await listMenuCombos();
+  const combos = await withTimeout(listMenuCombos(), 20000, "This is taking longer than expected — please try again in a moment.");
   const canEdit = hasAccess(session, "recipes", "edit");
 
   const byCategory = new Map<string, typeof combos>();

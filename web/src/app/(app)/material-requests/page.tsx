@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireSection, hasAccess } from "@/server/auth/permissions";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { listMaterialRequests, MR_STATUSES } from "@/server/db/queries/materialRequests";
+import { withTimeout } from "@/lib/withTimeout";
 
 const STATUS_CLASS: Record<string, string> = {
   "PENDING APPROVAL": "status-ordered",
@@ -15,7 +16,7 @@ export default async function MaterialRequestsPage({ searchParams }: PageProps<"
   const sp = await searchParams;
   const q = typeof sp.q === "string" ? sp.q : undefined;
   const status = typeof sp.status === "string" ? sp.status : undefined;
-  const rows = await listMaterialRequests({ q, status });
+  const rows = await withTimeout(listMaterialRequests({ q, status }), 20000, "This is taking longer than expected — please try again in a moment.");
   const canEdit = hasAccess(session, "orders", "edit");
   const pendingCount = rows.filter((r) => r.status === "PENDING APPROVAL").length;
 

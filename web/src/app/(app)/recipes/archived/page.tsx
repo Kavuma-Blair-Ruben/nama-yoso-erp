@@ -2,6 +2,7 @@ import { requireSection, hasAccess } from "@/server/auth/permissions";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { listArchivedRecipes } from "@/server/db/queries/recipes";
 import { RestoreRecipeButton } from "@/components/recipes/RestoreRecipeButton";
+import { withTimeout } from "@/lib/withTimeout";
 
 // The recycle bin for archiveRecipe — deleting a recipe only ever sets a
 // flag (see the comment on archiveRecipe itself), so anything that shows up
@@ -12,7 +13,7 @@ export default async function ArchivedRecipesPage() {
   const canViewMain = hasAccess(session, "recipes", "view");
   const canViewSub = hasAccess(session, "subrecipes", "view");
 
-  const all = await listArchivedRecipes();
+  const all = await withTimeout(listArchivedRecipes(), 20000, "This is taking longer than expected — please try again in a moment.");
   const rows = all.filter((r) => (r.type === "main" ? canViewMain : canViewSub));
 
   return (

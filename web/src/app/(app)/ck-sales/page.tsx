@@ -3,10 +3,11 @@ import { requireSection, hasAccess } from "@/server/auth/permissions";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { listDeliveryNotes, listCustomerReturns } from "@/server/db/queries/ckSales";
 import { money } from "@/lib/format";
+import { withTimeout } from "@/lib/withTimeout";
 
 export default async function CkSalesPage() {
   const session = await requireSection("ckwarehouse", "view");
-  const [notes, returns] = await Promise.all([listDeliveryNotes(), listCustomerReturns()]);
+  const [notes, returns] = await withTimeout(Promise.all([listDeliveryNotes(), listCustomerReturns()]), 20000, "This is taking longer than expected — please try again in a moment.");
   const canEdit = hasAccess(session, "ckwarehouse", "edit");
 
   return (
