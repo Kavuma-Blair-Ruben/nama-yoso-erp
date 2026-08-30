@@ -5,10 +5,11 @@ import { listTaxRates, getSystemSettings } from "@/server/db/queries/settings";
 import { TaxRateSettings } from "@/components/settings/TaxRateSettings";
 import { CostingMethodSettings } from "@/components/settings/CostingMethodSettings";
 import { BlindCountSettings } from "@/components/settings/BlindCountSettings";
+import { withTimeout } from "@/lib/withTimeout";
 
 export default async function SystemSettingsPage() {
   await requireSection("system", "view");
-  const [taxRates, settings] = await Promise.all([listTaxRates(), getSystemSettings()]);
+  const [taxRates, settings] = await withTimeout(Promise.all([listTaxRates(), getSystemSettings()]), 20000, "This is taking longer than expected — please try again in a moment.");
 
   return (
     <>

@@ -5,11 +5,16 @@ import { UsersList } from "@/components/permissions/UsersList";
 import { InviteUserForm } from "@/components/permissions/InviteUserForm";
 import { LinkUserForm } from "@/components/permissions/LinkUserForm";
 import { RolesList } from "@/components/permissions/RolesList";
+import { withTimeout } from "@/lib/withTimeout";
 
 export default async function PermissionsPage() {
   const session = await requireSection("permissions", "view");
   const canEdit = hasAccess(session, "permissions", "edit");
-  const [roles, profiles, unlinkedUsers] = await Promise.all([listRolesWithPermissions(), listProfilesWithRole(), listUnlinkedAuthUsers()]);
+  const [roles, profiles, unlinkedUsers] = await withTimeout(
+    Promise.all([listRolesWithPermissions(), listProfilesWithRole(), listUnlinkedAuthUsers()]),
+    20000,
+    "This is taking longer than expected — please try again in a moment."
+  );
 
   return (
     <>

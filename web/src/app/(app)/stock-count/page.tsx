@@ -3,12 +3,13 @@ import { requireSection, hasAccess } from "@/server/auth/permissions";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { listStockCounts } from "@/server/db/queries/stockCount";
 import { money } from "@/lib/format";
+import { withTimeout } from "@/lib/withTimeout";
 
 export default async function StockCountPage({ searchParams }: PageProps<"/stock-count">) {
   const session = await requireSection("stockcount", "view");
   const sp = await searchParams;
   const status = typeof sp.status === "string" ? sp.status : undefined;
-  const rows = await listStockCounts({ status });
+  const rows = await withTimeout(listStockCounts({ status }), 20000, "This is taking longer than expected — please try again in a moment.");
   const canEdit = hasAccess(session, "stockcount", "edit");
   const draftCount = rows.filter((c) => c.status === "DRAFT").length;
 

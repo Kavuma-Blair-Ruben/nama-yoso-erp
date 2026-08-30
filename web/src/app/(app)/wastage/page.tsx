@@ -6,13 +6,18 @@ import { listAllActiveCostCenters } from "@/server/db/queries/costCenters";
 import { money } from "@/lib/format";
 import { DonutChart } from "@/components/charts/DonutChart";
 import { HorizontalBarChart } from "@/components/charts/HorizontalBarChart";
+import { withTimeout } from "@/lib/withTimeout";
 
 export default async function WastagePage({ searchParams }: PageProps<"/wastage">) {
   const session = await requireSection("wastage", "view");
   const sp = await searchParams;
   const status = typeof sp.status === "string" ? sp.status : undefined;
   const costCenterId = typeof sp.costCenterId === "string" ? sp.costCenterId : undefined;
-  const [rows, stats, costCenters] = await Promise.all([listWastageEvents({ status, costCenterId }), getWastageStats({ costCenterId }), listAllActiveCostCenters()]);
+  const [rows, stats, costCenters] = await withTimeout(
+    Promise.all([listWastageEvents({ status, costCenterId }), getWastageStats({ costCenterId }), listAllActiveCostCenters()]),
+    20000,
+    "This is taking longer than expected — please try again in a moment."
+  );
   const canEdit = hasAccess(session, "wastage", "edit");
   const draftCount = rows.filter((w) => w.status === "DRAFT").length;
   const filteredCostCenter = costCenterId ? costCenters.find((c) => c.id === costCenterId) : undefined;

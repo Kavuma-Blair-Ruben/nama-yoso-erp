@@ -3,6 +3,7 @@ import { requireSection } from "@/server/auth/permissions";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { listAllCreditNotes } from "@/server/db/queries/grn";
 import { money } from "@/lib/format";
+import { withTimeout } from "@/lib/withTimeout";
 
 function statusTagClass(status: string) {
   if (status === "ISSUED") return "good";
@@ -12,7 +13,7 @@ function statusTagClass(status: string) {
 
 export default async function CreditNotesPage() {
   await requireSection("grn", "view");
-  const notes = await listAllCreditNotes();
+  const notes = await withTimeout(listAllCreditNotes(), 20000, "This is taking longer than expected — please try again in a moment.");
 
   return (
     <>

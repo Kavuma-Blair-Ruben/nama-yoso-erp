@@ -5,11 +5,12 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { getSupplierDetail, listSupplierProducts } from "@/server/db/queries/suppliers";
 import { SupplierForm } from "@/components/suppliers/SupplierForm";
 import { fmt, money, pct } from "@/lib/format";
+import { withTimeout } from "@/lib/withTimeout";
 
 export default async function SupplierDetailPage({ params }: PageProps<"/suppliers/[id]">) {
   const session = await requireSection("suppliers", "view");
   const { id } = await params;
-  const [data, products] = await Promise.all([getSupplierDetail(id), listSupplierProducts(id)]);
+  const [data, products] = await withTimeout(Promise.all([getSupplierDetail(id), listSupplierProducts(id)]), 20000, "This is taking longer than expected — please try again in a moment.");
   if (!data) notFound();
   const { supplier, invoiceCount, totalSpend, outstanding, invoices, topItems, recentGrns } = data;
   const canEdit = hasAccess(session, "suppliers", "edit");

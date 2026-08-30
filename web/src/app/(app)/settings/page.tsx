@@ -9,16 +9,15 @@ import { StorageAreaSettings } from "@/components/settings/StorageAreaSettings";
 import { CostCenterSettings } from "@/components/settings/CostCenterSettings";
 import { WastageReasonSettings } from "@/components/settings/WastageReasonSettings";
 import { BranchSettings } from "@/components/settings/BranchSettings";
+import { withTimeout } from "@/lib/withTimeout";
 
 export default async function SettingsPage() {
   await requireSection("branchsettings", "view");
-  const [categories, storageAreas, costCenters, reasons, branches] = await Promise.all([
-    listCategoriesWithSubcategories(),
-    listStorageAreas(),
-    listCostCentersAdmin(),
-    listWastageReasons(),
-    listBranchesAdmin(),
-  ]);
+  const [categories, storageAreas, costCenters, reasons, branches] = await withTimeout(
+    Promise.all([listCategoriesWithSubcategories(), listStorageAreas(), listCostCentersAdmin(), listWastageReasons(), listBranchesAdmin()]),
+    20000,
+    "This is taking longer than expected — please try again in a moment."
+  );
 
   return (
     <>

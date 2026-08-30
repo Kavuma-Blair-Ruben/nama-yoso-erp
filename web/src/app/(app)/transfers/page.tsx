@@ -3,6 +3,7 @@ import { requireSection, hasAccess } from "@/server/auth/permissions";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { listTransfers } from "@/server/db/queries/transfers";
 import { money } from "@/lib/format";
+import { withTimeout } from "@/lib/withTimeout";
 
 const STATUS_BADGE_CLASS: Record<string, string> = { DRAFT: "status-draft", IN_TRANSIT: "status-ordered", POSTED: "status-received" };
 
@@ -10,7 +11,7 @@ export default async function TransfersPage({ searchParams }: PageProps<"/transf
   const session = await requireSection("transfers", "view");
   const sp = await searchParams;
   const status = typeof sp.status === "string" ? sp.status : undefined;
-  const rows = await listTransfers({ status });
+  const rows = await withTimeout(listTransfers({ status }), 20000, "This is taking longer than expected — please try again in a moment.");
   const canEdit = hasAccess(session, "transfers", "edit");
   const draftCount = rows.filter((t) => t.status === "DRAFT").length;
   const inTransitCount = rows.filter((t) => t.status === "IN_TRANSIT").length;

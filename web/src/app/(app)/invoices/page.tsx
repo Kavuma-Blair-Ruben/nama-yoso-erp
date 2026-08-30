@@ -3,6 +3,7 @@ import { requireSection } from "@/server/auth/permissions";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { listInvoices } from "@/server/db/queries/invoices";
 import { fmt, money } from "@/lib/format";
+import { withTimeout } from "@/lib/withTimeout";
 
 export default async function InvoicesPage({ searchParams }: PageProps<"/invoices">) {
   await requireSection("suppliers", "view");
@@ -10,7 +11,7 @@ export default async function InvoicesPage({ searchParams }: PageProps<"/invoice
   const q = typeof sp.q === "string" ? sp.q : undefined;
   const status = typeof sp.status === "string" ? sp.status : undefined;
 
-  const invoices = await listInvoices({ q, status });
+  const invoices = await withTimeout(listInvoices({ q, status }), 20000, "This is taking longer than expected — please try again in a moment.");
   const totalOutstanding = invoices.filter((i) => i.status === "OUTSTANDING").reduce((s, i) => s + (i.total ?? 0), 0);
 
   return (

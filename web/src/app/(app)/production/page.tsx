@@ -4,12 +4,13 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { listProductionBatches } from "@/server/db/queries/production";
 import { ProductionScanClose } from "@/components/production/ProductionScanClose";
 import { fmt, money, formatDurationMinutes } from "@/lib/format";
+import { withTimeout } from "@/lib/withTimeout";
 
 export default async function ProductionPage({ searchParams }: PageProps<"/production">) {
   const session = await requireSection("subrecipes", "view");
   const sp = await searchParams;
   const status = typeof sp.status === "string" ? sp.status : undefined;
-  const rows = await listProductionBatches({ status });
+  const rows = await withTimeout(listProductionBatches({ status }), 20000, "This is taking longer than expected — please try again in a moment.");
   const canEdit = hasAccess(session, "subrecipes", "edit");
   const openCount = rows.filter((b) => b.status === "OPEN").length;
 
