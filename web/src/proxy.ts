@@ -57,6 +57,21 @@ export async function proxy(request: NextRequest) {
 
   const isPublic = PUBLIC_PATHS.some((p) => request.nextUrl.pathname.startsWith(p));
 
+  // A degraded Supabase Auth upstream doesn't only throw/time out — it can
+  // also just return an empty user on one request and the real one on the
+  // very next, with no exception at all (seen live: /dashboard <-> /login
+  // bouncing every request, each one a full document reload). One retry
+  // before trusting "no user" absorbs that transient flip without weakening
+  // the real logged-out case, which still comes back empty twice.
+  if (!user && !isPublic) {
+    try {
+      const retry = await withTimeout(supabase.auth.getUser(), 8000, "TIMEOUT");
+      user = retry.data.user;
+    } catch {
+      return response;
+    }
+  }
+
   if (!user && !isPublic) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
