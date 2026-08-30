@@ -10,16 +10,17 @@ import { withTimeout } from "@/lib/withTimeout";
 
 export default async function DevicesPage() {
   await requireSection("system", "view");
-  const [devices, branches, printNode, routing] = await withTimeout(
-    Promise.all([
-      listDevices(),
-      listBranches(),
-      isPrintNodeConfigured() ? listPrintNodePrinters() : Promise.resolve({ printers: [] as never[] }),
-      listPrintRoutingContext(),
-    ]),
+  // Sequential, not Promise.all — concurrent connection opens against the
+  // Supabase pooler have been observed to hang under load (same reasoning
+  // as dashboard.ts's cached queries).
+  const devices = await withTimeout(listDevices(), 20000, "This is taking longer than expected — please try again in a moment.");
+  const branches = await withTimeout(listBranches(), 20000, "This is taking longer than expected — please try again in a moment.");
+  const printNode = await withTimeout(
+    isPrintNodeConfigured() ? listPrintNodePrinters() : Promise.resolve({ printers: [] as never[] }),
     20000,
     "This is taking longer than expected — please try again in a moment."
   );
+  const routing = await withTimeout(listPrintRoutingContext(), 20000, "This is taking longer than expected — please try again in a moment.");
   const printNodePrinters = printNode.printers ?? [];
 
   return (

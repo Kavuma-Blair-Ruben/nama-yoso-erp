@@ -10,18 +10,18 @@ import { SupplierReturnSection } from "@/components/grn/SupplierReturnSection";
 import { GrnStickerAutoPrint } from "@/components/grn/GrnStickerAutoPrint";
 import { InvoicePreview } from "@/components/ui/InvoicePreview";
 import { fmt, money } from "@/lib/format";
+import { withTimeout } from "@/lib/withTimeout";
 
 export default async function GrnDetailPage({ params, searchParams }: PageProps<"/grn/[id]">) {
   const session = await requireSection("grn", "view");
   const { id } = await params;
   const sp = await searchParams;
   const warning = typeof sp.warning === "string" ? sp.warning : undefined;
-  const [data, creditNotes, supplierReturns, labelData] = await Promise.all([
-    getGrnDetail(id),
-    listCreditNotesForGrn(id),
-    listSupplierReturnsForGrn(id),
-    getGrnLinesForLabels(id),
-  ]);
+  const [data, creditNotes, supplierReturns, labelData] = await withTimeout(
+    Promise.all([getGrnDetail(id), listCreditNotesForGrn(id), listSupplierReturnsForGrn(id), getGrnLinesForLabels(id)]),
+    20000,
+    "This is taking longer than expected — please try again in a moment."
+  );
   if (!data) notFound();
   const { grn, lines, net, vat, total } = data;
   const canEdit = hasAccess(session, "grn", "edit");
