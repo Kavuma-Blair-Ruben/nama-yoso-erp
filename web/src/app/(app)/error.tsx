@@ -20,9 +20,6 @@ export default function AppSegmentError({ error, retry }: { error: Error & { dig
       <button className="btn accent" type="button" onClick={() => retry()} style={{ marginTop: 8 }}>
         Try again
       </button>
-      {error.digest && (
-        <p style={{ color: "var(--muted, #99a)", fontSize: 12, marginTop: 8 }}>Error reference: {error.digest}</p>
-      )}
     </div>
   );
 }
