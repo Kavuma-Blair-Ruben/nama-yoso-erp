@@ -19,6 +19,11 @@ import { fmt, pct, todayStr } from "@/lib/format";
 import { canonicalUnitLabel } from "@/lib/unitMath";
 import { Logo } from "@/components/ui/Logo";
 import { PrintButton } from "@/components/ui/PrintButton";
+import { withTimeout } from "@/lib/withTimeout";
+
+// Not statement_timeout — confirmed unreliable through Supabase's pooler.
+const TIMEOUT_MS = 20000;
+const TIMEOUT_MSG = "This is taking longer than expected — please try again in a moment.";
 
 const TITLES: Record<string, string> = {
   sales: "Recipe Sales Report",
@@ -49,7 +54,7 @@ export default async function ReportPrintPage({ params, searchParams }: PageProp
   let subtitle = "";
 
   if (tab === "sales") {
-    const report = await getRecipeSalesReport();
+    const report = await withTimeout(getRecipeSalesReport(), TIMEOUT_MS, TIMEOUT_MSG);
     headers = ["Recipe", "Qty Sold", "Avg Price", "Revenue", "Food Cost", "Food Cost %", "Gross Profit"];
     rows = report.rows.map((r) => [
       r.name,
@@ -61,7 +66,7 @@ export default async function ReportPrintPage({ params, searchParams }: PageProp
       r.grossProfit != null ? fmt(r.grossProfit, 2) : "—",
     ]);
   } else if (tab === "stock") {
-    const all = await getStockPageRows();
+    const all = await withTimeout(getStockPageRows(), TIMEOUT_MS, TIMEOUT_MSG);
     const flagged = all.filter((r) => r.flag);
     headers = ["Item", "Category", "Stock on Hand", "Min Level", "Value", "Flag"];
     rows = flagged.map((r) => [
@@ -75,7 +80,7 @@ export default async function ReportPrintPage({ params, searchParams }: PageProp
     subtitle = `${flagged.length} flagged item(s) — negative or below minimum`;
   } else if (tab === "slowmoving") {
     const minDays = typeof sp.minDays === "string" ? Number(sp.minDays) : 0;
-    const list = await listSlowMovingItems(minDays);
+    const list = await withTimeout(listSlowMovingItems(minDays), TIMEOUT_MS, TIMEOUT_MSG);
     headers = ["Item", "Category", "Stock on Hand", "Stock Value", "Last Purchased", "Days Since"];
     rows = list.map((r) => [
       r.name,
@@ -87,7 +92,7 @@ export default async function ReportPrintPage({ params, searchParams }: PageProp
     ]);
     subtitle = minDays ? `${minDays}+ days since purchase` : "All items with stock";
   } else if (tab === "pricechange") {
-    const list = await listPriceChangeEvents();
+    const list = await withTimeout(listPriceChangeEvents(), TIMEOUT_MS, TIMEOUT_MSG);
     headers = ["Date", "GRN #", "Supplier", "Item", "Ordered Rate", "Received Rate", "Variance %", "Cost Impact"];
     rows = list.map((e) => [
       e.receivedDate,
@@ -101,7 +106,7 @@ export default async function ReportPrintPage({ params, searchParams }: PageProp
     ]);
   } else if (tab === "costadjustments") {
     const q = typeof sp.q === "string" ? sp.q : undefined;
-    const list = await listCostAdjustmentEvents({ q });
+    const list = await withTimeout(listCostAdjustmentEvents({ q }), TIMEOUT_MS, TIMEOUT_MSG);
     headers = ["Date", "Ingredient", "Old Rate", "New Rate", "Change %", "Affected Recipes"];
     rows = list.map((e) => [
       e.date,
@@ -113,7 +118,7 @@ export default async function ReportPrintPage({ params, searchParams }: PageProp
     ]);
     if (q) subtitle = `Filtered: "${q}"`;
   } else if (tab === "sections") {
-    const sections = await getSectionStats();
+    const sections = await withTimeout(getSectionStats(), TIMEOUT_MS, TIMEOUT_MSG);
     const sector = typeof sp.sector === "string" ? sp.sector : undefined;
     const selected = sector ? sections.find((s) => s.sector === sector) : null;
     if (selected) {
@@ -127,23 +132,23 @@ export default async function ReportPrintPage({ params, searchParams }: PageProp
   } else if (tab === "purchaseorders") {
     const q = typeof sp.q === "string" ? sp.q : undefined;
     const status = typeof sp.status === "string" ? sp.status : undefined;
-    const list = await listPurchaseOrders({ q, status });
+    const list = await withTimeout(listPurchaseOrders({ q, status }), TIMEOUT_MS, TIMEOUT_MSG);
     headers = ["LPO Number", "Supplier", "Date", "Net", "VAT", "Total", "Status"];
     rows = list.map((r) => [r.poNumber, r.supplier, r.createdDate, fmt(r.net, 2), fmt(r.vat, 2), fmt(r.total, 2), r.status]);
     if (status) subtitle = `Status: ${status}`;
   } else if (tab === "grns") {
     const q = typeof sp.q === "string" ? sp.q : undefined;
-    const list = await listGrns({ q });
+    const list = await withTimeout(listGrns({ q }), TIMEOUT_MS, TIMEOUT_MSG);
     headers = ["GRN Number", "LPO Number", "Supplier", "Received Date", "Invoice #", "Net", "VAT", "Total", "Status", "Payment"];
     rows = list.map((r) => [r.grnNumber, r.poNumber ?? "-", r.supplier, r.receivedDate, r.invoiceNumber ?? "-", fmt(r.net, 2), fmt(r.vat, 2), fmt(r.total, 2), r.status, r.paymentMethod === "PETTY_CASH" ? "Petty Cash" : "Invoice"]);
   } else if (tab === "supplierreturns") {
-    const list = await listAllSupplierReturns();
+    const list = await withTimeout(listAllSupplierReturns(), TIMEOUT_MS, TIMEOUT_MSG);
     headers = ["Return", "GRN", "Supplier", "Reason", "Value", "Date"];
     rows = list.map((r) => [r.number, r.grnNumber ?? "-", r.supplierName, r.reason ?? "-", fmt(r.value, 2), r.createdAt.toISOString().slice(0, 10)]);
   } else if (tab === "invoices") {
     const q = typeof sp.q === "string" ? sp.q : undefined;
     const status = typeof sp.status === "string" ? sp.status : undefined;
-    const list = await listInvoices({ q, status, limit: 1_000_000 });
+    const list = await withTimeout(listInvoices({ q, status, limit: 1_000_000 }), TIMEOUT_MS, TIMEOUT_MSG);
     headers = ["Date", "Invoice #", "Supplier", "Net", "VAT", "Total", "Status", "Source"];
     rows = list.map((r) => [
       r.invoiceDate ?? "-",
@@ -158,25 +163,25 @@ export default async function ReportPrintPage({ params, searchParams }: PageProp
     if (status) subtitle = `Status: ${status}`;
   } else if (tab === "wastage") {
     const status = typeof sp.status === "string" ? sp.status : undefined;
-    const list = await listWastageEvents({ status });
+    const list = await withTimeout(listWastageEvents({ status }), TIMEOUT_MS, TIMEOUT_MSG);
     headers = ["Log No.", "Sector", "Branch", "Date", "Staff", "Total Cost", "Status"];
     rows = list.map((r) => [r.wastageNo, r.costCenter, r.branchName ?? "-", r.eventDate, r.staffName ?? "-", fmt(r.totalCost, 2), r.status]);
     if (status) subtitle = `Status: ${status}`;
   } else if (tab === "transfers") {
     const status = typeof sp.status === "string" ? sp.status : undefined;
-    const list = await listTransfers({ status });
+    const list = await withTimeout(listTransfers({ status }), TIMEOUT_MS, TIMEOUT_MSG);
     headers = ["Transfer No.", "From", "To", "Date", "Staff", "Value", "Status"];
     rows = list.map((r) => [r.transferNo, r.fromBranchName, r.toBranchName, r.transferDate, r.staffName ?? "-", fmt(r.totalCost, 2), r.status]);
     if (status) subtitle = `Status: ${status}`;
   } else if (tab === "stockcounts") {
     const status = typeof sp.status === "string" ? sp.status : undefined;
-    const list = await listStockCounts({ status });
+    const list = await withTimeout(listStockCounts({ status }), TIMEOUT_MS, TIMEOUT_MSG);
     headers = ["Count Number", "Cost Center", "Branch", "Date", "Items", "Variance Value", "Status"];
     rows = list.map((r) => [r.countNo, r.costCenter ?? "-", r.branchName ?? "-", r.countDate, String(r.lineCount), fmt(r.totalVarianceValue, 2), r.status]);
     if (status) subtitle = `Status: ${status}`;
   } else if (tab === "production") {
     const status = typeof sp.status === "string" ? sp.status : undefined;
-    const list = await listProductionBatches({ status });
+    const list = await withTimeout(listProductionBatches({ status }), TIMEOUT_MS, TIMEOUT_MSG);
     headers = ["Batch No.", "Sub-Recipe", "Branch", "Staff", "Produced Date", "Yield", "Total Cost", "Status"];
     rows = list.map((r) => [r.batchNo, r.subRecipeName, r.branchName ?? "-", r.staffName ?? "-", r.producedDate, `${fmt(r.yieldQty, 2)} ${r.yieldUnit}`, fmt(r.totalCost, 2), r.status]);
     if (status) subtitle = `Status: ${status}`;

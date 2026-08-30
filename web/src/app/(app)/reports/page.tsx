@@ -30,6 +30,14 @@ import { FoodicsWebhookPanel } from "@/components/reports/FoodicsWebhookPanel";
 import { RecipeSalesImport } from "@/components/reports/RecipeSalesImport";
 import { ReportExportBar } from "@/components/reports/ReportExportBar";
 import { DateRangeBar } from "@/components/dashboard/DateRangeBar";
+import { withTimeout } from "@/lib/withTimeout";
+
+// Every tab function below wraps its data fetch in withTimeout, not
+// statement_timeout — confirmed unreliable through Supabase's pooler.
+// Same multi-tab shape as dashboard/page.tsx, which hung indefinitely
+// without this. Throws into (app)/error.tsx on timeout.
+const TIMEOUT_MS = 20000;
+const TIMEOUT_MSG = "This is taking longer than expected — please try again in a moment.";
 
 type Tab =
   | "sales" | "slowmoving" | "pricechange" | "costadjustments" | "sections" | "stock" | "varianceanalysis"
@@ -80,16 +88,20 @@ export default async function ReportsPage({ searchParams }: PageProps<"/reports"
 }
 
 async function RecipeSalesTab({ from, to, view }: { from: string; to: string; view?: string }) {
-  const [report, foodicsIntegration, branches, costCenters, recipes, branchMappings, itemMappings, recentEvents] = await Promise.all([
-    getRecipeSalesReport({ from, to }),
-    getPosIntegration("foodics"),
-    listBranches(),
-    listAllActiveCostCenters(),
-    listMainRecipesForPicker(),
-    listPosBranchMappings("foodics"),
-    listPosItemMappings("foodics"),
-    listPosWebhookEvents("foodics"),
-  ]);
+  const [report, foodicsIntegration, branches, costCenters, recipes, branchMappings, itemMappings, recentEvents] = await withTimeout(
+    Promise.all([
+      getRecipeSalesReport({ from, to }),
+      getPosIntegration("foodics"),
+      listBranches(),
+      listAllActiveCostCenters(),
+      listMainRecipesForPicker(),
+      listPosBranchMappings("foodics"),
+      listPosItemMappings("foodics"),
+      listPosWebhookEvents("foodics"),
+    ]),
+    TIMEOUT_MS,
+    TIMEOUT_MSG
+  );
 
   return (
     <>
@@ -185,7 +197,7 @@ async function RecipeSalesTab({ from, to, view }: { from: string; to: string; vi
 type StockView = "all" | "flagged" | "negative" | "notlinked" | "abovepar" | "belowmin";
 
 async function StockTab({ q, view }: { q?: string; view?: StockView }) {
-  const rows = await getStockPageRows();
+  const rows = await withTimeout(getStockPageRows(), TIMEOUT_MS, TIMEOUT_MSG);
   const negCount = rows.filter((r) => r.onHand < 0).length;
   const belowMinCount = rows.filter((r) => r.flag === "BELOW MIN").length;
   const abovePar = rows.filter((r) => r.abovePar).length;
@@ -337,11 +349,15 @@ async function StockTab({ q, view }: { q?: string; view?: StockView }) {
 async function VarianceAnalysisTab({ from, to, branchId, costCenterId, excludeNonCogs }: { from?: string; to?: string; branchId?: string; costCenterId?: string; excludeNonCogs?: boolean }) {
   const effTo = to || todayStr();
   const effFrom = from || new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
-  const [data, branches, costCenters] = await Promise.all([
-    getVarianceAnalysis({ from: effFrom, to: effTo, branchId, costCenterId, excludeNonCogs }),
-    listBranches(),
-    listAllActiveCostCenters(),
-  ]);
+  const [data, branches, costCenters] = await withTimeout(
+    Promise.all([
+      getVarianceAnalysis({ from: effFrom, to: effTo, branchId, costCenterId, excludeNonCogs }),
+      listBranches(),
+      listAllActiveCostCenters(),
+    ]),
+    TIMEOUT_MS,
+    TIMEOUT_MSG
+  );
   const maxNeg = Math.max(1, ...data.negativeItems.map((i) => Math.abs(i.varianceValue)));
   const maxPos = Math.max(1, ...data.positiveItems.map((i) => i.varianceValue));
 
@@ -437,7 +453,7 @@ async function VarianceAnalysisTab({ from, to, branchId, costCenterId, excludeNo
 }
 
 async function SlowMovingTab({ minDays }: { minDays: number }) {
-  const rows = await listSlowMovingItems(minDays);
+  const rows = await withTimeout(listSlowMovingItems(minDays), TIMEOUT_MS, TIMEOUT_MSG);
   const totalTiedUp = rows.reduce((s, r) => s + r.stockValue, 0);
 
   return (
@@ -486,7 +502,7 @@ async function SlowMovingTab({ minDays }: { minDays: number }) {
 }
 
 async function PriceChangeTab({ from, to, view }: { from: string; to: string; view?: string }) {
-  const rows = await listPriceChangeEvents({ from, to });
+  const rows = await withTimeout(listPriceChangeEvents({ from, to }), TIMEOUT_MS, TIMEOUT_MSG);
   const totalImpact = rows.reduce((s, e) => s + e.varianceValue, 0);
   const increases = rows.filter((e) => e.variancePct > 0).length;
   const activeView = view === "increases" ? "increases" : "all";
@@ -543,7 +559,7 @@ async function PriceChangeTab({ from, to, view }: { from: string; to: string; vi
 }
 
 async function CostAdjustmentsTab({ q, view, from, to }: { q?: string; view?: string; from: string; to: string }) {
-  const allRows = await listCostAdjustmentEvents({ q, from, to });
+  const allRows = await withTimeout(listCostAdjustmentEvents({ q, from, to }), TIMEOUT_MS, TIMEOUT_MSG);
   const increasesCount = allRows.filter((e) => e.pctChange > 0).length;
   const decreasesCount = allRows.filter((e) => e.pctChange < 0).length;
   const activeView = view === "increases" || view === "decreases" ? view : "all";
@@ -614,7 +630,7 @@ async function CostAdjustmentsTab({ q, view, from, to }: { q?: string; view?: st
 }
 
 async function SectionsTab({ sector }: { sector?: string }) {
-  const sections = await getSectionStats();
+  const sections = await withTimeout(getSectionStats(), TIMEOUT_MS, TIMEOUT_MSG);
   const totalSpend = sections.reduce((s, x) => s + x.spend, 0);
   const selected = sector ? sections.find((s) => s.sector === sector) : null;
 
@@ -677,7 +693,7 @@ async function SectionsTab({ sector }: { sector?: string }) {
 }
 
 async function PurchaseOrdersTab({ q, status, from, to }: { q?: string; status?: string; from: string; to: string }) {
-  const rows = await listPurchaseOrders({ q, status, from, to });
+  const rows = await withTimeout(listPurchaseOrders({ q, status, from, to }), TIMEOUT_MS, TIMEOUT_MSG);
   const totalValue = rows.reduce((s, r) => s + r.total, 0);
   const draftCount = rows.filter((r) => r.status === "DRAFT").length;
   const orderedCount = rows.filter((r) => r.status === "ORDERED").length;
@@ -744,7 +760,7 @@ async function PurchaseOrdersTab({ q, status, from, to }: { q?: string; status?:
 }
 
 async function GrnsTab({ q, status, from, to }: { q?: string; status?: string; from: string; to: string }) {
-  const rows = await listGrns({ q, status, from, to });
+  const rows = await withTimeout(listGrns({ q, status, from, to }), TIMEOUT_MS, TIMEOUT_MSG);
   const totalValue = rows.reduce((s, r) => s + r.total, 0);
   const draftCount = rows.filter((r) => r.status === "DRAFT").length;
   const postedCount = rows.filter((r) => r.status === "POSTED").length;
@@ -810,7 +826,7 @@ async function GrnsTab({ q, status, from, to }: { q?: string; status?: string; f
 }
 
 async function SupplierReturnsTab({ from, to }: { from: string; to: string }) {
-  const rows = await listAllSupplierReturns({ from, to });
+  const rows = await withTimeout(listAllSupplierReturns({ from, to }), TIMEOUT_MS, TIMEOUT_MSG);
   const totalValue = rows.reduce((s, r) => s + r.value, 0);
 
   return (
@@ -852,7 +868,7 @@ async function SupplierReturnsTab({ from, to }: { from: string; to: string }) {
 }
 
 async function InvoicesReportTab({ q, status, from, to }: { q?: string; status?: string; from: string; to: string }) {
-  const rows = await listInvoices({ q, status, from, to, limit: 1_000_000 });
+  const rows = await withTimeout(listInvoices({ q, status, from, to, limit: 1_000_000 }), TIMEOUT_MS, TIMEOUT_MSG);
   const totalValue = rows.reduce((s, r) => s + (r.total ?? 0), 0);
   const outstandingRows = rows.filter((r) => r.status === "OUTSTANDING");
   const outstanding = outstandingRows.reduce((s, r) => s + (r.total ?? 0), 0);
@@ -922,7 +938,7 @@ async function InvoicesReportTab({ q, status, from, to }: { q?: string; status?:
 }
 
 async function WastageReportTab({ status, from, to }: { status?: string; from: string; to: string }) {
-  const rows = await listWastageEvents({ status, from, to });
+  const rows = await withTimeout(listWastageEvents({ status, from, to }), TIMEOUT_MS, TIMEOUT_MSG);
   const totalCost = rows.reduce((s, r) => s + r.totalCost, 0);
   const draftCount = rows.filter((r) => r.status === "DRAFT").length;
   const postedCount = rows.filter((r) => r.status === "POSTED").length;
@@ -983,7 +999,7 @@ async function WastageReportTab({ status, from, to }: { status?: string; from: s
 }
 
 async function TransfersReportTab({ status, from, to }: { status?: string; from: string; to: string }) {
-  const rows = await listTransfers({ status, from, to });
+  const rows = await withTimeout(listTransfers({ status, from, to }), TIMEOUT_MS, TIMEOUT_MSG);
   const totalValue = rows.reduce((s, r) => s + r.totalCost, 0);
   const draftCount = rows.filter((r) => r.status === "DRAFT").length;
   const inTransitCount = rows.filter((r) => r.status === "IN_TRANSIT").length;
@@ -1047,7 +1063,7 @@ async function TransfersReportTab({ status, from, to }: { status?: string; from:
 }
 
 async function StockCountsTab({ status, from, to }: { status?: string; from: string; to: string }) {
-  const rows = await listStockCounts({ status, from, to });
+  const rows = await withTimeout(listStockCounts({ status, from, to }), TIMEOUT_MS, TIMEOUT_MSG);
   const totalVariance = rows.reduce((s, r) => s + r.totalVarianceValue, 0);
   const draftCount = rows.filter((r) => r.status === "DRAFT").length;
   const postedCount = rows.filter((r) => r.status === "POSTED").length;
@@ -1108,7 +1124,7 @@ async function StockCountsTab({ status, from, to }: { status?: string; from: str
 }
 
 async function ProductionReportTab({ status, from, to }: { status?: string; from: string; to: string }) {
-  const rows = await listProductionBatches({ status, from, to });
+  const rows = await withTimeout(listProductionBatches({ status, from, to }), TIMEOUT_MS, TIMEOUT_MSG);
   const totalCost = rows.reduce((s, r) => s + r.totalCost, 0);
   const openCount = rows.filter((r) => r.status === "OPEN").length;
   const closedCount = rows.filter((r) => r.status === "CLOSED").length;
