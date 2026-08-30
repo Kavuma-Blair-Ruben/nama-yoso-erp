@@ -3,7 +3,7 @@ import { sql } from "drizzle-orm";
 import { db } from "@/server/db";
 import { withTimeout } from "@/lib/withTimeout";
 
-// Deliberately public (see proxy.ts's PUBLIC_PATHS) and cheap — a single
+// Deliberately public (proxy.ts no longer gates any path) and cheap — a single
 // round trip on the shared connection pool. Pinged by keep-alive.yml so the
 // pooler always has a warm connection to hand out, instead of every user's
 // first request after a gap paying full reconnect cost on top of whatever
