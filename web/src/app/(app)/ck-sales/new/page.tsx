@@ -4,10 +4,11 @@ import { DeliveryNoteBuilder } from "@/components/ckSales/DeliveryNoteBuilder";
 import { getCustomersForPicker } from "@/server/db/queries/ckSales";
 import { listIngredientPickerItems } from "@/server/db/queries/recipes";
 import { listBranches } from "@/server/db/queries/purchaseOrders";
+import { withTimeout } from "@/lib/withTimeout";
 
 export default async function NewCkSalePage() {
   await requireSection("ckwarehouse", "edit");
-  const [items, customers, branches] = await Promise.all([listIngredientPickerItems(), getCustomersForPicker(), listBranches()]);
+  const [items, customers, branches] = await withTimeout(Promise.all([listIngredientPickerItems(), getCustomersForPicker(), listBranches()]), 20000, "This is taking longer than expected — please try again in a moment.");
 
   return (
     <>

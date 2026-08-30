@@ -4,11 +4,12 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { getProductByCode } from "@/server/db/queries/products";
 import { listBranches } from "@/server/db/queries/purchaseOrders";
 import { LabelSheet } from "@/components/products/LabelSheet";
+import { withTimeout } from "@/lib/withTimeout";
 
 export default async function ProductLabelsPage({ params }: PageProps<"/products/[code]/labels">) {
   await requireSection("items", "view");
   const { code } = await params;
-  const [data, branches] = await Promise.all([getProductByCode(code), listBranches()]);
+  const [data, branches] = await withTimeout(Promise.all([getProductByCode(code), listBranches()]), 20000, "This is taking longer than expected — please try again in a moment.");
   if (!data) notFound();
   const { item } = data;
 

@@ -4,11 +4,12 @@ import { getGrnDetail } from "@/server/db/queries/grn";
 import { fmt, money } from "@/lib/format";
 import { Logo } from "@/components/ui/Logo";
 import { PrintButton } from "@/components/ui/PrintButton";
+import { withTimeout } from "@/lib/withTimeout";
 
 export default async function GrnPrintPage({ params }: PageProps<"/grn/[id]/print">) {
   await requireSection("grn", "view");
   const { id } = await params;
-  const data = await getGrnDetail(id);
+  const data = await withTimeout(getGrnDetail(id), 20000, "This is taking longer than expected — please try again in a moment.");
   if (!data) notFound();
   const { grn, lines, net, vat, total } = data;
   const grossBeforeDiscount = lines.reduce((s, l) => s + (l.isFoc ? 0 : l.receivedQty * l.rate), 0);

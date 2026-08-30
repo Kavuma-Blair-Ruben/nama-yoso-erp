@@ -9,6 +9,7 @@ import { SendDocumentButtons } from "@/components/ui/SendDocumentButtons";
 import { sendPurchaseOrderEmail, sendPurchaseOrderWhatsApp } from "@/server/actions/purchaseOrders";
 import { isWhatsAppBusinessConfigured } from "@/lib/whatsappBusiness";
 import { fmt, money } from "@/lib/format";
+import { withTimeout } from "@/lib/withTimeout";
 
 const STATUS_CLASS: Record<string, string> = {
   DRAFT: "status-draft",
@@ -22,12 +23,12 @@ const STATUS_CLASS: Record<string, string> = {
 export default async function PurchaseOrderDetailPage({ params }: PageProps<"/purchase-orders/[id]">) {
   const session = await requireSection("orders", "view");
   const { id } = await params;
-  const data = await getPurchaseOrderDetail(id);
+  const data = await withTimeout(getPurchaseOrderDetail(id), 20000, "This is taking longer than expected — please try again in a moment.");
   if (!data) notFound();
   const { po, lines, net, vat, total } = data;
   const canEdit = hasAccess(session, "orders", "edit");
   const canReceive = po.status === "ORDERED" || po.status === "PARTIALLY RECEIVED";
-  const approvalProgress = await getPoApprovalProgress(po.id, total);
+  const approvalProgress = await withTimeout(getPoApprovalProgress(po.id, total), 20000, "This is taking longer than expected — please try again in a moment.");
 
   const waDigitsOnly = po.supplierPhone?.replace(/[^0-9]/g, "") ?? "";
   const waText = encodeURIComponent(

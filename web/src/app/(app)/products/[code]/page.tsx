@@ -8,15 +8,16 @@ import { VariantsPanel } from "@/components/products/VariantsPanel";
 import { ItemSetupPanel } from "@/components/products/ItemSetupPanel";
 import { fmt, money } from "@/lib/format";
 import { categorizeUnit } from "@/lib/unitMath";
+import { withTimeout } from "@/lib/withTimeout";
 
 export default async function ProductDetailPage({ params }: PageProps<"/products/[code]">) {
   const session = await requireSection("items", "view");
   const { code } = await params;
-  const [data, accountingCategories, supplierOptions] = await Promise.all([
+  const [data, accountingCategories, supplierOptions] = await withTimeout(Promise.all([
     getProductByCode(code),
     listAccountingCategories(),
     listSuppliersForFilter(),
-  ]);
+  ]), 20000, "This is taking longer than expected — please try again in a moment.");
   if (!data) notFound();
   const { item, variants, history, usedIn, stockByBranch } = data;
   const canEdit = hasAccess(session, "items", "edit");

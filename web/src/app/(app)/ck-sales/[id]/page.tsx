@@ -7,11 +7,12 @@ import { SendDocumentButtons } from "@/components/ui/SendDocumentButtons";
 import { sendDeliveryNoteEmail, sendDeliveryNoteWhatsApp } from "@/server/actions/ckSales";
 import { isWhatsAppBusinessConfigured } from "@/lib/whatsappBusiness";
 import { fmt, money } from "@/lib/format";
+import { withTimeout } from "@/lib/withTimeout";
 
 export default async function CkSaleDetailPage({ params }: PageProps<"/ck-sales/[id]">) {
   const session = await requireSection("ckwarehouse", "view");
   const { id } = await params;
-  const data = await getDeliveryNoteDetail(id);
+  const data = await withTimeout(getDeliveryNoteDetail(id), 20000, "This is taking longer than expected — please try again in a moment.");
   if (!data) notFound();
   const { dn, lines } = data;
   const canEdit = hasAccess(session, "ckwarehouse", "edit");

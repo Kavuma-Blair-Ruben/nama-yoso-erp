@@ -6,6 +6,7 @@ import { fmt, money } from "@/lib/format";
 import Link from "next/link";
 import { Logo } from "@/components/ui/Logo";
 import { PrintButton } from "@/components/ui/PrintButton";
+import { withTimeout } from "@/lib/withTimeout";
 
 const ACCENT = "#0a5a96";
 
@@ -24,7 +25,7 @@ export default async function RecipePrintPage({ params }: PageProps<"/recipes/[t
   await requireSection("recipes", "view");
   const { type: typeParam, code } = await params;
   const type: RecipeType = typeParam === "sub" ? "sub" : "main";
-  const data = await getRecipeDetail(type, code);
+  const data = await withTimeout(getRecipeDetail(type, code), 20000, "This is taking longer than expected — please try again in a moment.");
   if (!data) notFound();
   const { recipe, cur, branchPrices } = data;
   const dy = displayYield(recipe.yieldQty, recipe.yieldUnit);

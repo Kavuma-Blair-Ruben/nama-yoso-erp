@@ -1,10 +1,11 @@
 import { createSupabaseServerClient } from "@/lib/supabaseServer";
 import { Logo } from "@/components/ui/Logo";
 import { SetPasswordForm } from "./set-password-form";
+import { withTimeout } from "@/lib/withTimeout";
 
 export default async function SetPasswordPage() {
   const supabase = await createSupabaseServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { data: { user } } = await withTimeout(supabase.auth.getUser(), 20000, "This is taking longer than expected — please try again in a moment.");
 
   return (
     <div className="login-page">

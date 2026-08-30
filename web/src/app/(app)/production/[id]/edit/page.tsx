@@ -6,17 +6,18 @@ import { ProductionBuilder } from "@/components/production/ProductionBuilder";
 import { getProductionBatchForEdit, listEligibleSubRecipesWithIngredients, listAllStockBalances } from "@/server/db/queries/production";
 import { listBranches } from "@/server/db/queries/purchaseOrders";
 import { listAllActiveCostCenters } from "@/server/db/queries/costCenters";
+import { withTimeout } from "@/lib/withTimeout";
 
 export default async function EditProductionDraftPage({ params }: PageProps<"/production/[id]/edit">) {
   const session = await requireSection("subrecipes", "edit");
   const { id } = await params;
-  const [data, subRecipes, branches, costCenters, stockBalances] = await Promise.all([
+  const [data, subRecipes, branches, costCenters, stockBalances] = await withTimeout(Promise.all([
     getProductionBatchForEdit(id),
     listEligibleSubRecipesWithIngredients(),
     listBranches(allowedBranchCodes(session)),
     listAllActiveCostCenters(),
     listAllStockBalances(),
-  ]);
+  ]), 20000, "This is taking longer than expected — please try again in a moment.");
   if (!data) notFound();
   const { batch, ingredients } = data;
 

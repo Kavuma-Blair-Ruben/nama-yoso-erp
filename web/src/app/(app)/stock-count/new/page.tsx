@@ -8,17 +8,18 @@ import { listStockBalancesBySector } from "@/server/db/queries/production";
 import { listAllActiveCostCenters } from "@/server/db/queries/costCenters";
 import { listStockCountTemplatesWithItems } from "@/server/db/queries/stockCount";
 import { getSystemSettings } from "@/server/db/queries/settings";
+import { withTimeout } from "@/lib/withTimeout";
 
 export default async function NewStockCountPage() {
   const session = await requireSection("stockcount", "edit");
-  const [items, branches, stockBalances, costCenters, templates, settings] = await Promise.all([
+  const [items, branches, stockBalances, costCenters, templates, settings] = await withTimeout(Promise.all([
     listIngredientPickerItems(),
     listBranches(allowedBranchCodes(session)),
     listStockBalancesBySector(),
     listAllActiveCostCenters(),
     listStockCountTemplatesWithItems(),
     getSystemSettings(),
-  ]);
+  ]), 20000, "This is taking longer than expected — please try again in a moment.");
 
   return (
     <>

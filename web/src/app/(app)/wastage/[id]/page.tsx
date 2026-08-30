@@ -6,11 +6,12 @@ import { getWastageEventDetail } from "@/server/db/queries/wastage";
 import { PostWastageDraftButton } from "@/components/wastage/PostWastageDraftButton";
 import { DeleteWastageDraftButton } from "@/components/wastage/DeleteWastageDraftButton";
 import { fmt, money } from "@/lib/format";
+import { withTimeout } from "@/lib/withTimeout";
 
 export default async function WastageDetailPage({ params }: PageProps<"/wastage/[id]">) {
   const session = await requireSection("wastage", "view");
   const { id } = await params;
-  const data = await getWastageEventDetail(id);
+  const data = await withTimeout(getWastageEventDetail(id), 20000, "This is taking longer than expected — please try again in a moment.");
   if (!data) notFound();
   const { event, lines } = data;
   const canEdit = hasAccess(session, "wastage", "edit");

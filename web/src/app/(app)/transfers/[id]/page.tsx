@@ -7,13 +7,14 @@ import { SendTransferDraftButton } from "@/components/transfers/SendTransferDraf
 import { ReceiveTransferButton } from "@/components/transfers/ReceiveTransferButton";
 import { DeleteTransferDraftButton } from "@/components/transfers/DeleteTransferDraftButton";
 import { fmt, money } from "@/lib/format";
+import { withTimeout } from "@/lib/withTimeout";
 
 const STATUS_BADGE_CLASS: Record<string, string> = { DRAFT: "status-draft", IN_TRANSIT: "status-ordered", POSTED: "status-received" };
 
 export default async function TransferDetailPage({ params }: PageProps<"/transfers/[id]">) {
   const session = await requireSection("transfers", "view");
   const { id } = await params;
-  const data = await getTransferDetail(id);
+  const data = await withTimeout(getTransferDetail(id), 20000, "This is taking longer than expected — please try again in a moment.");
   if (!data) notFound();
   const { transfer, lines } = data;
   const canEdit = hasAccess(session, "transfers", "edit");

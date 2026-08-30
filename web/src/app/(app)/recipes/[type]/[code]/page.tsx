@@ -7,12 +7,13 @@ import { LedgerRow } from "@/components/recipes/LedgerRow";
 import { DeleteRecipeButton } from "@/components/recipes/DeleteRecipeButton";
 import { displayYield, normalizeToKgLtr } from "@/lib/unitMath";
 import { fmt, money, pct } from "@/lib/format";
+import { withTimeout } from "@/lib/withTimeout";
 
 export default async function RecipeDetailPage({ params }: PageProps<"/recipes/[type]/[code]">) {
   const session = await requireSection("recipes", "view");
   const { type: typeParam, code } = await params;
   const type: RecipeType = typeParam === "sub" ? "sub" : "main";
-  const data = await getRecipeDetail(type, code);
+  const data = await withTimeout(getRecipeDetail(type, code), 20000, "This is taking longer than expected — please try again in a moment.");
   if (!data) notFound();
   const { recipe, cur, orig, variancePct, branchPrices } = data;
   const canEdit = hasAccess(session, type === "main" ? "recipes" : "subrecipes", "edit");

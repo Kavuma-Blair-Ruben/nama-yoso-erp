@@ -7,18 +7,19 @@ import { getWastageEventForEdit, listWastageReasons } from "@/server/db/queries/
 import { listIngredientPickerItems, listMainRecipesForPicker } from "@/server/db/queries/recipes";
 import { listBranches } from "@/server/db/queries/purchaseOrders";
 import { listAllActiveCostCenters } from "@/server/db/queries/costCenters";
+import { withTimeout } from "@/lib/withTimeout";
 
 export default async function EditWastageDraftPage({ params }: PageProps<"/wastage/[id]/edit">) {
   const session = await requireSection("wastage", "edit");
   const { id } = await params;
-  const [data, items, mainRecipes, costCenters, branches, reasons] = await Promise.all([
+  const [data, items, mainRecipes, costCenters, branches, reasons] = await withTimeout(Promise.all([
     getWastageEventForEdit(id),
     listIngredientPickerItems(),
     listMainRecipesForPicker(),
     listAllActiveCostCenters(),
     listBranches(allowedBranchCodes(session)),
     listWastageReasons(),
-  ]);
+  ]), 20000, "This is taking longer than expected — please try again in a moment.");
   if (!data) notFound();
   const { event, lines } = data;
 

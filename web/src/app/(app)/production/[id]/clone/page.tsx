@@ -6,17 +6,18 @@ import { ProductionBuilder } from "@/components/production/ProductionBuilder";
 import { getProductionBatchForClone, listEligibleSubRecipesWithIngredients, listAllStockBalances } from "@/server/db/queries/production";
 import { listBranches } from "@/server/db/queries/purchaseOrders";
 import { listAllActiveCostCenters } from "@/server/db/queries/costCenters";
+import { withTimeout } from "@/lib/withTimeout";
 
 export default async function CloneProductionPage({ params }: PageProps<"/production/[id]/clone">) {
   const session = await requireSection("subrecipes", "edit");
   const { id } = await params;
-  const [batch, subRecipes, branches, costCenters, stockBalances] = await Promise.all([
+  const [batch, subRecipes, branches, costCenters, stockBalances] = await withTimeout(Promise.all([
     getProductionBatchForClone(id),
     listEligibleSubRecipesWithIngredients(),
     listBranches(allowedBranchCodes(session)),
     listAllActiveCostCenters(),
     listAllStockBalances(),
-  ]);
+  ]), 20000, "This is taking longer than expected — please try again in a moment.");
   if (!batch) notFound();
 
   return (

@@ -8,11 +8,12 @@ import { DeleteProductionDraftButton } from "@/components/production/DeleteProdu
 import { ProductionTicketAutoPrint } from "@/components/production/ProductionTicketAutoPrint";
 import { fmt, money, formatDurationMinutes } from "@/lib/format";
 import { ledgerDisplayUnit, gramsDisplay } from "@/lib/unitMath";
+import { withTimeout } from "@/lib/withTimeout";
 
 export default async function ProductionDetailPage({ params }: PageProps<"/production/[id]">) {
   const session = await requireSection("subrecipes", "view");
   const { id } = await params;
-  const data = await getProductionBatchDetail(id);
+  const data = await withTimeout(getProductionBatchDetail(id), 20000, "This is taking longer than expected — please try again in a moment.");
   if (!data) notFound();
   const { batch, ingredients } = data;
   const canEdit = hasAccess(session, "subrecipes", "edit");

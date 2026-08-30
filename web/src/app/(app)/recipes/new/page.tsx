@@ -4,6 +4,7 @@ import { RecipeBuilder } from "@/components/recipes/RecipeBuilder";
 import { getRecipeForEdit, listRecipeIngredientPickerItems, type RecipeType } from "@/server/db/queries/recipes";
 import { listActiveBranches } from "@/server/db/queries/branches";
 import { listMenuCategories } from "@/server/db/queries/menuCategories";
+import { withTimeout } from "@/lib/withTimeout";
 
 export default async function NewRecipePage({ searchParams }: PageProps<"/recipes/new">) {
   const sp = await searchParams;
@@ -12,12 +13,12 @@ export default async function NewRecipePage({ searchParams }: PageProps<"/recipe
   const cloneFrom = typeof sp.cloneFrom === "string" ? sp.cloneFrom : null;
   const kind = sp.kind === "modifier" || sp.kind === "combo" ? sp.kind : undefined;
 
-  const [items, cloneData, branchOptions, menuCategories] = await Promise.all([
+  const [items, cloneData, branchOptions, menuCategories] = await withTimeout(Promise.all([
     listRecipeIngredientPickerItems(type),
     cloneFrom ? getRecipeForEdit(type, cloneFrom) : null,
     listActiveBranches(),
     listMenuCategories(),
-  ]);
+  ]), 20000, "This is taking longer than expected — please try again in a moment.");
 
   const initial = cloneData
     ? {

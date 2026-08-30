@@ -3,11 +3,12 @@ import { requireSection } from "@/server/auth/permissions";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { getDeliveryNoteDetail } from "@/server/db/queries/ckSales";
 import { ReturnBuilder } from "@/components/ckSales/ReturnBuilder";
+import { withTimeout } from "@/lib/withTimeout";
 
 export default async function NewReturnPage({ params }: PageProps<"/ck-sales/[id]/return">) {
   await requireSection("ckwarehouse", "edit");
   const { id } = await params;
-  const data = await getDeliveryNoteDetail(id);
+  const data = await withTimeout(getDeliveryNoteDetail(id), 20000, "This is taking longer than expected — please try again in a moment.");
   if (!data) notFound();
   const { dn, lines } = data;
 

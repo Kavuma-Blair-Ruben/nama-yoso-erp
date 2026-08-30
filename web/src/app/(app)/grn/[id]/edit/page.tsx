@@ -7,19 +7,20 @@ import { getGrnForEdit } from "@/server/db/queries/grn";
 import { listPurchasableProductsForPicker, listAllSuppliers, listBranches } from "@/server/db/queries/purchaseOrders";
 import { listAllActiveCostCenters } from "@/server/db/queries/costCenters";
 import { getOrCreateCashSupplierId } from "@/server/db/queries/suppliers";
+import { withTimeout } from "@/lib/withTimeout";
 
 export default async function EditGrnPage({ params }: PageProps<"/grn/[id]/edit">) {
   const session = await requireSection("grn", "edit");
   const { id } = await params;
 
-  const [data, products, suppliers, branches, costCenters, cashSupplierId] = await Promise.all([
+  const [data, products, suppliers, branches, costCenters, cashSupplierId] = await withTimeout(Promise.all([
     getGrnForEdit(id),
     listPurchasableProductsForPicker(),
     listAllSuppliers(),
     listBranches(allowedBranchCodes(session)),
     listAllActiveCostCenters(),
     getOrCreateCashSupplierId(),
-  ]);
+  ]), 20000, "This is taking longer than expected — please try again in a moment.");
   if (!data) notFound();
   const { grn, lines } = data;
   const mode: "po" | "direct" = grn.purchaseOrderId ? "po" : "direct";

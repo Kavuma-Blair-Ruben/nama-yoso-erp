@@ -4,11 +4,12 @@ import { requireSection } from "@/server/auth/permissions";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { getConsolidatedInvoiceDetail } from "@/server/db/queries/grn";
 import { fmt, money } from "@/lib/format";
+import { withTimeout } from "@/lib/withTimeout";
 
 export default async function ConsolidatedInvoiceDetailPage({ params }: PageProps<"/consolidated-invoices/[id]">) {
   await requireSection("grn", "view");
   const { id } = await params;
-  const data = await getConsolidatedInvoiceDetail(id);
+  const data = await withTimeout(getConsolidatedInvoiceDetail(id), 20000, "This is taking longer than expected — please try again in a moment.");
   if (!data) notFound();
   const { ci, grns } = data;
 

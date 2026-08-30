@@ -4,6 +4,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { getMaterialRequestDetail, MR_NEXT_STATUSES, type MrStatus } from "@/server/db/queries/materialRequests";
 import { MrStatusActions } from "@/components/materialRequests/MrStatusActions";
 import { fmt } from "@/lib/format";
+import { withTimeout } from "@/lib/withTimeout";
 
 const STATUS_CLASS: Record<string, string> = {
   "PENDING APPROVAL": "status-ordered",
@@ -15,7 +16,7 @@ const STATUS_CLASS: Record<string, string> = {
 export default async function MaterialRequestDetailPage({ params }: PageProps<"/material-requests/[id]">) {
   const session = await requireSection("orders", "view");
   const { id } = await params;
-  const data = await getMaterialRequestDetail(id);
+  const data = await withTimeout(getMaterialRequestDetail(id), 20000, "This is taking longer than expected — please try again in a moment.");
   if (!data) notFound();
   const { request, lines } = data;
   const canEdit = hasAccess(session, "orders", "edit");

@@ -2,10 +2,11 @@ import { requireSection } from "@/server/auth/permissions";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ConsolidateBuilder } from "@/components/grn/ConsolidateBuilder";
 import { listConsolidatableGrnsBySupplier } from "@/server/db/queries/grn";
+import { withTimeout } from "@/lib/withTimeout";
 
 export default async function NewConsolidatedInvoicePage() {
   await requireSection("grn", "edit");
-  const groups = await listConsolidatableGrnsBySupplier();
+  const groups = await withTimeout(listConsolidatableGrnsBySupplier(), 20000, "This is taking longer than expected — please try again in a moment.");
 
   return (
     <>

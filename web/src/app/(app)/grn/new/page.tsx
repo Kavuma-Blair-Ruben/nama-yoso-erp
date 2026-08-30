@@ -7,6 +7,7 @@ import { listPurchasableProductsForPicker, listAllSuppliers, listBranches } from
 import { listAllActiveCostCenters } from "@/server/db/queries/costCenters";
 import { getOrCreateCashSupplierId } from "@/server/db/queries/suppliers";
 import { notFound } from "next/navigation";
+import { withTimeout } from "@/lib/withTimeout";
 
 export default async function NewGrnPage({ searchParams }: PageProps<"/grn/new">) {
   const session = await requireSection("grn", "edit");
@@ -14,7 +15,7 @@ export default async function NewGrnPage({ searchParams }: PageProps<"/grn/new">
   const poId = typeof sp.poId === "string" ? sp.poId : null;
 
   if (poId) {
-    const data = await getPOLinesForReceiving(poId);
+    const data = await withTimeout(getPOLinesForReceiving(poId), 20000, "This is taking longer than expected — please try again in a moment.");
     if (!data) notFound();
     const { po, lines } = data;
     const initialLines = lines.map((l) => ({
@@ -53,13 +54,13 @@ export default async function NewGrnPage({ searchParams }: PageProps<"/grn/new">
     );
   }
 
-  const [products, suppliers, branches, costCenters, cashSupplierId] = await Promise.all([
+  const [products, suppliers, branches, costCenters, cashSupplierId] = await withTimeout(Promise.all([
     listPurchasableProductsForPicker(),
     listAllSuppliers(),
     listBranches(allowedBranchCodes(session)),
     listAllActiveCostCenters(),
     getOrCreateCashSupplierId(),
-  ]);
+  ]), 20000, "This is taking longer than expected — please try again in a moment.");
   return (
     <>
       <PageHeader title="Receive Stock — Direct GRN" subtitle="Record stock that arrived without a purchase order." backHref="/grn" backLabel="GRN" />

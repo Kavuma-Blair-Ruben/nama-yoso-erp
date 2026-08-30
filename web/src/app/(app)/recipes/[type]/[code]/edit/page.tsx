@@ -5,18 +5,19 @@ import { RecipeBuilder } from "@/components/recipes/RecipeBuilder";
 import { getRecipeForEdit, listRecipeIngredientPickerItems, type RecipeType } from "@/server/db/queries/recipes";
 import { listActiveBranches } from "@/server/db/queries/branches";
 import { listMenuCategories } from "@/server/db/queries/menuCategories";
+import { withTimeout } from "@/lib/withTimeout";
 
 export default async function EditRecipePage({ params }: PageProps<"/recipes/[type]/[code]/edit">) {
   const { type: typeParam, code } = await params;
   const type: RecipeType = typeParam === "sub" ? "sub" : "main";
   await requireSection(type === "main" ? "recipes" : "subrecipes", "edit");
 
-  const [data, items, branchOptions, menuCategories] = await Promise.all([
+  const [data, items, branchOptions, menuCategories] = await withTimeout(Promise.all([
     getRecipeForEdit(type, code),
     listRecipeIngredientPickerItems(type, code),
     listActiveBranches(),
     listMenuCategories(),
-  ]);
+  ]), 20000, "This is taking longer than expected — please try again in a moment.");
   if (!data) notFound();
   const { recipe, ingredients, branchPrices } = data;
 

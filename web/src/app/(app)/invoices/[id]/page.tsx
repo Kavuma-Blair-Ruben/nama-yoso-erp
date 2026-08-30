@@ -4,11 +4,12 @@ import { requireSection } from "@/server/auth/permissions";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { getInvoiceDetail } from "@/server/db/queries/invoices";
 import { fmt, money } from "@/lib/format";
+import { withTimeout } from "@/lib/withTimeout";
 
 export default async function InvoiceDetailPage({ params }: PageProps<"/invoices/[id]">) {
   await requireSection("suppliers", "view");
   const { id } = await params;
-  const data = await getInvoiceDetail(id);
+  const data = await withTimeout(getInvoiceDetail(id), 20000, "This is taking longer than expected — please try again in a moment.");
   if (!data) notFound();
   const { invoice, lines } = data;
 

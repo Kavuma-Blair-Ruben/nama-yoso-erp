@@ -9,11 +9,12 @@ import { listBranches } from "@/server/db/queries/purchaseOrders";
 import { listStockBalancesBySector } from "@/server/db/queries/production";
 import { listAllActiveCostCenters } from "@/server/db/queries/costCenters";
 import { getSystemSettings } from "@/server/db/queries/settings";
+import { withTimeout } from "@/lib/withTimeout";
 
 export default async function EditStockCountDraftPage({ params }: PageProps<"/stock-count/[id]/edit">) {
   const session = await requireSection("stockcount", "edit");
   const { id } = await params;
-  const [data, items, branches, stockBalances, costCenters, templates, settings] = await Promise.all([
+  const [data, items, branches, stockBalances, costCenters, templates, settings] = await withTimeout(Promise.all([
     getStockCountForEdit(id),
     listIngredientPickerItems(),
     listBranches(allowedBranchCodes(session)),
@@ -21,7 +22,7 @@ export default async function EditStockCountDraftPage({ params }: PageProps<"/st
     listAllActiveCostCenters(),
     listStockCountTemplatesWithItems(),
     getSystemSettings(),
-  ]);
+  ]), 20000, "This is taking longer than expected — please try again in a moment.");
   if (!data) notFound();
   const { stockCount, lines } = data;
 

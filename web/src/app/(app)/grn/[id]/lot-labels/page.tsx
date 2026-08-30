@@ -3,11 +3,12 @@ import { requireSection } from "@/server/auth/permissions";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { getGrnLinesForLabels } from "@/server/db/queries/grn";
 import { LotLabelSheet } from "@/components/grn/LotLabelSheet";
+import { withTimeout } from "@/lib/withTimeout";
 
 export default async function GrnLotLabelsPage({ params }: PageProps<"/grn/[id]/lot-labels">) {
   await requireSection("grn", "view");
   const { id } = await params;
-  const data = await getGrnLinesForLabels(id);
+  const data = await withTimeout(getGrnLinesForLabels(id), 20000, "This is taking longer than expected — please try again in a moment.");
   if (!data) notFound();
   const { grn, lines } = data;
 

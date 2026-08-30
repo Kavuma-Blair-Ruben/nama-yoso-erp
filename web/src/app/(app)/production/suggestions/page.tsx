@@ -6,6 +6,7 @@ import { listBranches } from "@/server/db/queries/purchaseOrders";
 import { listAllActiveCostCenters } from "@/server/db/queries/costCenters";
 import { fmt } from "@/lib/format";
 import { canonicalUnitLabel } from "@/lib/unitMath";
+import { withTimeout } from "@/lib/withTimeout";
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
@@ -14,15 +15,15 @@ function round2(n: number): number {
 export default async function AutoProductionPage({ searchParams }: PageProps<"/production/suggestions">) {
   await requireSection("subrecipes", "edit");
   const sp = await searchParams;
-  const branches = await listBranches();
+  const branches = await withTimeout(listBranches(), 20000, "This is taking longer than expected — please try again in a moment.");
   const branchId = typeof sp.branch === "string" && branches.some((b) => b.id === sp.branch) ? sp.branch : (branches[0]?.id ?? "");
   const targetCoverDays = typeof sp.cover === "string" && Number(sp.cover) > 0 ? Number(sp.cover) : 14;
-  const costCenters = await listAllActiveCostCenters();
+  const costCenters = await withTimeout(listAllActiveCostCenters(), 20000, "This is taking longer than expected — please try again in a moment.");
   const costCentersForBranch = costCenters.filter((c) => c.branchId === branchId);
   const kitchenCostCenterId = costCentersForBranch.find((c) => c.name === "Kitchen")?.id ?? costCentersForBranch[0]?.id;
 
   const { rows, skippedNoDemandCount } = branchId
-    ? await getAutoProductionSuggestions(branchId, { targetCoverDays })
+    ? await withTimeout(getAutoProductionSuggestions(branchId, { targetCoverDays }), 20000, "This is taking longer than expected — please try again in a moment.")
     : { rows: [], skippedNoDemandCount: 0 };
   const lowCount = rows.filter((r) => r.status === "low").length;
 

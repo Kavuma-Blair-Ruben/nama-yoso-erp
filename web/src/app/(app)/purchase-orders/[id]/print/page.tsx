@@ -4,11 +4,12 @@ import { getPurchaseOrderDetail } from "@/server/db/queries/purchaseOrders";
 import { fmt, money } from "@/lib/format";
 import { Logo } from "@/components/ui/Logo";
 import { PrintButton } from "@/components/ui/PrintButton";
+import { withTimeout } from "@/lib/withTimeout";
 
 export default async function PurchaseOrderPrintPage({ params }: PageProps<"/purchase-orders/[id]/print">) {
   await requireSection("orders", "view");
   const { id } = await params;
-  const data = await getPurchaseOrderDetail(id);
+  const data = await withTimeout(getPurchaseOrderDetail(id), 20000, "This is taking longer than expected — please try again in a moment.");
   if (!data) notFound();
   const { po, lines, net, vat, total } = data;
 

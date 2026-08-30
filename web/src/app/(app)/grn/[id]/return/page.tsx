@@ -3,11 +3,12 @@ import { requireSection } from "@/server/auth/permissions";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { getGrnDetail, getGrnLinesForReturn } from "@/server/db/queries/grn";
 import { SupplierReturnBuilder } from "@/components/grn/SupplierReturnBuilder";
+import { withTimeout } from "@/lib/withTimeout";
 
 export default async function NewSupplierReturnPage({ params }: PageProps<"/grn/[id]/return">) {
   await requireSection("grn", "edit");
   const { id } = await params;
-  const [data, lines] = await Promise.all([getGrnDetail(id), getGrnLinesForReturn(id)]);
+  const [data, lines] = await withTimeout(Promise.all([getGrnDetail(id), getGrnLinesForReturn(id)]), 20000, "This is taking longer than expected — please try again in a moment.");
   if (!data) notFound();
   const { grn } = data;
   if (grn.status !== "POSTED") notFound();

@@ -3,11 +3,12 @@ import { requireSection } from "@/server/auth/permissions";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { getProductionBatchDetail } from "@/server/db/queries/production";
 import { ProductionLabelSheet } from "@/components/production/ProductionLabelSheet";
+import { withTimeout } from "@/lib/withTimeout";
 
 export default async function ProductionLabelsPage({ params }: PageProps<"/production/[id]/labels">) {
   await requireSection("subrecipes", "view");
   const { id } = await params;
-  const data = await getProductionBatchDetail(id);
+  const data = await withTimeout(getProductionBatchDetail(id), 20000, "This is taking longer than expected — please try again in a moment.");
   if (!data) notFound();
   const { batch } = data;
 

@@ -5,16 +5,17 @@ import { ProductionBuilder } from "@/components/production/ProductionBuilder";
 import { listEligibleSubRecipesWithIngredients, listAllStockBalances } from "@/server/db/queries/production";
 import { listBranches } from "@/server/db/queries/purchaseOrders";
 import { listAllActiveCostCenters } from "@/server/db/queries/costCenters";
+import { withTimeout } from "@/lib/withTimeout";
 
 export default async function NewProductionPage({ searchParams }: PageProps<"/production/new">) {
   const session = await requireSection("subrecipes", "edit");
   const sp = await searchParams;
-  const [subRecipes, branches, costCenters, stockBalances] = await Promise.all([
+  const [subRecipes, branches, costCenters, stockBalances] = await withTimeout(Promise.all([
     listEligibleSubRecipesWithIngredients(),
     listBranches(allowedBranchCodes(session)),
     listAllActiveCostCenters(),
     listAllStockBalances(),
-  ]);
+  ]), 20000, "This is taking longer than expected — please try again in a moment.");
 
   // Prefilled when arriving from Auto Production's "Open Batch" link —
   // subRecipeId/scaleMultiplier are the two fields that actually matter,

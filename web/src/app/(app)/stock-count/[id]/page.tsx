@@ -6,11 +6,12 @@ import { getStockCountDetail } from "@/server/db/queries/stockCount";
 import { PostStockCountDraftButton } from "@/components/stockCount/PostStockCountDraftButton";
 import { DeleteStockCountDraftButton } from "@/components/stockCount/DeleteStockCountDraftButton";
 import { fmt, money } from "@/lib/format";
+import { withTimeout } from "@/lib/withTimeout";
 
 export default async function StockCountDetailPage({ params }: PageProps<"/stock-count/[id]">) {
   const session = await requireSection("stockcount", "view");
   const { id } = await params;
-  const data = await getStockCountDetail(id);
+  const data = await withTimeout(getStockCountDetail(id), 20000, "This is taking longer than expected — please try again in a moment.");
   if (!data) notFound();
   const { stockCount, lines } = data;
   const canEdit = hasAccess(session, "stockcount", "edit");
