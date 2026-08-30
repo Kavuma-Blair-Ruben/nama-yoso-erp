@@ -56,7 +56,7 @@ async function OverviewTab() {
   // past the loading.tsx spinner indefinitely, since nothing ever threw for
   // the (app)/error.tsx boundary to catch — the single biggest remaining
   // gap, on the single most-visited page in the app.
-  const { d, digest } = await withTimeout(getCachedOverviewData(), 20000, "This is taking longer than expected — please try again in a moment.");
+  const { d, digest } = await withTimeout(getCachedOverviewData(), 28000, "This is taking longer than expected — please try again in a moment.");
 
   return (
     <>
@@ -225,7 +225,7 @@ async function OverviewTab() {
 }
 
 async function PurchasingTab() {
-  const stats = await withTimeout(getPurchasingStats(), 20000, "This is taking longer than expected — please try again in a moment.");
+  const stats = await withTimeout(getPurchasingStats(), 28000, "This is taking longer than expected — please try again in a moment.");
   const agingColor: Record<string, string> = { "0-14": "var(--chart-1)", "15-30": "var(--chart-1)", "31-60": "var(--chart-5)", "61-90": "var(--bad)", "90+": "var(--bad)" };
 
   return (
@@ -282,7 +282,7 @@ const GRADE_COLOR: Record<string, string> = {
 };
 
 async function SupplierDashboardTab() {
-  const suppliers = await withTimeout(listSuppliers(), 20000, "This is taking longer than expected — please try again in a moment.");
+  const suppliers = await withTimeout(listSuppliers(), 28000, "This is taking longer than expected — please try again in a moment.");
   const bySpend = [...suppliers].sort((a, b) => b.totalSpend - a.totalSpend).filter((s) => s.totalSpend > 0);
   const totalSpend = bySpend.reduce((s, x) => s + x.totalSpend, 0);
   const top5 = bySpend.slice(0, 5);
@@ -423,7 +423,7 @@ async function CostDashboardTab() {
   // Cached for 45s (see getCachedCostDashboardData) — loadCostingGraph()
   // alone measured at 5.4s; repeat views within the window are instant.
   // withTimeout, not statement_timeout — same reasoning as OverviewTab above.
-  const { d, adjustments } = await withTimeout(getCachedCostDashboardData(), 20000, "This is taking longer than expected — please try again in a moment.");
+  const { d, adjustments } = await withTimeout(getCachedCostDashboardData(), 28000, "This is taking longer than expected — please try again in a moment.");
   const totalDrift = adjustments.reduce((s, e) => s + e.affected.reduce((s2, a) => s2 + a.impact, 0), 0);
   const increases = adjustments.filter((e) => e.pctChange > 0).length;
   const decreases = adjustments.filter((e) => e.pctChange < 0).length;
@@ -503,7 +503,7 @@ async function CostDashboardTab() {
 }
 
 async function CogsAnalysisTab({ from, to, view }: { from: string; to: string; view?: string }) {
-  const data = await withTimeout(getCogsAnalysis({ from, to }), 20000, "This is taking longer than expected — please try again in a moment.");
+  const data = await withTimeout(getCogsAnalysis({ from, to }), 28000, "This is taking longer than expected — please try again in a moment.");
   const overTarget = data.targetCogsPct != null && data.cogsPct != null && data.cogsPct > data.targetCogsPct;
   const activeCategory = view === "food" || view === "beverage" ? view : undefined;
   const topRecipes = activeCategory
@@ -628,7 +628,7 @@ async function CogsAnalysisTab({ from, to, view }: { from: string; to: string; v
 }
 
 async function MenuEngineeringTab({ from, to, view }: { from: string; to: string; view?: string }) {
-  const { items, avgQty, avgMargin } = await withTimeout(getMenuEngineeringData({ from, to }), 20000, "This is taking longer than expected — please try again in a moment.");
+  const { items, avgQty, avgMargin } = await withTimeout(getMenuEngineeringData({ from, to }), 28000, "This is taking longer than expected — please try again in a moment.");
   const byClass = { Star: 0, "Plow-Horse": 0, Puzzle: 0, Dog: 0 } as Record<string, number>;
   for (const it of items) byClass[it.classification]++;
   const CLASSES = ["Star", "Plow-Horse", "Puzzle", "Dog"] as const;
@@ -700,7 +700,7 @@ async function MenuEngineeringTab({ from, to, view }: { from: string; to: string
 }
 
 async function CostCenterTab({ from, to }: { from: string; to: string }) {
-  const rows = await withTimeout(getCostCenterStats({ from, to }), 20000, "This is taking longer than expected — please try again in a moment.");
+  const rows = await withTimeout(getCostCenterStats({ from, to }), 28000, "This is taking longer than expected — please try again in a moment.");
   const totalGrnSpend = rows.reduce((s, r) => s + r.grnSpend, 0);
   const totalWastage = rows.reduce((s, r) => s + r.wastageCost, 0);
   const byBranch = new Map<string, typeof rows>();
@@ -746,7 +746,7 @@ async function CostCenterTab({ from, to }: { from: string; to: string }) {
 }
 
 async function SalesDashboardTab({ from, to }: { from: string; to: string }) {
-  const stats = await withTimeout(getSalesDashboardStats({ from, to }), 20000, "This is taking longer than expected — please try again in a moment.");
+  const stats = await withTimeout(getSalesDashboardStats({ from, to }), 28000, "This is taking longer than expected — please try again in a moment.");
 
   return (
     <>
