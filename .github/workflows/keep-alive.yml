@@ -1,18 +1,22 @@
 name: Keep Render app awake
 
-# Render's free tier spins the service down after ~15 minutes with no
-# traffic, and the next real visitor then eats a 20-60s cold-start delay
-# (Render's own "waking up" splash screen). Pinging every 10 minutes keeps
-# it inside that window so it never fully sleeps. If you ever upgrade the
-# Render service to a plan that doesn't spin down, this workflow can just
-# be deleted — it's the free-tier workaround, not something needed on a
-# paid plan.
-# Offset from the top of each 10-minute mark (:03, :13, :23...) rather than
-# :00/:10/:20 — GitHub's own docs note jobs scheduled exactly on the mark are
-# the most likely to get delayed, since that's when Actions load peaks globally.
+# Two separate things this pings for:
+# 1. /login — Render's free tier spins the service down after ~15 minutes
+#    with no traffic, and the next real visitor eats a 20-60s cold-start
+#    delay. Now on a paid Render plan so this half is largely a no-op, but
+#    left in as a cheap safety net.
+# 2. /api/health — actually touches Postgres (a single `select 1` on the
+#    shared connection pool), which /login never did. Supabase's pooler
+#    hands out connections faster when one's already warm, so keeping this
+#    hit regularly shaves the reconnect tax off of whoever's first real
+#    request lands after a gap — separate from, and doesn't fix, the
+#    underlying per-query slowness of the current (Nano) compute tier.
+# Offset from the top of each 5-minute mark rather than exactly on it —
+# GitHub's own docs note jobs scheduled exactly on the mark are the most
+# likely to get delayed, since that's when Actions load peaks globally.
 on:
   schedule:
-    - cron: "3,13,23,33,43,53 * * * *"
+    - cron: "3,8,13,18,23,28,33,38,43,48,53,58 * * * *"
   workflow_dispatch: {}
 
 jobs:
@@ -25,4 +29,12 @@ jobs:
           echo "Response: HTTP $code"
           if [ "$code" -lt 200 ] || [ "$code" -ge 400 ]; then
             echo "::warning::Unexpected status code from keep-alive ping: $code"
+          fi
+      - name: Warm the database connection
+        run: |
+          body=$(curl -s --max-time 20 https://nama-yoso-erp.onrender.com/api/health)
+          echo "Response: $body"
+          ok=$(echo "$body" | grep -o '"ok":true' || true)
+          if [ -z "$ok" ]; then
+            echo "::warning::DB health check did not report ok: $body"
           fi

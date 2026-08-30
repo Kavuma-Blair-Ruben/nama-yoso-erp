@@ -5,7 +5,7 @@ import { withTimeout } from "@/lib/withTimeout";
 // /api/webhooks/* is called by external services (Foodics, etc.) with no
 // Supabase session at all — it authenticates itself (a secret embedded in
 // the URL path), so the session-based auth gate must never intercept it.
-const PUBLIC_PATHS = ["/login", "/auth/confirm", "/set-password", "/api/webhooks"];
+const PUBLIC_PATHS = ["/login", "/auth/confirm", "/set-password", "/api/webhooks", "/api/health"];
 
 /**
  * Optimistic auth gate: confirms a session exists and refreshes the
