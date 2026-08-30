@@ -3,7 +3,7 @@ services:
     name: nama-yoso-erp
     runtime: node
     rootDir: web
-    plan: free
+    plan: 1c-2g
     buildCommand: npm install && npm run build
     startCommand: npm run start
     envVars:
