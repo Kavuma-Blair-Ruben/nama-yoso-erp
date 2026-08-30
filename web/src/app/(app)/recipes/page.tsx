@@ -4,6 +4,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { listRecipesWithCost, type RecipeType } from "@/server/db/queries/recipes";
 import { RecipesCsvImport } from "@/components/recipes/RecipesCsvImport";
 import { fmt, money, pct } from "@/lib/format";
+import { withTimeout } from "@/lib/withTimeout";
 
 type PageTab = "main" | "sub" | "modifier" | "combo";
 const TAB_LABELS: Record<PageTab, string> = { main: "Main Recipes", sub: "Sub-Recipes", modifier: "Modifiers", combo: "Combos" };
@@ -24,7 +25,13 @@ export default async function RecipesPage({ searchParams }: PageProps<"/recipes"
   const q = typeof sp.q === "string" ? sp.q : undefined;
   const section = typeof sp.section === "string" ? sp.section : undefined;
 
-  const { rows, totalCount, sections } = await listRecipesWithCost(type, { q, section, onlyFlagged });
+  // Not statement_timeout — confirmed unreliable through Supabase's
+  // transaction-mode pooler. Throws into (app)/error.tsx on timeout.
+  const { rows, totalCount, sections } = await withTimeout(
+    listRecipesWithCost(type, { q, section, onlyFlagged }),
+    20000,
+    "This is taking longer than expected — please try again in a moment."
+  );
   const unreliableCount = rows.filter((r) => r.unreliableYield).length;
   const canEdit = hasAccess(session, type === "main" ? "recipes" : "subrecipes", "edit");
 

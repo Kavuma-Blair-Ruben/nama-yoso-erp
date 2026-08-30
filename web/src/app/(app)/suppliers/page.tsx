@@ -5,13 +5,16 @@ import { listSuppliers } from "@/server/db/queries/suppliers";
 import { Stars } from "@/components/suppliers/Stars";
 import { SuppliersCsvImport } from "@/components/suppliers/SuppliersCsvImport";
 import { fmt, money } from "@/lib/format";
+import { withTimeout } from "@/lib/withTimeout";
 
 export default async function SuppliersPage({ searchParams }: PageProps<"/suppliers">) {
   const session = await requireSection("suppliers", "view");
   const sp = await searchParams;
   const q = typeof sp.q === "string" ? sp.q : undefined;
   const view = typeof sp.view === "string" ? sp.view : undefined;
-  const allList = await listSuppliers(q);
+  // Not statement_timeout — confirmed unreliable through Supabase's
+  // transaction-mode pooler. Throws into (app)/error.tsx on timeout.
+  const allList = await withTimeout(listSuppliers(q), 20000, "This is taking longer than expected — please try again in a moment.");
   const list =
     view === "top5"
       ? allList.filter((s) => s.totalSpend > 0).slice(0, 5)

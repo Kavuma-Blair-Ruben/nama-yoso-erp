@@ -7,6 +7,7 @@ import { ProductsCsvImport } from "@/components/products/ProductsCsvImport";
 import { listProducts, listCategoriesForFilter, listSubcategoriesForFilter, listSuppliersForFilter, STORAGE_TYPES } from "@/server/db/queries/products";
 import { fmt } from "@/lib/format";
 import { categorizeUnit, canonicalUnitLabel } from "@/lib/unitMath";
+import { withTimeout } from "@/lib/withTimeout";
 
 function onHandUnitLabel(issueUnit: string | null) {
   const cat = categorizeUnit(issueUnit);
@@ -35,12 +36,20 @@ export default async function ProductsPage({ searchParams }: PageProps<"/product
   const supplier = typeof sp.sup === "string" ? sp.sup : undefined;
   const missingPrice = sp.missingPrice === "1";
 
-  const [rows, categories, subcategories, suppliers] = await Promise.all([
-    listProducts({ q, category, subcategory, storage, supplier, missingPrice }),
-    listCategoriesForFilter(),
-    listSubcategoriesForFilter(),
-    listSuppliersForFilter(),
-  ]);
+  // Not statement_timeout — confirmed that setting isn't reliably honored
+  // through Supabase's transaction-mode pooler. This JS-level guard throws
+  // into the (app)/error.tsx boundary on timeout, showing a clean "try
+  // again" instead of an unbounded hang.
+  const [rows, categories, subcategories, suppliers] = await withTimeout(
+    Promise.all([
+      listProducts({ q, category, subcategory, storage, supplier, missingPrice }),
+      listCategoriesForFilter(),
+      listSubcategoriesForFilter(),
+      listSuppliersForFilter(),
+    ]),
+    20000,
+    "This is taking longer than expected — please try again in a moment."
+  );
   const canEdit = hasAccess(session, "items", "edit");
 
   return (

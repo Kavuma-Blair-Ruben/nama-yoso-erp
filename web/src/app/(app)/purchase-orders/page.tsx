@@ -3,6 +3,7 @@ import { requireSection, hasAccess } from "@/server/auth/permissions";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { listPurchaseOrders } from "@/server/db/queries/purchaseOrders";
 import { fmt, money } from "@/lib/format";
+import { withTimeout } from "@/lib/withTimeout";
 
 const STATUSES = ["DRAFT", "APPROVED", "ORDERED", "PARTIALLY RECEIVED", "FULLY RECEIVED", "CANCELLED"];
 const STATUS_CLASS: Record<string, string> = {
@@ -20,7 +21,9 @@ export default async function PurchaseOrdersPage({ searchParams }: PageProps<"/p
   const q = typeof sp.q === "string" ? sp.q : undefined;
   const status = typeof sp.status === "string" ? sp.status : undefined;
   const warning = typeof sp.warning === "string" ? sp.warning : undefined;
-  const rows = await listPurchaseOrders({ q, status });
+  // Not statement_timeout — confirmed unreliable through Supabase's
+  // transaction-mode pooler. Throws into (app)/error.tsx on timeout.
+  const rows = await withTimeout(listPurchaseOrders({ q, status }), 20000, "This is taking longer than expected — please try again in a moment.");
   const canEdit = hasAccess(session, "orders", "edit");
 
   return (
