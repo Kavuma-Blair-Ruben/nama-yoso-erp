@@ -4,6 +4,7 @@ import { stockItems, stockBalances, priceHistory, purchaseOrders, purchaseOrderL
 import { eq, gte, sql } from "drizzle-orm";
 import type { Session } from "@/server/auth/session";
 import { hasAccess } from "@/server/auth/session";
+import { withTimeout } from "@/lib/withTimeout";
 
 export type Notification = { id: string; severity: "critical" | "warning" | "info"; title: string; message: string; href: string };
 
@@ -114,15 +115,30 @@ async function getGrnNotifications(): Promise<Notification[]> {
 // per-section queries used to run one after another (~10 sequential DB
 // round trips for a role with full access); now every section's queries
 // fire together via Promise.all instead.
+//
+// The whole thing is wrapped in withTimeout rather than relying on the DB
+// client's statement_timeout: confirmed live that Supabase's transaction
+// pooler doesn't reliably honor that session-level setting (a pg_sleep(20)
+// test completed in full despite a 15s statement_timeout configured on the
+// client), so it cannot be trusted as the thing bounding a slow query here.
 export async function getNotifications(session: Session): Promise<Notification[]> {
-  const sections = await Promise.all([
-    hasAccess(session, "items", "view") ? getItemsNotifications() : Promise.resolve([]),
-    hasAccess(session, "orders", "view") ? getOrdersNotifications() : Promise.resolve([]),
-    hasAccess(session, "wastage", "view") ? getWastageNotifications() : Promise.resolve([]),
-    hasAccess(session, "transfers", "view") ? getTransfersNotifications() : Promise.resolve([]),
-    hasAccess(session, "stockcount", "view") ? getStockcountNotifications() : Promise.resolve([]),
-    hasAccess(session, "grn", "view") ? getGrnNotifications() : Promise.resolve([]),
-  ]);
+  let sections: Notification[][];
+  try {
+    sections = await withTimeout(
+      Promise.all([
+        hasAccess(session, "items", "view") ? getItemsNotifications() : Promise.resolve([]),
+        hasAccess(session, "orders", "view") ? getOrdersNotifications() : Promise.resolve([]),
+        hasAccess(session, "wastage", "view") ? getWastageNotifications() : Promise.resolve([]),
+        hasAccess(session, "transfers", "view") ? getTransfersNotifications() : Promise.resolve([]),
+        hasAccess(session, "stockcount", "view") ? getStockcountNotifications() : Promise.resolve([]),
+        hasAccess(session, "grn", "view") ? getGrnNotifications() : Promise.resolve([]),
+      ]),
+      10000,
+      "TIMEOUT"
+    );
+  } catch {
+    return [];
+  }
   const items = sections.flat();
 
   const order = { critical: 0, warning: 1, info: 2 };
