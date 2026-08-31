@@ -4,14 +4,17 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { listInvoices } from "@/server/db/queries/invoices";
 import { fmt, money } from "@/lib/format";
 import { withTimeout } from "@/lib/withTimeout";
+import { DateRangeFields } from "@/components/ui/DateRangeFields";
 
 export default async function InvoicesPage({ searchParams }: PageProps<"/invoices">) {
   await requireSection("suppliers", "view");
   const sp = await searchParams;
   const q = typeof sp.q === "string" ? sp.q : undefined;
   const status = typeof sp.status === "string" ? sp.status : undefined;
+  const from = typeof sp.from === "string" ? sp.from : "";
+  const to = typeof sp.to === "string" ? sp.to : "";
 
-  const invoices = await withTimeout(listInvoices({ q, status }), 20000, "This is taking longer than expected — please try again in a moment.");
+  const invoices = await withTimeout(listInvoices({ q, status, from: from || undefined, to: to || undefined }), 20000, "This is taking longer than expected — please try again in a moment.");
   const totalOutstanding = invoices.filter((i) => i.status === "OUTSTANDING").reduce((s, i) => s + (i.total ?? 0), 0);
 
   return (
@@ -26,6 +29,7 @@ export default async function InvoicesPage({ searchParams }: PageProps<"/invoice
           <option value="PAID">Paid</option>
           <option value="OTHER">Other</option>
         </select>
+        <DateRangeFields from={from} to={to} />
         <button className="btn ghost" type="submit">Filter</button>
         <span style={{ marginLeft: "auto", alignSelf: "center", fontSize: 12, color: "var(--ink-soft)" }}>
           {invoices.length} shown{status === "OUTSTANDING" ? ` · ${money(totalOutstanding, 0)} outstanding` : ""}

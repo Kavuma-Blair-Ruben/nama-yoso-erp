@@ -296,7 +296,10 @@ export async function listCreditNotesForGrn(grnId: string) {
     .orderBy(desc(creditNotes.createdAt));
 }
 
-export async function listAllCreditNotes() {
+export async function listAllCreditNotes(filters: { from?: string; to?: string } = {}) {
+  const conditions = [];
+  if (filters.from) conditions.push(gte(creditNotes.createdAt, new Date(filters.from + "T00:00:00")));
+  if (filters.to) conditions.push(lte(creditNotes.createdAt, new Date(filters.to + "T23:59:59")));
   return db
     .select({
       id: creditNotes.id,
@@ -312,6 +315,7 @@ export async function listAllCreditNotes() {
     .from(creditNotes)
     .innerJoin(grns, eq(creditNotes.grnId, grns.id))
     .innerJoin(suppliers, eq(creditNotes.supplierId, suppliers.id))
+    .where(conditions.length ? and(...conditions) : undefined)
     .orderBy(desc(creditNotes.createdAt));
 }
 
@@ -409,7 +413,10 @@ export async function listConsolidatableGrnsBySupplier() {
   return [...bySupplier.values()];
 }
 
-export async function listConsolidatedInvoices() {
+export async function listConsolidatedInvoices(filters: { from?: string; to?: string } = {}) {
+  const conditions = [];
+  if (filters.from) conditions.push(gte(consolidatedInvoices.invoiceDate, filters.from));
+  if (filters.to) conditions.push(lte(consolidatedInvoices.invoiceDate, filters.to));
   const rows = await db
     .select({
       id: consolidatedInvoices.id,
@@ -420,6 +427,7 @@ export async function listConsolidatedInvoices() {
     })
     .from(consolidatedInvoices)
     .innerJoin(suppliers, eq(consolidatedInvoices.supplierId, suppliers.id))
+    .where(conditions.length ? and(...conditions) : undefined)
     .orderBy(desc(consolidatedInvoices.number));
 
   const grnCounts = await db

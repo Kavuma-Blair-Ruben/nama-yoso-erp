@@ -1,7 +1,7 @@
 import "server-only";
 import { db } from "@/server/db";
 import { materialRequests, materialRequestLines, stockItems, profiles } from "@/server/db/schema";
-import { and, eq, or, ilike, desc } from "drizzle-orm";
+import { and, eq, or, ilike, desc, gte, lte } from "drizzle-orm";
 
 export const MR_LOCATIONS = ["Central Warehouse", "NAMAYOSO MIRDIFF", "NAMAYOSO MARSA", "Kitchen", "Bar"] as const;
 export const MR_STATUSES = ["PENDING APPROVAL", "APPROVED", "REJECTED", "FULFILLED"] as const;
@@ -16,12 +16,14 @@ export const MR_NEXT_STATUSES: Record<MrStatus, MrStatus[]> = {
   FULFILLED: [],
 };
 
-export async function listMaterialRequests(filters: { q?: string; status?: string }) {
+export async function listMaterialRequests(filters: { q?: string; status?: string; from?: string; to?: string }) {
   const conditions = [];
   if (filters.q) {
     conditions.push(or(ilike(materialRequests.mrNumber, `%${filters.q}%`), ilike(materialRequests.fromLocation, `%${filters.q}%`), ilike(materialRequests.toLocation, `%${filters.q}%`))!);
   }
   if (filters.status) conditions.push(eq(materialRequests.status, filters.status));
+  if (filters.from) conditions.push(gte(materialRequests.requiredDate, filters.from));
+  if (filters.to) conditions.push(lte(materialRequests.requiredDate, filters.to));
 
   const rows = await db
     .select({

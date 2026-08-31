@@ -4,6 +4,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { listAllCreditNotes } from "@/server/db/queries/grn";
 import { money } from "@/lib/format";
 import { withTimeout } from "@/lib/withTimeout";
+import { DateRangeFields } from "@/components/ui/DateRangeFields";
 
 function statusTagClass(status: string) {
   if (status === "ISSUED") return "good";
@@ -11,13 +12,25 @@ function statusTagClass(status: string) {
   return "neutral";
 }
 
-export default async function CreditNotesPage() {
+export default async function CreditNotesPage({ searchParams }: PageProps<"/credit-notes">) {
   await requireSection("grn", "view");
-  const notes = await withTimeout(listAllCreditNotes(), 20000, "This is taking longer than expected — please try again in a moment.");
+  const sp = await searchParams;
+  const from = typeof sp.from === "string" ? sp.from : "";
+  const to = typeof sp.to === "string" ? sp.to : "";
+  const notes = await withTimeout(
+    listAllCreditNotes({ from: from || undefined, to: to || undefined }),
+    20000,
+    "This is taking longer than expected — please try again in a moment."
+  );
 
   return (
     <>
       <PageHeader title="Credit Notes" subtitle="Credit and return requests raised against posted GRNs — open the GRN to act on one." />
+      <form className="filterbar" method="get">
+        <DateRangeFields from={from} to={to} />
+        <button className="btn ghost" type="submit">Filter</button>
+        <span style={{ marginLeft: "auto", alignSelf: "center", fontSize: 12, color: "var(--ink-soft)" }}>{notes.length} shown</span>
+      </form>
       <div className="panel">
         <div className="table-wrap">
           <table className="data">

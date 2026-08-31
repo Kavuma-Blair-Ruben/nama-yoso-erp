@@ -5,12 +5,19 @@ import { listProductionBatches } from "@/server/db/queries/production";
 import { ProductionScanClose } from "@/components/production/ProductionScanClose";
 import { fmt, money, formatDurationMinutes } from "@/lib/format";
 import { withTimeout } from "@/lib/withTimeout";
+import { DateRangeFields } from "@/components/ui/DateRangeFields";
 
 export default async function ProductionPage({ searchParams }: PageProps<"/production">) {
   const session = await requireSection("subrecipes", "view");
   const sp = await searchParams;
   const status = typeof sp.status === "string" ? sp.status : undefined;
-  const rows = await withTimeout(listProductionBatches({ status }), 20000, "This is taking longer than expected — please try again in a moment.");
+  const from = typeof sp.from === "string" ? sp.from : "";
+  const to = typeof sp.to === "string" ? sp.to : "";
+  const rows = await withTimeout(
+    listProductionBatches({ status, from: from || undefined, to: to || undefined }),
+    20000,
+    "This is taking longer than expected — please try again in a moment."
+  );
   const canEdit = hasAccess(session, "subrecipes", "edit");
   const openCount = rows.filter((b) => b.status === "OPEN").length;
 
@@ -34,6 +41,16 @@ export default async function ProductionPage({ searchParams }: PageProps<"/produ
         </div>
       )}
       {canEdit && <ProductionScanClose />}
+      <form className="filterbar" method="get">
+        <select name="status" defaultValue={status ?? ""}>
+          <option value="">All statuses</option>
+          <option value="OPEN">Open</option>
+          <option value="CLOSED">Closed</option>
+        </select>
+        <DateRangeFields from={from} to={to} />
+        <button className="btn ghost" type="submit">Filter</button>
+        <span style={{ marginLeft: "auto", alignSelf: "center", fontSize: 12, color: "var(--ink-soft)" }}>{rows.length} shown</span>
+      </form>
       <div className="panel">
         <div className="table-wrap">
           <table className="data">

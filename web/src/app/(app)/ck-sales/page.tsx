@@ -4,10 +4,18 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { listDeliveryNotes, listCustomerReturns } from "@/server/db/queries/ckSales";
 import { money } from "@/lib/format";
 import { withTimeout } from "@/lib/withTimeout";
+import { DateRangeFields } from "@/components/ui/DateRangeFields";
 
-export default async function CkSalesPage() {
+export default async function CkSalesPage({ searchParams }: PageProps<"/ck-sales">) {
   const session = await requireSection("ckwarehouse", "view");
-  const [notes, returns] = await withTimeout(Promise.all([listDeliveryNotes(), listCustomerReturns()]), 20000, "This is taking longer than expected — please try again in a moment.");
+  const sp = await searchParams;
+  const from = typeof sp.from === "string" ? sp.from : "";
+  const to = typeof sp.to === "string" ? sp.to : "";
+  const [notes, returns] = await withTimeout(
+    Promise.all([listDeliveryNotes({ from: from || undefined, to: to || undefined }), listCustomerReturns()]),
+    20000,
+    "This is taking longer than expected — please try again in a moment."
+  );
   const canEdit = hasAccess(session, "ckwarehouse", "edit");
 
   return (
@@ -17,9 +25,11 @@ export default async function CkSalesPage() {
         subtitle="Sell from Central Kitchen or Warehouse — cost-based or margin-based — to branches or external customers."
         action={canEdit ? <Link href="/ck-sales/new" className="btn accent">+ New Delivery Note / Invoice</Link> : undefined}
       />
-      <div className="filterbar">
-        <span style={{ fontSize: 12, color: "var(--ink-soft)" }}>{notes.length} document(s) · {returns.length} return(s)</span>
-      </div>
+      <form className="filterbar" method="get">
+        <DateRangeFields from={from} to={to} />
+        <button className="btn ghost" type="submit">Filter</button>
+        <span style={{ marginLeft: "auto", alignSelf: "center", fontSize: 12, color: "var(--ink-soft)" }}>{notes.length} document(s) · {returns.length} return(s)</span>
+      </form>
       <div className="panel" style={{ marginBottom: 16 }}>
         <div className="panel-head"><h3>Delivery Notes &amp; Invoices</h3></div>
         <div className="table-wrap">

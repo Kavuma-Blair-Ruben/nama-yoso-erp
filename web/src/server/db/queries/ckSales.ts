@@ -1,7 +1,7 @@
 import "server-only";
 import { db } from "@/server/db";
 import { customers, priceLists, deliveryNotes, deliveryNoteLines, customerReturns, customerReturnLines, stockItems, branches } from "@/server/db/schema";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and, gte, lte } from "drizzle-orm";
 
 export async function listPriceLists() {
   return db.select().from(priceLists).orderBy(priceLists.name);
@@ -35,7 +35,10 @@ export async function getCustomersForPicker() {
     .orderBy(customers.name);
 }
 
-export async function listDeliveryNotes() {
+export async function listDeliveryNotes(filters: { from?: string; to?: string } = {}) {
+  const conditions = [];
+  if (filters.from) conditions.push(gte(deliveryNotes.deliveryDate, filters.from));
+  if (filters.to) conditions.push(lte(deliveryNotes.deliveryDate, filters.to));
   return db
     .select({
       id: deliveryNotes.id,
@@ -49,6 +52,7 @@ export async function listDeliveryNotes() {
     .from(deliveryNotes)
     .innerJoin(customers, eq(deliveryNotes.customerId, customers.id))
     .innerJoin(branches, eq(deliveryNotes.branchId, branches.id))
+    .where(conditions.length ? and(...conditions) : undefined)
     .orderBy(desc(deliveryNotes.number));
 }
 

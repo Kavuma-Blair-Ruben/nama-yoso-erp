@@ -4,14 +4,27 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { listAllSupplierReturns } from "@/server/db/queries/grn";
 import { money } from "@/lib/format";
 import { withTimeout } from "@/lib/withTimeout";
+import { DateRangeFields } from "@/components/ui/DateRangeFields";
 
-export default async function SupplierReturnsPage() {
+export default async function SupplierReturnsPage({ searchParams }: PageProps<"/supplier-returns">) {
   await requireSection("grn", "view");
-  const returns = await withTimeout(listAllSupplierReturns(), 20000, "This is taking longer than expected — please try again in a moment.");
+  const sp = await searchParams;
+  const from = typeof sp.from === "string" ? sp.from : "";
+  const to = typeof sp.to === "string" ? sp.to : "";
+  const returns = await withTimeout(
+    listAllSupplierReturns({ from: from || undefined, to: to || undefined }),
+    20000,
+    "This is taking longer than expected — please try again in a moment."
+  );
 
   return (
     <>
       <PageHeader title="Supplier Returns" subtitle="Stock physically returned to a supplier against a posted GRN — open the GRN to create a new one." />
+      <form className="filterbar" method="get">
+        <DateRangeFields from={from} to={to} />
+        <button className="btn ghost" type="submit">Filter</button>
+        <span style={{ marginLeft: "auto", alignSelf: "center", fontSize: 12, color: "var(--ink-soft)" }}>{returns.length} shown</span>
+      </form>
       <div className="panel">
         <div className="table-wrap">
           <table className="data">

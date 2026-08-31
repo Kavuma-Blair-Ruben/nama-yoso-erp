@@ -190,6 +190,53 @@ export function buildProductionLabelEscPos(data: ProductionLabelData): Buffer {
   ]);
 }
 
+export type ProductionLabelCopyData = ProductionLabelData & {
+  scaleMultiplier: number;
+  staffName: string | null;
+  storageInstructions: string | null;
+  branchName: string | null;
+};
+
+// Richer variant of buildProductionLabelEscPos, for the manual "Print
+// Batch/Lot Labels" re-print button specifically — matches the fuller
+// content of the original browser-print label (ProductionLabelSheet.tsx's
+// ProductionReceipt), which the plain auto-print ticket above deliberately
+// doesn't carry. No native QR command in this minimal ESC/POS
+// implementation, so this keeps the CODE128 barcode (already the scan
+// target /lots/[lotNo] traceability uses elsewhere) rather than adding one
+// — content parity over exact visual parity.
+export function buildProductionLabelCopyEscPos(data: ProductionLabelCopyData): Buffer {
+  const perBatchQty = data.scaleMultiplier ? data.yieldQty / data.scaleMultiplier : data.yieldQty;
+  return Buffer.concat([
+    INIT,
+    ALIGN_CENTER,
+    BOLD_ON,
+    text("RECEIPT OF PRODUCTION"),
+    BOLD_OFF,
+    text(data.producedDate),
+    text("--------------------------------"),
+    ALIGN_LEFT,
+    BOLD_ON,
+    text(data.subRecipeName),
+    BOLD_OFF,
+    text(`Batch size: ${perBatchQty.toFixed(2)} ${data.yieldUnit}/batch`),
+    text(`Batches produced: ${data.scaleMultiplier.toFixed(2)}`),
+    text(`Total yield: ${data.yieldQty.toFixed(2)} ${data.yieldUnit}`),
+    text(`Lot #: ${data.lotNo}`),
+    ...(data.expiryDate ? [text(`Expiry: ${data.expiryDate}`)] : []),
+    text(`Staff: ${data.staffName ?? "-"}`),
+    text(`Storage: ${data.storageInstructions ?? "-"}`),
+    text("--------------------------------"),
+    ALIGN_CENTER,
+    BARCODE_HEIGHT,
+    BARCODE_WIDTH,
+    BARCODE_HRI_BELOW,
+    code128(data.lotNo),
+    text(`Made in ${(data.branchName ?? "NAMAYOSO MIRDIFF").toUpperCase()}`),
+    FEED_AND_CUT,
+  ]);
+}
+
 export type GrnLabelData = {
   itemName: string;
   itemCode: string;

@@ -3,6 +3,7 @@ import { requireSection, hasAccess } from "@/server/auth/permissions";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { listMaterialRequests, MR_STATUSES } from "@/server/db/queries/materialRequests";
 import { withTimeout } from "@/lib/withTimeout";
+import { DateRangeFields } from "@/components/ui/DateRangeFields";
 
 const STATUS_CLASS: Record<string, string> = {
   "PENDING APPROVAL": "status-ordered",
@@ -16,7 +17,13 @@ export default async function MaterialRequestsPage({ searchParams }: PageProps<"
   const sp = await searchParams;
   const q = typeof sp.q === "string" ? sp.q : undefined;
   const status = typeof sp.status === "string" ? sp.status : undefined;
-  const rows = await withTimeout(listMaterialRequests({ q, status }), 20000, "This is taking longer than expected — please try again in a moment.");
+  const from = typeof sp.from === "string" ? sp.from : "";
+  const to = typeof sp.to === "string" ? sp.to : "";
+  const rows = await withTimeout(
+    listMaterialRequests({ q, status, from: from || undefined, to: to || undefined }),
+    20000,
+    "This is taking longer than expected — please try again in a moment."
+  );
   const canEdit = hasAccess(session, "orders", "edit");
   const pendingCount = rows.filter((r) => r.status === "PENDING APPROVAL").length;
 
@@ -36,6 +43,7 @@ export default async function MaterialRequestsPage({ searchParams }: PageProps<"
             <option key={s} value={s}>{s}</option>
           ))}
         </select>
+        <DateRangeFields from={from} to={to} />
         <button className="btn ghost" type="submit">Search</button>
       </form>
       <div className="panel">

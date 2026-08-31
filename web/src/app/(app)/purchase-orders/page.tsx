@@ -4,6 +4,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { listPurchaseOrders } from "@/server/db/queries/purchaseOrders";
 import { fmt, money } from "@/lib/format";
 import { withTimeout } from "@/lib/withTimeout";
+import { DateRangeFields } from "@/components/ui/DateRangeFields";
 
 const STATUSES = ["DRAFT", "APPROVED", "ORDERED", "PARTIALLY RECEIVED", "FULLY RECEIVED", "CANCELLED"];
 const STATUS_CLASS: Record<string, string> = {
@@ -21,9 +22,11 @@ export default async function PurchaseOrdersPage({ searchParams }: PageProps<"/p
   const q = typeof sp.q === "string" ? sp.q : undefined;
   const status = typeof sp.status === "string" ? sp.status : undefined;
   const warning = typeof sp.warning === "string" ? sp.warning : undefined;
+  const from = typeof sp.from === "string" ? sp.from : "";
+  const to = typeof sp.to === "string" ? sp.to : "";
   // Not statement_timeout — confirmed unreliable through Supabase's
   // transaction-mode pooler. Throws into (app)/error.tsx on timeout.
-  const rows = await withTimeout(listPurchaseOrders({ q, status }), 20000, "This is taking longer than expected — please try again in a moment.");
+  const rows = await withTimeout(listPurchaseOrders({ q, status, from: from || undefined, to: to || undefined }), 20000, "This is taking longer than expected — please try again in a moment.");
   const canEdit = hasAccess(session, "orders", "edit");
 
   return (
@@ -48,6 +51,7 @@ export default async function PurchaseOrdersPage({ searchParams }: PageProps<"/p
             </option>
           ))}
         </select>
+        <DateRangeFields from={from} to={to} />
         <button className="btn ghost" type="submit">Filter</button>
       </form>
       <div className="panel">

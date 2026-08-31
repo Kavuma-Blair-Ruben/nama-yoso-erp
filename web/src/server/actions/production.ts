@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { eq, and } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/server/db";
-import { productionBatches, productionBatchIngredients, subRecipes, stockItems, auditLog } from "@/server/db/schema";
+import { productionBatches, productionBatchIngredients, subRecipes, stockItems, branches, auditLog } from "@/server/db/schema";
 import { assertPermission } from "@/server/auth/permissions";
 import { assertBranchAccess } from "@/server/auth/branchAccess";
 import type { Session } from "@/server/auth/session";
@@ -13,7 +13,7 @@ import { recordStockMovement } from "@/server/db/stockLedger";
 import { getDefaultCostCenterId } from "@/server/db/costCenterDefaults";
 import { convertQtyToCanonical } from "@/lib/unitMath";
 import { sendToRoutedPrinter } from "@/lib/printRouting";
-import { buildProductionLabelEscPos } from "@/lib/escpos";
+import { buildProductionLabelEscPos, buildProductionLabelCopyEscPos } from "@/lib/escpos";
 
 const ingredientSchema = z.object({
   stockItemId: z.string().min(1),
@@ -275,21 +275,28 @@ export async function printProductionLabelCopy(id: string): Promise<{ error?: st
       batchNo: productionBatches.batchNo,
       lotNo: productionBatches.lotNo,
       branchId: productionBatches.branchId,
+      branchName: branches.name,
       yieldQty: productionBatches.yieldQty,
       yieldUnit: productionBatches.yieldUnit,
       producedDate: productionBatches.producedDate,
       expiryDate: productionBatches.expiryDate,
+      scaleMultiplier: productionBatches.scaleMultiplier,
+      staffName: productionBatches.staffName,
       subRecipeId: productionBatches.subRecipeId,
     })
     .from(productionBatches)
+    .innerJoin(branches, eq(productionBatches.branchId, branches.id))
     .where(eq(productionBatches.id, id));
   if (!batch) return { error: "Production batch not found." };
-  const [subRecipe] = await db.select({ name: subRecipes.name }).from(subRecipes).where(eq(subRecipes.id, batch.subRecipeId));
+  const [subRecipe] = await db
+    .select({ name: subRecipes.name, storageInstructions: subRecipes.storageInstructions })
+    .from(subRecipes)
+    .where(eq(subRecipes.id, batch.subRecipeId));
 
   const result = await sendToRoutedPrinter(
     batch.branchId,
     "production_label",
-    buildProductionLabelEscPos({
+    buildProductionLabelCopyEscPos({
       batchNo: batch.batchNo,
       lotNo: batch.lotNo,
       subRecipeName: subRecipe?.name ?? "",
@@ -297,6 +304,10 @@ export async function printProductionLabelCopy(id: string): Promise<{ error?: st
       yieldUnit: batch.yieldUnit ?? "",
       producedDate: batch.producedDate,
       expiryDate: batch.expiryDate,
+      scaleMultiplier: batch.scaleMultiplier,
+      staffName: batch.staffName,
+      storageInstructions: subRecipe?.storageInstructions ?? null,
+      branchName: batch.branchName,
     })
   );
   if (!result.ok) return { error: result.status };
