@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { postGRN, saveGrnDraft, updateGrnDraft, uploadGrnInvoice, deleteGrnInvoice } from "@/server/actions/grn";
 import { extractGrnInvoice, type ExtractedInvoice } from "@/server/actions/invoiceOcr";
@@ -9,6 +9,7 @@ import { ScanInput } from "@/components/ui/ScanInput";
 import { fmt, money, todayStr, num } from "@/lib/format";
 import { bestTextMatch } from "@/lib/textMatch";
 import { extractProductCode } from "@/lib/scanCode";
+import { ItemSearchSelect } from "@/components/ui/ItemSearchSelect";
 
 type Product = { id: string; legacyCode: string; name: string; purchaseUnit: string | null; purchaseRate: number | null };
 type CostCenter = { id: string; branchId: string; name: string };
@@ -115,6 +116,7 @@ export function GRNBuilder({
   initialPaymentMethod?: "INVOICE" | "PETTY_CASH";
 }) {
   const router = useRouter();
+  const productOptions = useMemo(() => products.map((p) => ({ value: p.id, code: p.legacyCode, label: p.name })), [products]);
   const [lines, setLines] = useState<EditLine[]>(() => initialLines.map(toEditLine));
   const [paymentMethod, setPaymentMethod] = useState<"INVOICE" | "PETTY_CASH">(initialPaymentMethod ?? "INVOICE");
   const [directSupplierId, setDirectSupplierId] = useState(
@@ -502,13 +504,9 @@ export function GRNBuilder({
                   <td>
                     {mode === "direct" ? (
                       <>
-                        <select value={l.stockItemId} onChange={(e) => updateDirectProduct(i, e.target.value)} style={{ minWidth: 220 }}>
-                          {products.map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {p.legacyCode} — {p.name}
-                            </option>
-                          ))}
-                        </select>
+                        <div style={{ minWidth: 220 }}>
+                          <ItemSearchSelect options={productOptions} value={l.stockItemId} onChange={(v) => updateDirectProduct(i, v)} placeholder="Search item…" />
+                        </div>
                         {l.unmatchedFromOcr && (
                           <div style={{ fontSize: 10, color: "var(--bad)", marginTop: 3 }}>⚠ no confident match — check this item</div>
                         )}

@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { sendTransfer, saveTransferDraft, updateTransferDraft } from "@/server/actions/transfers";
 import { money, todayStr, num } from "@/lib/format";
 import { canonicalUnitLabel } from "@/lib/unitMath";
+import { ItemSearchSelect } from "@/components/ui/ItemSearchSelect";
 
 type PickerItem = { id: string; legacyCode: string; name: string; issueUnit: string | null; ratePerKgL: number | null };
 type CostCenter = { id: string; branchId: string; name: string };
@@ -39,6 +40,7 @@ export function TransferBuilder({
   initialLines?: Line[];
 }) {
   const router = useRouter();
+  const itemOptions = useMemo(() => items.map((it) => ({ value: it.id, code: it.legacyCode, label: it.name })), [items]);
   const [fromBranchId, setFromBranchId] = useState(initialFromBranchId ?? branches[0]?.id ?? "");
   const [toBranchId, setToBranchId] = useState(initialToBranchId ?? branches[1]?.id ?? branches[0]?.id ?? "");
   const fromCostCentersForBranch = costCenters.filter((c) => c.branchId === fromBranchId);
@@ -174,11 +176,9 @@ export function TransferBuilder({
                 lines.map((l, i) => (
                   <tr key={i}>
                     <td>
-                      <select value={l.stockItemId} onChange={(e) => updateLineItem(i, e.target.value)} style={{ minWidth: 220 }}>
-                        {items.map((it) => (
-                          <option key={it.id} value={it.id}>{it.legacyCode} — {it.name}</option>
-                        ))}
-                      </select>
+                      <div style={{ minWidth: 220 }}>
+                        <ItemSearchSelect options={itemOptions} value={l.stockItemId} onChange={(v) => updateLineItem(i, v)} placeholder="Search item…" />
+                      </div>
                     </td>
                     <td><input type="text" inputMode="decimal" style={{ width: 70 }} value={l.qty} onChange={(e) => updateLine(i, { qty: e.target.value })} /></td>
                     <td>{l.unitLabel}</td>

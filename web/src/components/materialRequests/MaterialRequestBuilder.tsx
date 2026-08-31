@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createMaterialRequest } from "@/server/actions/materialRequests";
 import { todayStr, num } from "@/lib/format";
 import { canonicalUnitLabel } from "@/lib/unitMath";
+import { ItemSearchSelect } from "@/components/ui/ItemSearchSelect";
 
 type PickerItem = { id: string; legacyCode: string; name: string; issueUnit: string | null };
 // qty is a raw string while editing ("" = not yet entered) — see num() in @/lib/format for why.
@@ -12,6 +13,7 @@ type Line = { stockItemId: string; unitLabel: string; qty: string };
 
 export function MaterialRequestBuilder({ items, locations }: { items: PickerItem[]; locations: readonly string[] }) {
   const router = useRouter();
+  const itemOptions = useMemo(() => items.map((it) => ({ value: it.id, code: it.legacyCode, label: it.name })), [items]);
   const [fromLocation, setFromLocation] = useState(locations[0] ?? "");
   const [toLocation, setToLocation] = useState(locations[1] ?? locations[0] ?? "");
   const [requiredDate, setRequiredDate] = useState(todayStr());
@@ -97,11 +99,9 @@ export function MaterialRequestBuilder({ items, locations }: { items: PickerItem
                 lines.map((l, i) => (
                   <tr key={i}>
                     <td>
-                      <select value={l.stockItemId} onChange={(e) => updateLineItem(i, e.target.value)} style={{ minWidth: 220 }}>
-                        {items.map((it) => (
-                          <option key={it.id} value={it.id}>{it.legacyCode} — {it.name}</option>
-                        ))}
-                      </select>
+                      <div style={{ minWidth: 220 }}>
+                        <ItemSearchSelect options={itemOptions} value={l.stockItemId} onChange={(v) => updateLineItem(i, v)} placeholder="Search item…" />
+                      </div>
                     </td>
                     <td><input type="text" inputMode="decimal" style={{ width: 80 }} value={l.qty} onChange={(e) => updateLine(i, { qty: e.target.value })} placeholder="Qty" /></td>
                     <td>{l.unitLabel}</td>

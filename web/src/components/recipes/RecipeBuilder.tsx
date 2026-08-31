@@ -1,12 +1,13 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createRecipe, updateRecipe, uploadRecipePhoto, type RecipeInput } from "@/server/actions/recipes";
 import { createMenuCategory } from "@/server/actions/menuCategories";
 import type { RecipeType } from "@/server/db/queries/recipes";
 import { fmt, money, num } from "@/lib/format";
 import { canonicalUnitLabel } from "@/lib/unitMath";
+import { ItemSearchSelect } from "@/components/ui/ItemSearchSelect";
 
 type PickerItem = { kind: "stock" | "recipe"; id: string; legacyCode: string; name: string; issueUnit: string | null; ratePerKgL: number | null; sourceType: string };
 // A line's ingredient is either a stock item (product/sub-recipe) or —
@@ -77,6 +78,16 @@ export function RecipeBuilder({
   };
 }) {
   const router = useRouter();
+  const itemOptions = useMemo(
+    () =>
+      items.map((it) => ({
+        value: `${it.kind}:${it.id}`,
+        code: it.legacyCode,
+        label: it.name,
+        sublabel: it.sourceType === "produced" ? "sub-recipe" : it.kind === "recipe" ? "recipe" : undefined,
+      })),
+    [items]
+  );
   const isEdit = !!code;
   const [name, setName] = useState(initial?.name ?? "");
   const [secondaryName, setSecondaryName] = useState(initial?.secondaryName ?? "");
@@ -351,14 +362,7 @@ export function RecipeBuilder({
             const lineCost = buy * (p?.ratePerKgL ?? 0);
             return (
               <div className="line-builder-row" key={i} style={{ gridTemplateColumns: "2fr 90px 80px 80px 90px 90px 32px" }}>
-                <select value={pickerValue(l)} onChange={(e) => updateLineItem(i, e.target.value)}>
-                  {items.map((it) => (
-                    <option key={`${it.kind}:${it.id}`} value={`${it.kind}:${it.id}`}>
-                      {it.legacyCode} — {it.name}
-                      {it.sourceType === "produced" ? " (sub-recipe)" : it.kind === "recipe" ? " (recipe)" : ""}
-                    </option>
-                  ))}
-                </select>
+                <ItemSearchSelect options={itemOptions} value={pickerValue(l)} onChange={(v) => updateLineItem(i, v)} placeholder="Search ingredient…" />
                 <input type="text" inputMode="decimal" value={l.qtyNeeded} onChange={(e) => updateLine(i, { qtyNeeded: e.target.value })} />
                 <input type="text" value={l.unitLabel} onChange={(e) => updateLine(i, { unitLabel: e.target.value })} />
                 <input type="text" inputMode="decimal" value={l.wastagePct} onChange={(e) => updateLine(i, { wastagePct: e.target.value })} />

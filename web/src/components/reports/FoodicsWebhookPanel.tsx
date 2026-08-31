@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   generateFoodicsWebhookUrl,
@@ -10,6 +10,7 @@ import {
   setPosItemMapping,
 } from "@/server/actions/pos";
 import { todayStr } from "@/lib/format";
+import { ItemSearchSelect } from "@/components/ui/ItemSearchSelect";
 
 type Branch = { id: string; code: string; name: string };
 type CostCenter = { id: string; branchId: string; name: string };
@@ -74,6 +75,10 @@ function ItemMappingRow({ mapping, recipes }: { mapping: ItemMapping; recipes: R
   const [pending, startTransition] = useTransition();
   const [mainRecipeId, setMainRecipeId] = useState(mapping.mainRecipeId ?? "");
   const [error, setError] = useState<string | null>(null);
+  const recipeOptions = useMemo(
+    () => [{ value: "", code: "—", label: "Unmapped (no stock deducted)" }, ...recipes.map((r) => ({ value: r.id, code: r.legacyCode, label: r.name }))],
+    [recipes]
+  );
 
   function save() {
     setError(null);
@@ -87,12 +92,9 @@ function ItemMappingRow({ mapping, recipes }: { mapping: ItemMapping; recipes: R
     <div className="usedin-item" style={{ flexDirection: "column", alignItems: "stretch", gap: 4 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
         <span className="name" style={{ minWidth: 200 }}>{mapping.externalProductName ?? mapping.externalProductId}</span>
-        <select value={mainRecipeId} onChange={(e) => setMainRecipeId(e.target.value)} style={{ flex: 1 }}>
-          <option value="">— Unmapped (no stock deducted) —</option>
-          {recipes.map((r) => (
-            <option key={r.id} value={r.id}>{r.legacyCode} — {r.name}</option>
-          ))}
-        </select>
+        <div style={{ flex: 1 }}>
+          <ItemSearchSelect options={recipeOptions} value={mainRecipeId} onChange={setMainRecipeId} placeholder="Search recipe or leave unmapped…" />
+        </div>
         <button type="button" className="btn ghost" style={{ padding: "3px 8px", fontSize: 11 }} disabled={pending || !mainRecipeId} onClick={save}>
           {pending ? "Saving…" : "Save"}
         </button>

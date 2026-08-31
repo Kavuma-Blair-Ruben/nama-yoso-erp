@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { postStockCount, saveStockCountDraft, updateStockCountDraft, removeStockCountDraftLine, pullStockCountDraftLines } from "@/server/actions/stockCount";
 import { createStockCountTemplate } from "@/server/actions/stockCountTemplates";
@@ -8,6 +8,7 @@ import { fmt, money, todayStr, num } from "@/lib/format";
 import { canonicalUnitLabel } from "@/lib/unitMath";
 import { ScanInput } from "@/components/ui/ScanInput";
 import { extractProductCode } from "@/lib/scanCode";
+import { ItemSearchSelect } from "@/components/ui/ItemSearchSelect";
 
 type PickerItem = { id: string; legacyCode: string; name: string; issueUnit: string | null; ratePerKgL: number | null };
 // countedQty is a raw string while editing ("" = not yet counted) — see num()
@@ -44,6 +45,7 @@ export function StockCountBuilder({
   initialLines?: Line[];
 }) {
   const router = useRouter();
+  const itemOptions = useMemo(() => items.map((it) => ({ value: it.id, code: it.legacyCode, label: it.name })), [items]);
   const [branchId, setBranchId] = useState(initialBranchId ?? branches[0]?.id ?? "");
   const costCentersForBranch = costCenters.filter((c) => c.branchId === branchId);
   const [costCenterId, setCostCenterId] = useState(initialCostCenterId ?? costCentersForBranch[0]?.id ?? "");
@@ -298,11 +300,7 @@ export function StockCountBuilder({
           <ScanInput placeholder="Scan an item barcode/QR to add it…" onScan={addLineByScan} autoFocus={false} />
         </div>
         <div className="line-builder-row" style={{ gridTemplateColumns: "1fr auto", marginBottom: 10 }}>
-          <select value={pickerId} onChange={(e) => setPickerId(e.target.value)} style={{ minWidth: 260 }}>
-            {items.map((it) => (
-              <option key={it.id} value={it.id}>{it.legacyCode} — {it.name}</option>
-            ))}
-          </select>
+          <ItemSearchSelect options={itemOptions} value={pickerId} onChange={setPickerId} placeholder="Search item…" />
           <button className="btn ghost" onClick={addLine}>+ Add item</button>
         </div>
 

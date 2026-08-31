@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createDeliveryNote } from "@/server/actions/ckSales";
 import { money, todayStr, num } from "@/lib/format";
 import { canonicalUnitLabel } from "@/lib/unitMath";
+import { ItemSearchSelect } from "@/components/ui/ItemSearchSelect";
 
 type PickerItem = { id: string; legacyCode: string; name: string; issueUnit: string | null; ratePerKgL: number | null };
 type CustomerOption = { id: string; name: string; priceListMode: string | null; priceListMarginPct: number | null };
@@ -19,6 +20,7 @@ function priceFor(item: PickerItem, customer: CustomerOption | undefined): numbe
 
 export function DeliveryNoteBuilder({ items, customers, branches }: { items: PickerItem[]; customers: CustomerOption[]; branches: { id: string; name: string }[] }) {
   const router = useRouter();
+  const itemOptions = useMemo(() => items.map((it) => ({ value: it.id, code: it.legacyCode, label: it.name })), [items]);
   const [customerId, setCustomerId] = useState(customers[0]?.id ?? "");
   const [docType, setDocType] = useState<"DN" | "PRO">("DN");
   const [branchId, setBranchId] = useState(branches[0]?.id ?? "");
@@ -119,11 +121,9 @@ export function DeliveryNoteBuilder({ items, customers, branches }: { items: Pic
                 lines.map((l, i) => (
                   <tr key={i}>
                     <td>
-                      <select value={l.stockItemId} onChange={(e) => updateLineItem(i, e.target.value)} style={{ minWidth: 220 }}>
-                        {items.map((it) => (
-                          <option key={it.id} value={it.id}>{it.legacyCode} — {it.name}</option>
-                        ))}
-                      </select>
+                      <div style={{ minWidth: 220 }}>
+                        <ItemSearchSelect options={itemOptions} value={l.stockItemId} onChange={(v) => updateLineItem(i, v)} placeholder="Search item…" />
+                      </div>
                     </td>
                     <td><input type="text" inputMode="decimal" style={{ width: 70 }} value={l.qty} onChange={(e) => updateLine(i, { qty: e.target.value })} /></td>
                     <td>{l.unitLabel}</td>
