@@ -6,6 +6,7 @@ import { getProductionBatchDetail } from "@/server/db/queries/production";
 import { CloseProductionButton } from "@/components/production/CloseProductionButton";
 import { DeleteProductionDraftButton } from "@/components/production/DeleteProductionDraftButton";
 import { ProductionTicketAutoPrint } from "@/components/production/ProductionTicketAutoPrint";
+import { PrintLabelCopyButton } from "@/components/production/PrintLabelCopyButton";
 import { fmt, money, formatDurationMinutes } from "@/lib/format";
 import { ledgerDisplayUnit, gramsDisplay } from "@/lib/unitMath";
 import { withTimeout } from "@/lib/withTimeout";
@@ -49,7 +50,7 @@ export default async function ProductionDetailPage({ params }: PageProps<"/produ
         backLabel="Production"
         action={
           <div style={{ display: "flex", gap: 8 }}>
-            <Link href={`/production/${batch.id}/labels`} className="btn ghost">Print Batch/Lot Labels</Link>
+            <PrintLabelCopyButton batchId={batch.id} />
             {canEdit && <Link href={`/production/${batch.id}/clone`} className="btn ghost">Repeat</Link>}
             {canEdit && batch.status === "OPEN" && <Link href={`/production/${batch.id}/edit`} className="btn accent">Edit Ticket</Link>}
           </div>

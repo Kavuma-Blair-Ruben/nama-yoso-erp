@@ -6,16 +6,19 @@ import { listAllActiveCostCenters } from "@/server/db/queries/costCenters";
 import { ReceiveAgainstPO } from "@/components/grn/ReceiveAgainstPO";
 import { fmt, money } from "@/lib/format";
 import { withTimeout } from "@/lib/withTimeout";
+import { DateRangeFields } from "@/components/ui/DateRangeFields";
 
 export default async function GrnPage({ searchParams }: PageProps<"/grn">) {
   const session = await requireSection("grn", "view");
   const sp = await searchParams;
   const q = typeof sp.q === "string" ? sp.q : undefined;
   const costCenterId = typeof sp.costCenterId === "string" ? sp.costCenterId : undefined;
+  const from = typeof sp.from === "string" ? sp.from : "";
+  const to = typeof sp.to === "string" ? sp.to : "";
   // Not statement_timeout — confirmed unreliable through Supabase's
   // transaction-mode pooler. Throws into (app)/error.tsx on timeout.
   const [rows, eligible, costCenters] = await withTimeout(
-    Promise.all([listGrns({ q, costCenterId }), getEligiblePOsForReceiving(), listAllActiveCostCenters()]),
+    Promise.all([listGrns({ q, costCenterId, from: from || undefined, to: to || undefined }), getEligiblePOsForReceiving(), listAllActiveCostCenters()]),
     20000,
     "This is taking longer than expected — please try again in a moment."
   );
@@ -43,6 +46,7 @@ export default async function GrnPage({ searchParams }: PageProps<"/grn">) {
       <form className="filterbar" method="get">
         {costCenterId && <input type="hidden" name="costCenterId" value={costCenterId} />}
         <input type="text" name="q" placeholder="Search GRN, PO or supplier..." defaultValue={q ?? ""} />
+        <DateRangeFields from={from} to={to} />
         {canEdit && <ReceiveAgainstPO eligible={eligible} />}
         <button className="btn ghost" type="submit">Search</button>
       </form>

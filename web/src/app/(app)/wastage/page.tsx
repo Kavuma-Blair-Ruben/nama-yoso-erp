@@ -7,14 +7,17 @@ import { money } from "@/lib/format";
 import { DonutChart } from "@/components/charts/DonutChart";
 import { HorizontalBarChart } from "@/components/charts/HorizontalBarChart";
 import { withTimeout } from "@/lib/withTimeout";
+import { DateRangeFields } from "@/components/ui/DateRangeFields";
 
 export default async function WastagePage({ searchParams }: PageProps<"/wastage">) {
   const session = await requireSection("wastage", "view");
   const sp = await searchParams;
   const status = typeof sp.status === "string" ? sp.status : undefined;
   const costCenterId = typeof sp.costCenterId === "string" ? sp.costCenterId : undefined;
+  const from = typeof sp.from === "string" ? sp.from : "";
+  const to = typeof sp.to === "string" ? sp.to : "";
   const [rows, stats, costCenters] = await withTimeout(
-    Promise.all([listWastageEvents({ status, costCenterId }), getWastageStats({ costCenterId }), listAllActiveCostCenters()]),
+    Promise.all([listWastageEvents({ status, costCenterId, from: from || undefined, to: to || undefined }), getWastageStats({ costCenterId }), listAllActiveCostCenters()]),
     20000,
     "This is taking longer than expected — please try again in a moment."
   );
@@ -39,6 +42,18 @@ export default async function WastagePage({ searchParams }: PageProps<"/wastage"
           {draftCount} log(s) saved as draft — stock hasn&apos;t been updated for these yet. Open one to post it.
         </div>
       )}
+
+      <form className="filterbar" method="get">
+        <select name="status" defaultValue={status ?? ""}>
+          <option value="">All statuses</option>
+          <option value="DRAFT">Draft</option>
+          <option value="POSTED">Posted</option>
+        </select>
+        {costCenterId && <input type="hidden" name="costCenterId" value={costCenterId} />}
+        <DateRangeFields from={from} to={to} />
+        <button className="btn ghost" type="submit">Filter</button>
+        <span style={{ marginLeft: "auto", alignSelf: "center", fontSize: 12, color: "var(--ink-soft)" }}>{rows.length} shown</span>
+      </form>
 
       <div className="kpi-grid">
         <div className="kpi"><div className="n">{money(stats.totalWaste, 0)}</div><div className="l">Total Wastage Value</div><div className="d">{stats.eventCount} logged item(s)</div></div>

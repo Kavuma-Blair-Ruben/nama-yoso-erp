@@ -4,12 +4,15 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { listStockCounts } from "@/server/db/queries/stockCount";
 import { money } from "@/lib/format";
 import { withTimeout } from "@/lib/withTimeout";
+import { DateRangeFields } from "@/components/ui/DateRangeFields";
 
 export default async function StockCountPage({ searchParams }: PageProps<"/stock-count">) {
   const session = await requireSection("stockcount", "view");
   const sp = await searchParams;
   const status = typeof sp.status === "string" ? sp.status : undefined;
-  const rows = await withTimeout(listStockCounts({ status }), 20000, "This is taking longer than expected — please try again in a moment.");
+  const from = typeof sp.from === "string" ? sp.from : "";
+  const to = typeof sp.to === "string" ? sp.to : "";
+  const rows = await withTimeout(listStockCounts({ status, from: from || undefined, to: to || undefined }), 20000, "This is taking longer than expected — please try again in a moment.");
   const canEdit = hasAccess(session, "stockcount", "edit");
   const draftCount = rows.filter((c) => c.status === "DRAFT").length;
 
@@ -25,6 +28,17 @@ export default async function StockCountPage({ searchParams }: PageProps<"/stock
           {draftCount} count(s) saved as draft — stock hasn&apos;t been adjusted for these yet. Open one to post it.
         </div>
       )}
+
+      <form className="filterbar" method="get">
+        <select name="status" defaultValue={status ?? ""}>
+          <option value="">All statuses</option>
+          <option value="DRAFT">Draft</option>
+          <option value="POSTED">Posted</option>
+        </select>
+        <DateRangeFields from={from} to={to} />
+        <button className="btn ghost" type="submit">Filter</button>
+        <span style={{ marginLeft: "auto", alignSelf: "center", fontSize: 12, color: "var(--ink-soft)" }}>{rows.length} shown</span>
+      </form>
 
       <div className="panel">
         <div className="table-wrap">

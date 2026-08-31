@@ -156,7 +156,7 @@ export async function openProductionBatch(input: z.infer<typeof productionInputS
 
   // Best-effort — run after the transaction commits so a missing/offline
   // printer never undoes a real production ticket that already exists.
-  await sendToRoutedPrinter(
+  const printResult = await sendToRoutedPrinter(
     parsed.data.branchId,
     "production_label",
     buildProductionLabelEscPos({
@@ -169,6 +169,17 @@ export async function openProductionBatch(input: z.infer<typeof productionInputS
       expiryDate: parsed.data.expiryDate ?? null,
     })
   );
+  // If this actually fired, mark it printed now — otherwise
+  // ProductionTicketAutoPrint (the client-side browser-print fallback for
+  // branches/document types with no routed printer) sees openTicketPrintedAt
+  // still null and ALSO pops window.print(), double-printing the same
+  // ticket once silently via PrintNode and once as a browser dialog. That
+  // was the actual cause of "printing takes me to a print tab" — this
+  // fallback is only supposed to run when there's no direct route to fall
+  // back FROM.
+  if (printResult.ok) {
+    await db.update(productionBatches).set({ openTicketPrintedAt: new Date() }).where(eq(productionBatches.id, batchId));
+  }
 
   revalidatePath("/production");
   return { id: batchId };
@@ -249,6 +260,47 @@ export async function markProductionTicketPrinted(id: string): Promise<{ error?:
   await db.update(productionBatches).set({ openTicketPrintedAt: new Date() }).where(eq(productionBatches.id, id));
   revalidatePath(`/production/${id}`);
   return {};
+}
+
+// Re-prints the same ticket the batch got when it was opened — for extra
+// physical copies as production continues (e.g. one per vacuum-sealed
+// pack), same content and same routed printer as openProductionBatch's own
+// auto-print, rather than the browser-print label sheet at
+// /production/[id]/labels (kept as a fallback for a branch/document type
+// with no routed printer, not the default path anymore).
+export async function printProductionLabelCopy(id: string): Promise<{ error?: string; ok?: boolean; message?: string }> {
+  await assertPermission("subrecipes", "edit");
+  const [batch] = await db
+    .select({
+      batchNo: productionBatches.batchNo,
+      lotNo: productionBatches.lotNo,
+      branchId: productionBatches.branchId,
+      yieldQty: productionBatches.yieldQty,
+      yieldUnit: productionBatches.yieldUnit,
+      producedDate: productionBatches.producedDate,
+      expiryDate: productionBatches.expiryDate,
+      subRecipeId: productionBatches.subRecipeId,
+    })
+    .from(productionBatches)
+    .where(eq(productionBatches.id, id));
+  if (!batch) return { error: "Production batch not found." };
+  const [subRecipe] = await db.select({ name: subRecipes.name }).from(subRecipes).where(eq(subRecipes.id, batch.subRecipeId));
+
+  const result = await sendToRoutedPrinter(
+    batch.branchId,
+    "production_label",
+    buildProductionLabelEscPos({
+      batchNo: batch.batchNo,
+      lotNo: batch.lotNo,
+      subRecipeName: subRecipe?.name ?? "",
+      yieldQty: batch.yieldQty,
+      yieldUnit: batch.yieldUnit ?? "",
+      producedDate: batch.producedDate,
+      expiryDate: batch.expiryDate,
+    })
+  );
+  if (!result.ok) return { error: result.status };
+  return { ok: true, message: `${result.status} — check the printer for the label.` };
 }
 
 export async function updateProductionBatch(id: string, input: z.infer<typeof productionInputSchema>): Promise<ProductionActionResult> {
