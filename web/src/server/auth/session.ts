@@ -1,5 +1,6 @@
 import "server-only";
 import { cache } from "react";
+import { unstable_cache } from "next/cache";
 import { eq } from "drizzle-orm";
 import { createSupabaseServerClient } from "@/lib/supabaseServer";
 import { withTimeout } from "@/lib/withTimeout";
@@ -13,6 +14,32 @@ export type Session = {
   role: { id: string; key: string; name: string };
   permissions: Record<string, PermissionLevel>;
 };
+
+// See the comment where this is called, in getSession() below, for why this
+// is safe to cache across requests. Keyed by userId via the function
+// argument — unstable_cache folds call arguments into the cache key
+// automatically, so different users never share an entry.
+const getCachedProfileRow = unstable_cache(
+  async (userId: string) =>
+    db
+      .select({
+        profileId: profiles.id,
+        name: profiles.name,
+        branches: profiles.branches,
+        active: profiles.active,
+        roleId: roles.id,
+        roleKey: roles.key,
+        roleName: roles.name,
+        sectionKey: rolePermissions.sectionKey,
+        level: rolePermissions.level,
+      })
+      .from(profiles)
+      .innerJoin(roles, eq(profiles.roleId, roles.id))
+      .innerJoin(rolePermissions, eq(rolePermissions.roleId, roles.id))
+      .where(eq(profiles.id, userId)),
+  ["session-profile-row-v1"],
+  { revalidate: 20 }
+);
 
 // Deduped per request render pass — safe to call from many Server Components.
 export const getSession = cache(async (): Promise<Session | null> => {
@@ -41,26 +68,19 @@ export const getSession = cache(async (): Promise<Session | null> => {
   // feature: getSession() has no caller that catches it, so it took down
   // every single route through the (app) layout. Falls back to "no
   // session" on failure, same as an empty result already does below.
-  const profileQuery = db
-    .select({
-      profileId: profiles.id,
-      name: profiles.name,
-      branches: profiles.branches,
-      active: profiles.active,
-      roleId: roles.id,
-      roleKey: roles.key,
-      roleName: roles.name,
-      sectionKey: rolePermissions.sectionKey,
-      level: rolePermissions.level,
-    })
-    .from(profiles)
-    .innerJoin(roles, eq(profiles.roleId, roles.id))
-    .innerJoin(rolePermissions, eq(rolePermissions.roleId, roles.id))
-    .where(eq(profiles.id, user.id));
-
-  let rows: Awaited<typeof profileQuery>;
+  //
+  // Cached (not just the request-scoped cache() above) — a hard refresh
+  // was re-running this join from scratch every time, on top of the
+  // getUser() call above, on top of whatever the page itself needs. Safe
+  // to cache: keyed by user.id, which only ever gets here after getUser()
+  // has ALREADY verified the JWT fresh, above, uncached — so a stale cache
+  // entry can only serve a real user their own (briefly stale) profile/
+  // role/permissions, never another user's, and never bypass the identity
+  // check itself. 20s revalidate, same order of magnitude as the 45s
+  // precedent on the Dashboard's own cached queries.
+  let rows: Awaited<ReturnType<typeof getCachedProfileRow>>;
   try {
-    rows = await withTimeout(profileQuery, 10000, "TIMEOUT");
+    rows = await withTimeout(getCachedProfileRow(user.id), 10000, "TIMEOUT");
   } catch {
     return null;
   }

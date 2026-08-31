@@ -1,4 +1,5 @@
 import "server-only";
+import { unstable_cache } from "next/cache";
 import { db } from "@/server/db";
 import { stockItems, stockBalances, priceHistory, purchaseOrders, purchaseOrderLines, wastageEvents, stockTransfers, stockCounts, grns, policySettings, poApprovalSteps } from "@/server/db/schema";
 import { eq, gte, sql } from "drizzle-orm";
@@ -121,21 +122,45 @@ async function getGrnNotifications(): Promise<Notification[]> {
 // pooler doesn't reliably honor that session-level setting (a pg_sleep(20)
 // test completed in full despite a 15s statement_timeout configured on the
 // client), so it cannot be trusted as the thing bounding a slow query here.
+// Cached across requests, not just within one — a hard refresh was
+// re-running all 6 of these on every page load via the shared layout, on
+// top of the session check above it. Keyed by which sections this specific
+// user can see (not just their id) so two users with different access
+// never share a cache entry that leaks a section one of them can't open.
+// 20s revalidate: stock/price/draft data moving that recently is rare
+// enough that a brief staleness on an attention feed (not a source of
+// truth for any action) is a fair trade for skipping 6 queries on every
+// single page view.
+const getCachedNotificationSections = unstable_cache(
+  async (
+    userId: string,
+    access: { items: boolean; orders: boolean; wastage: boolean; transfers: boolean; stockcount: boolean; grn: boolean }
+  ): Promise<Notification[][]> =>
+    Promise.all([
+      access.items ? getItemsNotifications() : Promise.resolve([]),
+      access.orders ? getOrdersNotifications() : Promise.resolve([]),
+      access.wastage ? getWastageNotifications() : Promise.resolve([]),
+      access.transfers ? getTransfersNotifications() : Promise.resolve([]),
+      access.stockcount ? getStockcountNotifications() : Promise.resolve([]),
+      access.grn ? getGrnNotifications() : Promise.resolve([]),
+    ]),
+  ["notification-sections-v1"],
+  { revalidate: 20 }
+);
+
 export async function getNotifications(session: Session): Promise<Notification[]> {
+  const access = {
+    items: hasAccess(session, "items", "view"),
+    orders: hasAccess(session, "orders", "view"),
+    wastage: hasAccess(session, "wastage", "view"),
+    transfers: hasAccess(session, "transfers", "view"),
+    stockcount: hasAccess(session, "stockcount", "view"),
+    grn: hasAccess(session, "grn", "view"),
+  };
+
   let sections: Notification[][];
   try {
-    sections = await withTimeout(
-      Promise.all([
-        hasAccess(session, "items", "view") ? getItemsNotifications() : Promise.resolve([]),
-        hasAccess(session, "orders", "view") ? getOrdersNotifications() : Promise.resolve([]),
-        hasAccess(session, "wastage", "view") ? getWastageNotifications() : Promise.resolve([]),
-        hasAccess(session, "transfers", "view") ? getTransfersNotifications() : Promise.resolve([]),
-        hasAccess(session, "stockcount", "view") ? getStockcountNotifications() : Promise.resolve([]),
-        hasAccess(session, "grn", "view") ? getGrnNotifications() : Promise.resolve([]),
-      ]),
-      10000,
-      "TIMEOUT"
-    );
+    sections = await withTimeout(getCachedNotificationSections(session.userId, access), 10000, "TIMEOUT");
   } catch {
     return [];
   }
