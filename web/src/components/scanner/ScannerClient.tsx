@@ -86,6 +86,22 @@ export function ScannerClient() {
         </div>
       )}
 
+      {result?.type === "wastage" && (
+        <div className="panel" style={{ maxWidth: 640 }}>
+          <div className="panel-head"><h3>{result.data.wastageNo}</h3></div>
+          <div className="panel-body">
+            <div className="field-row"><span className="k">Date</span><span className="v">{result.data.eventDate}</span></div>
+            <div className="field-row"><span className="k">Sector</span><span className="v">{result.data.costCenter}</span></div>
+            {result.data.staffName && <div className="field-row"><span className="k">Staff</span><span className="v">{result.data.staffName}</span></div>}
+            <div className="field-row"><span className="k">Status</span><span className="v">{result.data.status}</span></div>
+            <div className="field-row"><span className="k">Total Cost</span><span className="v tabular">{money(result.data.totalCost, 2)}</span></div>
+            <div style={{ marginTop: 10 }}>
+              <Link href={`/wastage/${result.data.id}`} className="btn ghost">Open Full Wastage Log</Link>
+            </div>
+          </div>
+        </div>
+      )}
+
       {result?.type === "unknown" && (
         <div className="callout" style={{ borderColor: "var(--bad)", background: "var(--bad-soft)", color: "var(--bad)" }}>
           No product or lot found for &quot;{result.code}&quot;.

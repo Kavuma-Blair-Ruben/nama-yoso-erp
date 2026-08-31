@@ -146,6 +146,11 @@ export function buildWastageTicketEscPos(data: WastageTicketData): Buffer {
     BOLD_ON,
     text(`Total Cost: ${data.totalCost.toFixed(2)}`),
     BOLD_OFF,
+    ALIGN_CENTER,
+    BARCODE_HEIGHT,
+    BARCODE_WIDTH,
+    BARCODE_HRI_BELOW,
+    code128(data.wastageNo),
     FEED_AND_CUT,
   ]);
 }

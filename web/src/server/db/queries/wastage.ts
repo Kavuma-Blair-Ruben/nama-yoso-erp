@@ -7,6 +7,27 @@ export async function listWastageReasons() {
   return db.select({ id: wastageReasons.id, name: wastageReasons.name, isExpense: wastageReasons.isExpense }).from(wastageReasons).orderBy(wastageReasons.name);
 }
 
+// For the barcode scanner (see src/lib/scanCode.ts / src/server/actions/scanner.ts)
+// — the wastage/scrap ticket prints wastageNo as a CODE128 barcode, this is
+// what resolves a scan of it back to the real event, same "just enough to
+// show a summary + link to the full page" shape as the scanner's product
+// lookup.
+export async function getWastageEventByNumber(wastageNo: string) {
+  const [row] = await db
+    .select({
+      id: wastageEvents.id,
+      wastageNo: wastageEvents.wastageNo,
+      eventDate: wastageEvents.eventDate,
+      costCenter: wastageEvents.costCenter,
+      staffName: wastageEvents.staffName,
+      status: wastageEvents.status,
+      totalCost: wastageEvents.totalCost,
+    })
+    .from(wastageEvents)
+    .where(eq(wastageEvents.wastageNo, wastageNo));
+  return row ?? null;
+}
+
 export async function listWastageEvents(filters: { status?: string; costCenterId?: string; from?: string; to?: string; excludeDemo?: boolean }) {
   const conditions = [];
   if (filters.status) conditions.push(eq(wastageEvents.status, filters.status));
