@@ -1,0 +1,1 @@
+ALTER TABLE "grns" ADD COLUMN "vendor_note" text;

@@ -135,6 +135,7 @@ export async function getGrnDetail(id: string) {
       status: grns.status,
       purchaseOrderId: grns.purchaseOrderId,
       paymentMethod: grns.paymentMethod,
+      vendorNote: grns.vendorNote,
       paymentStatus: grns.paymentStatus,
       paidAt: grns.paidAt,
     })

@@ -68,6 +68,7 @@ export default async function EditGrnPage({ params }: PageProps<"/grn/[id]/edit"
         initialDocumentType={grn.documentType === "TAX_INVOICE" || grn.documentType === "DELIVERY_NOTE" ? grn.documentType : ""}
         cashSupplierId={cashSupplierId}
         initialPaymentMethod={grn.paymentMethod === "PETTY_CASH" ? "PETTY_CASH" : "INVOICE"}
+        initialVendorNote={grn.vendorNote ?? ""}
       />
     </>
   );

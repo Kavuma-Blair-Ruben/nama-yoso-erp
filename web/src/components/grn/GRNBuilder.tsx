@@ -87,6 +87,7 @@ export function GRNBuilder({
   initialDocumentType,
   cashSupplierId,
   initialPaymentMethod,
+  initialVendorNote,
 }: {
   mode: "po" | "direct";
   poId: string | null;
@@ -114,9 +115,13 @@ export function GRNBuilder({
   // Method is set to Petty Cash.
   cashSupplierId?: string;
   initialPaymentMethod?: "INVOICE" | "PETTY_CASH";
+  // Petty cash only — the actual small/informal vendor's name, since
+  // supplierId always points at the generic Cash supplier for these.
+  initialVendorNote?: string;
 }) {
   const router = useRouter();
   const productOptions = useMemo(() => products.map((p) => ({ value: p.id, code: p.legacyCode, label: p.name })), [products]);
+  const [vendorNote, setVendorNote] = useState(initialVendorNote ?? "");
   const [lines, setLines] = useState<EditLine[]>(() => initialLines.map(toEditLine));
   const [paymentMethod, setPaymentMethod] = useState<"INVOICE" | "PETTY_CASH">(initialPaymentMethod ?? "INVOICE");
   const [directSupplierId, setDirectSupplierId] = useState(
@@ -303,6 +308,7 @@ export function GRNBuilder({
       documentType: documentType || undefined,
       attachmentUrl,
       paymentMethod: mode === "direct" ? paymentMethod : "INVOICE",
+      vendorNote: mode === "direct" && paymentMethod === "PETTY_CASH" ? vendorNote : undefined,
       lines: lines
         .filter((l) => num(l.receivedQty) > 0 || l.isFoc)
         .map((l) => ({
@@ -368,9 +374,18 @@ export function GRNBuilder({
                 </button>
               </div>
               {paymentMethod === "PETTY_CASH" && (
-                <div style={{ fontSize: 11, color: "var(--ink-faint)", marginTop: 4 }}>
-                  For an informal cash purchase with no formal supplier invoice — a receipt photo is optional, and this is marked paid immediately.
-                </div>
+                <>
+                  <div style={{ fontSize: 11, color: "var(--ink-faint)", marginTop: 4 }}>
+                    For an informal cash purchase with no formal supplier invoice — a receipt photo is optional, and this is marked paid immediately.
+                  </div>
+                  <input
+                    type="text"
+                    value={vendorNote}
+                    onChange={(e) => setVendorNote(e.target.value)}
+                    placeholder="Vendor name (optional) — e.g. a corner shop or one-off stall"
+                    style={{ marginTop: 6, maxWidth: 360 }}
+                  />
+                </>
               )}
             </div>
             <div className="line-builder-row head" style={{ gridTemplateColumns: paymentMethod === "PETTY_CASH" ? "1fr 1fr" : "1fr 1fr 1fr" }}>

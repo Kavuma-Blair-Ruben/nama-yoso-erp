@@ -52,6 +52,10 @@ const grnInputSchema = z.object({
   // invoice, so the receipt/attachment is optional for it (see the
   // attachment gates in postGRN/postDraftGrn below).
   paymentMethod: z.enum(["INVOICE", "PETTY_CASH"]).default("INVOICE"),
+  // Petty cash only — supplierId always points at one generic "Cash"
+  // supplier for these, so this is the only place the real small/informal
+  // vendor gets recorded. Purely informational.
+  vendorNote: z.string().optional(),
   lines: z.array(lineSchema).min(1),
 });
 
@@ -133,6 +137,7 @@ async function insertGrn(tx: Db, input: z.infer<typeof grnInputSchema>, status: 
       documentType: input.documentType,
       attachmentUrl: input.attachmentUrl,
       paymentMethod: input.paymentMethod,
+      vendorNote: input.paymentMethod === "PETTY_CASH" ? input.vendorNote?.trim() || undefined : undefined,
       // Cash is paid on the spot — there's no outstanding-payable concept
       // for a petty-cash purchase, unlike an invoice GRN which defaults to
       // OUTSTANDING until markGrnPaymentStatus marks it PAID later.
@@ -325,6 +330,7 @@ export async function postDraftGrn(id: string): Promise<GrnActionResult> {
       branchId: grn.branchId,
       receivedDate: grn.receivedDate,
       paymentMethod: grn.paymentMethod as "INVOICE" | "PETTY_CASH",
+      vendorNote: grn.vendorNote ?? undefined,
       lines: lines.map((l) => ({
         stockItemId: l.stockItemId,
         purchaseOrderLineId: l.purchaseOrderLineId,
@@ -413,6 +419,7 @@ export async function updateGrnDraft(id: string, input: z.infer<typeof grnInputS
         documentType: parsed.data.documentType,
         attachmentUrl: parsed.data.attachmentUrl,
         paymentMethod: parsed.data.paymentMethod,
+        vendorNote: parsed.data.paymentMethod === "PETTY_CASH" ? parsed.data.vendorNote?.trim() || undefined : undefined,
         paymentStatus: parsed.data.paymentMethod === "PETTY_CASH" ? "PAID" : "OUTSTANDING",
       })
       .where(eq(grns.id, id));

@@ -54,6 +54,7 @@ export default async function GrnDetailPage({ params, searchParams }: PageProps<
       <div style={{ marginBottom: 14 }}>
         <span className={`status-badge ${grn.status === "DRAFT" ? "status-draft" : "status-received"}`}>{grn.status}</span>
         {grn.paymentMethod === "PETTY_CASH" && <span className="tag neutral" style={{ marginLeft: 6 }}>Petty Cash</span>}
+        {grn.paymentMethod === "PETTY_CASH" && grn.vendorNote && <span className="tag neutral" style={{ marginLeft: 6 }}>Vendor: {grn.vendorNote}</span>}
       </div>
       {grn.status === "DRAFT" ? (
         <div className="callout" style={{ borderColor: "var(--accent)" }}>

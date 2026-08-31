@@ -656,6 +656,12 @@ export const grns = pgTable(
     // (see postGRN/postDraftGrn) and it's marked PAID immediately on insert
     // since cash is paid on the spot, not owed.
     paymentMethod: text("payment_method").notNull().default("INVOICE"),
+    // Petty cash only — supplierId always points at one generic "Cash"
+    // supplier for these (no formal invoice to match against a real one),
+    // so this is the only place the actual small/informal vendor (a corner
+    // shop, a one-off stall) gets recorded at all. Purely informational —
+    // never joined against for AP/reporting, unlike supplierId.
+    vendorNote: text("vendor_note"),
     status: text("status").notNull().default("DRAFT"),
     postedAt: timestamp("posted_at", { withTimezone: true }),
     postedBy: uuid("posted_by").references(() => profiles.id),
