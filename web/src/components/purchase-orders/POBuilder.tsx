@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createPurchaseOrders } from "@/server/actions/purchaseOrders";
 import { fmt, money, num } from "@/lib/format";
 import { canonicalToPurchaseQty } from "@/lib/unitMath";
+import { ItemSearchSelect } from "@/components/ui/ItemSearchSelect";
 
 type Product = {
   id: string;
@@ -53,6 +54,10 @@ export function POBuilder({
     const stillValid = costCenters.some((c) => c.branchId === newBranchId && c.id === costCenterId);
     if (!stillValid) setCostCenterId(costCenters.find((c) => c.branchId === newBranchId)?.id ?? "");
   }
+  const productOptions = useMemo(
+    () => products.map((p) => ({ value: p.id, code: p.legacyCode, label: p.name, sublabel: p.supplierName ?? undefined })),
+    [products]
+  );
   const [fallbackSupplierId, setFallbackSupplierId] = useState("");
   const [notes, setNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -165,13 +170,7 @@ export function POBuilder({
           </div>
           {lines.map((l, i) => (
             <div className="line-builder-row" key={i} style={{ gridTemplateColumns: "2fr 80px 80px 90px 64px 32px" }}>
-              <select value={l.stockItemId} onChange={(e) => updateLineProduct(i, e.target.value)}>
-                {products.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.legacyCode} — {p.name}
-                  </option>
-                ))}
-              </select>
+              <ItemSearchSelect options={productOptions} value={l.stockItemId} onChange={(v) => updateLineProduct(i, v)} placeholder="Search item code or name…" />
               <input type="text" inputMode="decimal" value={l.qty} onChange={(e) => updateLine(i, { qty: e.target.value })} />
               <input type="text" value={l.unitLabel} readOnly />
               <input type="text" inputMode="decimal" value={l.rate} onChange={(e) => updateLine(i, { rate: e.target.value })} />

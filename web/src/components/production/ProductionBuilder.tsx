@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { openProductionBatch, updateProductionBatch } from "@/server/actions/production";
 import { fmt, money, todayStr, num } from "@/lib/format";
 import { canonicalUnitLabel } from "@/lib/unitMath";
+import { ItemSearchSelect } from "@/components/ui/ItemSearchSelect";
 
 type SubRecipeOption = {
   id: string;
@@ -77,6 +78,7 @@ export function ProductionBuilder({
 }) {
   const router = useRouter();
   const [subRecipeId, setSubRecipeId] = useState(initialSubRecipeId ?? subRecipes[0]?.id ?? "");
+  const subRecipeOptions = useMemo(() => subRecipes.map((s) => ({ value: s.id, code: s.legacyCode, label: s.name })), [subRecipes]);
   const [branchId, setBranchId] = useState(initialBranchId ?? branches[0]?.id ?? "");
   const costCentersForBranch = costCenters.filter((c) => c.branchId === branchId);
   const [costCenterId, setCostCenterId] = useState(
@@ -207,11 +209,7 @@ export function ProductionBuilder({
           <div>Sector</div>
         </div>
         <div className="line-builder-row" style={{ gridTemplateColumns: "2fr 1fr 1fr", marginBottom: 10 }}>
-          <select value={subRecipeId} disabled={!!existingBatchId} onChange={(e) => handleSubRecipeChange(e.target.value)}>
-            {subRecipes.map((s) => (
-              <option key={s.id} value={s.id}>{s.legacyCode} — {s.name}</option>
-            ))}
-          </select>
+          <ItemSearchSelect options={subRecipeOptions} value={subRecipeId} onChange={handleSubRecipeChange} disabled={!!existingBatchId} placeholder="Search recipe code or name…" />
           <select value={branchId} onChange={(e) => changeBranch(e.target.value)}>
             {branches.map((b) => (
               <option key={b.id} value={b.id}>{b.name}</option>
