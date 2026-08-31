@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { postWastageEvent, saveWastageDraft, updateWastageDraft, uploadWastagePhoto, deleteWastagePhoto, getRecipeWasteLines } from "@/server/actions/wastage";
 import { money, todayStr, num } from "@/lib/format";
 import { canonicalUnitLabel } from "@/lib/unitMath";
+import { ItemSearchSelect } from "@/components/ui/ItemSearchSelect";
 
 type PickerItem = { id: string; legacyCode: string; name: string; issueUnit: string | null; ratePerKgL: number | null };
 type RecipePickerItem = { legacyCode: string; name: string };
@@ -39,6 +40,8 @@ export function WastageBuilder({
   initialLines?: Line[];
 }) {
   const router = useRouter();
+  const itemOptions = useMemo(() => items.map((it) => ({ value: it.id, code: it.legacyCode, label: it.name })), [items]);
+  const recipeOptions = useMemo(() => (mainRecipes ?? []).map((r) => ({ value: r.legacyCode, code: r.legacyCode, label: r.name })), [mainRecipes]);
   const [eventDate, setEventDate] = useState(initialEventDate ?? todayStr());
   const [branchId, setBranchId] = useState(initialBranchId ?? branches[0]?.id ?? "");
   const costCentersForBranch = costCenters.filter((c) => c.branchId === branchId);
@@ -179,11 +182,7 @@ export function WastageBuilder({
               Pick a recipe and how many portions were wasted — its live ingredient breakdown is added below as individual lines, ready to review before logging.
             </div>
             <div className="line-builder-row" style={{ gridTemplateColumns: "2fr 100px 140px", marginBottom: 16 }}>
-              <select value={wasteRecipeCode} onChange={(e) => setWasteRecipeCode(e.target.value)}>
-                {mainRecipes.map((r) => (
-                  <option key={r.legacyCode} value={r.legacyCode}>{r.legacyCode} — {r.name}</option>
-                ))}
-              </select>
+              <ItemSearchSelect options={recipeOptions} value={wasteRecipeCode} onChange={setWasteRecipeCode} placeholder="Search recipe code or name…" />
               <input type="text" inputMode="decimal" value={wastePortions} onChange={(e) => setWastePortions(e.target.value)} placeholder="portions" />
               <button type="button" className="btn ghost" disabled={recipeWastePending} onClick={addRecipeWaste}>
                 {recipeWastePending ? "Adding…" : "+ Add Ingredients"}
@@ -212,11 +211,9 @@ export function WastageBuilder({
                 lines.map((l, i) => (
                   <tr key={i}>
                     <td>
-                      <select value={l.stockItemId} onChange={(e) => updateLineItem(i, e.target.value)} style={{ minWidth: 220 }}>
-                        {items.map((it) => (
-                          <option key={it.id} value={it.id}>{it.legacyCode} — {it.name}</option>
-                        ))}
-                      </select>
+                      <div style={{ minWidth: 220 }}>
+                        <ItemSearchSelect options={itemOptions} value={l.stockItemId} onChange={(v) => updateLineItem(i, v)} placeholder="Search item…" />
+                      </div>
                     </td>
                     <td><input type="text" inputMode="decimal" style={{ width: 70 }} value={l.qty} onChange={(e) => updateLine(i, { qty: e.target.value })} /></td>
                     <td>{l.unitLabel}</td>
