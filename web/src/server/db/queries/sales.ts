@@ -132,7 +132,7 @@ export async function getSalesTodayStats(date: string): Promise<{ qty: number; r
 
 export type CogsTrendPoint = { label: string; revenue: number; cogs: number; cogsPct: number | null };
 export type CogsSectionRow = { section: string; revenue: number; cogs: number; cogsPct: number | null };
-export type CogsTopRow = { code: string | null; name: string; revenue: number; cogs: number; cogsPct: number | null };
+export type CogsTopRow = { code: string | null; name: string; qty: number; costPerUnit: number; revenue: number; cogs: number; cogsPct: number | null };
 export type CogsCategoryRow = { category: "food" | "beverage"; revenue: number; cogs: number; cogsPct: number | null };
 export type CogsRecipeRow = { code: string | null; name: string; costCategory: "food" | "beverage"; qty: number; revenue: number; cogs: number; cogsPct: number | null };
 export type CogsAnalysis = {
@@ -244,7 +244,7 @@ export async function getCogsAnalysis(filters: DateRangeFilter = {}): Promise<Co
   const recipeListSorted = [...recipeList].sort((a, b) => b.cogs - a.cogs);
   const topByCogs: CogsTopRow[] = recipeListSorted
     .slice(0, 10)
-    .map((r) => ({ code: r.code, name: r.name, revenue: r.revenue, cogs: r.cogs, cogsPct: r.revenue > 0 ? (r.cogs / r.revenue) * 100 : null }));
+    .map((r) => ({ code: r.code, name: r.name, qty: r.qty, costPerUnit: r.qty ? r.cogs / r.qty : 0, revenue: r.revenue, cogs: r.cogs, cogsPct: r.revenue > 0 ? (r.cogs / r.revenue) * 100 : null }));
   const recipeListRows: CogsRecipeRow[] = recipeListSorted.map((r) => ({
     code: r.code,
     name: r.name,

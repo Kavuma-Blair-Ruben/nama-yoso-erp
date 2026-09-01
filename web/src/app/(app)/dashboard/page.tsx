@@ -604,18 +604,20 @@ async function CogsAnalysisTab({ from, to, view }: { from: string; to: string; v
               </div>
               <div className="table-wrap" style={{ maxHeight: 320 }}>
                 <table className="data">
-                  <thead><tr><th>Recipe</th><th className="right">COGS</th><th className="right">COGS %</th></tr></thead>
+                  <thead><tr><th>Recipe</th><th className="right">Qty Sold</th><th className="right">Cost/Unit</th><th className="right">COGS</th><th className="right">COGS %</th></tr></thead>
                   <tbody>
                     {topRecipes.length ? (
                       topRecipes.map((r, i) => (
                         <tr key={i}>
                           <td>{r.code ? <Link href={`/recipes/main/${r.code}`}>{r.name}</Link> : r.name}</td>
+                          <td className="mono-r">{fmt(r.qty, 0)}</td>
+                          <td className="mono-r">{money(r.qty ? r.cogs / r.qty : 0, 2)}</td>
                           <td className="mono-r">{money(r.cogs, 0)}</td>
                           <td className="right">{r.cogsPct != null ? <span className={`tag ${r.cogsPct > 35 ? "bad" : "good"}`}>{fmt(r.cogsPct, 1)}%</span> : "—"}</td>
                         </tr>
                       ))
                     ) : (
-                      <tr className="empty-row"><td colSpan={3}>No {activeCategory} recipes sold in this range.</td></tr>
+                      <tr className="empty-row"><td colSpan={5}>No {activeCategory} recipes sold in this range.</td></tr>
                     )}
                   </tbody>
                 </table>

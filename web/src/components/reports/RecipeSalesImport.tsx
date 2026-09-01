@@ -35,7 +35,12 @@ export function RecipeSalesImport({ hasData, unmatchedCount }: { hasData: boolea
           const sku = pickField(r, ["sku", "product sku", "code"]) || undefined;
           const qty = Number(pickField(r, ["qty", "quantity", "units sold", "net quantity"])) || 0;
           const revenue = Number(pickField(r, ["revenue", "sales", "amount", "total", "net sales"])) || 0;
-          const grossRevenue = Number(pickField(r, ["gross sales without tax", "gross sales", "gross revenue"])) || undefined;
+          // "Gross Sales" (with tax) is the true top-line figure — "Gross
+          // Sales Without Tax" is really just Net Sales plus discount, and
+          // ends up numerically identical to Net Sales whenever there's no
+          // discount, which silently made Gross == Net and hid the tax
+          // entirely from this KPI.
+          const grossRevenue = Number(pickField(r, ["gross sales", "gross revenue"])) || undefined;
           const discountAmount = Number(pickField(r, ["discount amount", "discount"])) || undefined;
           const voidAmount = Number(pickField(r, ["void amount"])) || undefined;
           const voidQty = Number(pickField(r, ["void quantity", "void qty"])) || undefined;
