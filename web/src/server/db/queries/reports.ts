@@ -283,11 +283,15 @@ export async function getSectionStats() {
 // historical import data and a different, unrelated "section" field. This is
 // the report that answers "Kitchen's food cost vs Bar's beverage cost", live.
 export async function getCostCenterStats(filters: { from?: string; to?: string } = {}) {
+  // Real branches first (Mirdiff, then Marsa — priority order, not
+  // alphabetical, since "MARSA" < "MIRDIFF" would otherwise put the
+  // less-active branch on top), Demo/training branches last regardless of
+  // name.
   const allCenters = await db
     .select({ id: costCenters.id, name: costCenters.name, branchId: costCenters.branchId, branchName: branches.name })
     .from(costCenters)
     .innerJoin(branches, eq(costCenters.branchId, branches.id))
-    .orderBy(branches.name, costCenters.name);
+    .orderBy(sql`case when ${branches.isDemo} then 2 when ${branches.code} = 'NAMAYOSO MIRDIFF' then 0 when ${branches.code} = 'NAMAYOSO MARSA' then 1 else 1.5 end`, costCenters.name);
 
   const grnConditions = [eq(grns.status, "POSTED")];
   if (filters.from) grnConditions.push(gte(grns.receivedDate, filters.from));
