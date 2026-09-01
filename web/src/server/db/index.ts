@@ -37,12 +37,27 @@ if (!process.env.DIRECT_URL) {
 // Without both, Next.js's response stream hangs until the client/proxy
 // gives up and disconnects first (seen in production logs as "failed to
 // pipe response" / BodyTimeoutError, and live as a page stuck "Pending" in
-// the Network tab well after sign-in itself succeeded). idle_timeout is
-// deliberately left unset — a shorter one would proactively tear down
-// perfectly good warm connections during normal gaps between requests,
-// forcing more reconnects, not fewer.
+// the Network tab well after sign-in itself succeeded).
+//
+// idle_timeout WAS deliberately left unset (reasoning: a shorter one would
+// proactively tear down perfectly good warm connections during normal gaps
+// between requests, forcing more reconnects). That reasoning held for the
+// pooler, which has real headroom. It does not hold for DIRECT_URL:
+// confirmed live that even this "direct" route is still Supavisor under the
+// hood, just in session mode with a hard, low ceiling (pool_size: 15,
+// shared across this app's own connections AND anything else touching the
+// database — PostgREST, auth, cron, ad-hoc scripts). Idle connections that
+// never got cleanly closed sat for 20+ minutes and ate the entire budget,
+// taking production down outright (EMAXCONNSESSION on every query) until
+// manually killed. 20s means an idle connection releases itself back to
+// Postgres well before it can ever accumulate toward that ceiling again —
+// a few extra reconnects is a small price against a repeat of a full outage.
 const client = postgres(connectionString, {
-  max: 10,
+  // Trimmed from 10 — Supabase's own baseline connections (PostgREST, auth,
+  // pg_cron, the metrics exporter) already use ~5-6 of the 15-connection
+  // session-mode ceiling by themselves before this app opens a single one.
+  max: 6,
+  idle_timeout: 20,
   prepare: false,
   ssl: "require",
   connect_timeout: 10,
