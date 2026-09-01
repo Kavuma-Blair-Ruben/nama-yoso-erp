@@ -122,7 +122,7 @@ async function RecipeSalesTab({ from, to, view }: { from: string; to: string; vi
         itemMappings={itemMappings}
         recentEvents={recentEvents}
       />
-      <RecipeSalesImport hasData={report.hasData} unmatchedCount={report.unmatchedCount} />
+      <RecipeSalesImport hasData={report.hasData} unmatchedCount={report.unmatchedCount} branches={branches} />
       <form className="filterbar" method="get">
         <input type="hidden" name="tab" value="sales" />
         <div className="daterange">📅<input type="date" name="from" defaultValue={from} /><span>–</span><input type="date" name="to" defaultValue={to} /></div>

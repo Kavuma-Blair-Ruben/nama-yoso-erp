@@ -26,9 +26,12 @@ export type SalesDayBreakdown = { date: string; gross: number; net: number; void
 // just because the POS webhook isn't wired up yet. "orderCount"/
 // "avgOrderValue" become "itemCount"/"avgItemValue" in that case, since a
 // per-product export has no real order boundary to count. posOrders has no
-// void column at all (Foodics' order-total payload doesn't carry it), so
-// hasVoidData is false whenever source is "pos" — voidAmount/dailyBreakdown
-// stay zeroed there rather than silently implying "no voids happened".
+// void column for a real per-order webhook insert (Foodics' order-total
+// payload doesn't carry it), but a branch-summary import
+// (importBranchSalesReport) sets orderCount/voidAmount on its one
+// synthetic daily row since it comes from an aggregate report that does
+// carry them — so those fields are used per-row when present, falling
+// back to "1 row = 1 order" / no void data otherwise.
 export async function getSalesDashboardStats(opts: number | { from?: string; to?: string; days?: number } = 30) {
   const { from, to, days } = typeof opts === "number" ? { from: undefined, to: undefined, days: opts } : opts;
   const since = from ?? daysAgoStr(days ?? 30);
@@ -41,23 +44,33 @@ export async function getSalesDashboardStats(opts: number | { from?: string; to?
     const grossRevenue = rows.reduce((s, r) => s + r.grossAmount, 0);
     const totalDiscount = rows.reduce((s, r) => s + r.discountAmount, 0);
     const netRevenue = rows.reduce((s, r) => s + r.netAmount, 0);
-    const orderCount = rows.length;
+    const orderCount = rows.reduce((s, r) => s + (r.orderCount ?? 1), 0);
+    const totalVoidAmount = rows.reduce((s, r) => s + (r.voidAmount ?? 0), 0);
+    const hasVoidData = rows.some((r) => r.voidAmount != null);
     const avgOrderValue = orderCount ? netRevenue / orderCount : 0;
     const discountRatePct = grossRevenue ? (totalDiscount / grossRevenue) * 100 : 0;
 
-    const byDate = new Map<string, { gross: number; net: number }>();
+    const byDate = new Map<string, { gross: number; net: number; voidAmount: number }>();
     for (const r of rows) {
-      const d = byDate.get(r.saleDate) ?? { gross: 0, net: 0 };
+      const d = byDate.get(r.saleDate) ?? { gross: 0, net: 0, voidAmount: 0 };
       d.gross += r.grossAmount;
       d.net += r.netAmount;
+      d.voidAmount += r.voidAmount ?? 0;
       byDate.set(r.saleDate, d);
     }
     const trend = [...byDate.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([label, v]) => ({ label, value: v.net }));
     const dailyBreakdown: SalesDayBreakdown[] = [...byDate.entries()]
       .sort((a, b) => b[0].localeCompare(a[0]))
-      .map(([date, v]) => ({ date, gross: v.gross, net: v.net, voidAmount: 0, discountPct: v.gross ? ((v.gross - v.net) / v.gross) * 100 : 0, voidPct: 0 }));
+      .map(([date, v]) => ({
+        date,
+        gross: v.gross,
+        net: v.net,
+        voidAmount: v.voidAmount,
+        discountPct: v.gross ? ((v.gross - v.net - v.voidAmount) / v.gross) * 100 : 0,
+        voidPct: v.gross ? (v.voidAmount / v.gross) * 100 : 0,
+      }));
 
-    return { grossRevenue, totalDiscount, totalVoidAmount: 0, hasVoidData: false, netRevenue, orderCount, avgOrderValue, discountRatePct, trend, dailyBreakdown, hasData: true, days: rangeDays, source: "pos" as const };
+    return { grossRevenue, totalDiscount, totalVoidAmount, hasVoidData, netRevenue, orderCount, avgOrderValue, discountRatePct, trend, dailyBreakdown, hasData: true, days: rangeDays, source: "pos" as const };
   }
 
   const salesConditions = [gte(recipeSales.saleDate, since)];

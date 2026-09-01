@@ -6,7 +6,9 @@ import { importRecipeSales, clearRecipeSales, type SalesImportRow } from "@/serv
 import { parseCsv, pickField } from "@/lib/csv";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 
-export function RecipeSalesImport({ hasData, unmatchedCount }: { hasData: boolean; unmatchedCount: number }) {
+type Branch = { id: string; name: string };
+
+export function RecipeSalesImport({ hasData, unmatchedCount, branches }: { hasData: boolean; unmatchedCount: number; branches: Branch[] }) {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
   const [pending, startTransition] = useTransition();
@@ -14,9 +16,10 @@ export function RecipeSalesImport({ hasData, unmatchedCount }: { hasData: boolea
   const [info, setInfo] = useState<string | null>(null);
   const [confirmingClear, setConfirmingClear] = useState(false);
   // A per-product Foodics export (Product/SKU/Gross/Net/Void columns, one
-  // row per dish) has no date column of its own — the report's date is
-  // implicit in when it was run, so it has to be supplied here instead.
+  // row per dish) has no date or branch column of its own — you upload one
+  // file per branch per day, so both have to be supplied here instead.
   const [saleDate, setSaleDate] = useState("");
+  const [branchId, setBranchId] = useState("");
 
   function handleFile(file: File) {
     setError(null);
@@ -53,7 +56,7 @@ export function RecipeSalesImport({ hasData, unmatchedCount }: { hasData: boolea
         return;
       }
       startTransition(async () => {
-        const result = await importRecipeSales(rows);
+        const result = await importRecipeSales(rows, branchId || undefined);
         if (result.error) setError(result.error);
         else {
           setInfo(`Imported ${result.imported} row(s) — ${result.matched} matched to a recipe automatically, ${result.unmatched} unmatched.`);
@@ -90,6 +93,13 @@ export function RecipeSalesImport({ hasData, unmatchedCount }: { hasData: boolea
         <div className="btn-row" style={{ marginBottom: 8 }}>
           <label style={{ fontSize: 12, fontWeight: 600, alignSelf: "center" }}>Date this file covers</label>
           <input type="date" value={saleDate} onChange={(e) => setSaleDate(e.target.value)} style={{ maxWidth: 160 }} />
+          <label style={{ fontSize: 12, fontWeight: 600, alignSelf: "center", marginLeft: 8 }}>Branch</label>
+          <select value={branchId} onChange={(e) => setBranchId(e.target.value)} style={{ maxWidth: 200 }}>
+            <option value="">Unassigned / mixed</option>
+            {branches.map((b) => (
+              <option key={b.id} value={b.id}>{b.name}</option>
+            ))}
+          </select>
         </div>
         <div className="btn-row">
           <button className="btn accent" disabled={pending} onClick={() => fileRef.current?.click()}>

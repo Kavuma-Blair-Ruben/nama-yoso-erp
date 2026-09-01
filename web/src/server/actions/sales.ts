@@ -28,7 +28,12 @@ export type SalesImportRow = {
 
 const BATCH_SIZE = 500;
 
-export async function importRecipeSales(rows: SalesImportRow[]): Promise<SalesImportResult> {
+// branchId applies to the whole file — a "branch sales CSV" from Foodics
+// covers one branch's day, not a mix, so it's one param here rather than a
+// per-row field. Optional (undefined = unassigned) for a source that
+// genuinely can't tell branches apart, but every future upload should pass
+// one now that branch-tagged uploads are the normal workflow.
+export async function importRecipeSales(rows: SalesImportRow[], branchId?: string): Promise<SalesImportResult> {
   const session = await assertPermission("reports", "edit");
   // A row is worth keeping if it represents any real activity — a sale
   // (qty > 0) or a void (voidQty > 0) — not just a positive net qty, so a
@@ -45,6 +50,7 @@ export async function importRecipeSales(rows: SalesImportRow[]): Promise<SalesIm
     if (match) matched++;
     return {
       saleDate: r.saleDate,
+      branchId,
       mainRecipeId: match?.id,
       itemLabel: r.itemLabel,
       qty: r.qty,

@@ -1309,6 +1309,10 @@ export const recipeSales = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     saleDate: date("sale_date").notNull(),
+    // Nullable — a CSV import predating branch-tagged uploads (or a source
+    // that genuinely can't tell branches apart) leaves this unset, and every
+    // report treats a null branch as "unassigned" rather than erroring.
+    branchId: uuid("branch_id").references(() => branches.id),
     mainRecipeId: uuid("main_recipe_id").references(() => mainRecipes.id),
     itemLabel: text("item_label").notNull(),
     qty: numeric("qty", { precision: 14, scale: 2, mode: "number" }).notNull(),
@@ -1457,6 +1461,14 @@ export const posOrders = pgTable(
     grossAmount: money("gross_amount").notNull().default(0),
     discountAmount: money("discount_amount").notNull().default(0),
     netAmount: money("net_amount").notNull().default(0),
+    // Both nullable — a real per-order webhook row has no reason to set
+    // these (that row IS one order, with no voids of its own to report), so
+    // getSalesDashboardStats falls back to counting rows / assuming 0 void
+    // when null. Only a daily branch-summary import (one row representing
+    // a whole day, not one real order) sets them, since that's the only
+    // source that carries a true order count and void total at all.
+    orderCount: integer("order_count"),
+    voidAmount: money("void_amount"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [unique("pos_orders_provider_order_unique").on(t.provider, t.externalOrderId)]

@@ -12,6 +12,7 @@ import { withTimeout } from "@/lib/withTimeout";
 import { fmt, money, pct, todayStr } from "@/lib/format";
 import { DateRangeBar } from "@/components/dashboard/DateRangeBar";
 import { GuestCountForm } from "@/components/dashboard/GuestCountForm";
+import { BranchSalesReportImport } from "@/components/dashboard/BranchSalesReportImport";
 import { CategoryBarChart } from "@/components/dashboard/CategoryBarChart";
 import { TopCostBarChart } from "@/components/dashboard/TopCostBarChart";
 import { DonutChart } from "@/components/charts/DonutChart";
@@ -852,6 +853,7 @@ async function SalesDashboardTab({ from, to }: { from: string; to: string }) {
         </>
       )}
       <div style={{ height: 16 }} />
+      <BranchSalesReportImport />
       <GuestCountForm rows={guests.rows} />
     </>
   );

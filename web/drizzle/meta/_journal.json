@@ -407,6 +407,20 @@
       "when": 1788301483973,
       "tag": "0057_add_daily_tips_amount",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1788301819140,
+      "tag": "0058_add_recipe_sales_branch",
+      "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1788302504276,
+      "tag": "0059_add_pos_orders_order_count_void",
+      "breakpoints": true
     }
   ]
 }
