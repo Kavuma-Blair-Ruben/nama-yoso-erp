@@ -1,0 +1,1 @@
+ALTER TABLE "daily_guest_counts" ADD COLUMN "tips_amount" numeric(14, 4);

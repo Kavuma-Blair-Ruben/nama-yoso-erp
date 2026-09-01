@@ -6,10 +6,12 @@ import { getPurchasingStats, getCostCenterStats } from "@/server/db/queries/repo
 import { listSuppliers } from "@/server/db/queries/suppliers";
 import { getMenuEngineeringData, getCogsAnalysis } from "@/server/db/queries/sales";
 import { getSalesDashboardStats } from "@/server/db/queries/posOrders";
+import { getGuestCounts } from "@/server/db/queries/guestCounts";
 import { buildDailySummary } from "@/lib/dailySummary";
 import { withTimeout } from "@/lib/withTimeout";
 import { fmt, money, pct, todayStr } from "@/lib/format";
 import { DateRangeBar } from "@/components/dashboard/DateRangeBar";
+import { GuestCountForm } from "@/components/dashboard/GuestCountForm";
 import { CategoryBarChart } from "@/components/dashboard/CategoryBarChart";
 import { TopCostBarChart } from "@/components/dashboard/TopCostBarChart";
 import { DonutChart } from "@/components/charts/DonutChart";
@@ -750,8 +752,13 @@ async function CostCenterTab({ from, to }: { from: string; to: string }) {
 }
 
 async function SalesDashboardTab({ from, to }: { from: string; to: string }) {
-  const stats = await withTimeout(getSalesDashboardStats({ from, to }), 28000, "This is taking longer than expected — please try again in a moment.");
+  const [stats, guests] = await withTimeout(
+    Promise.all([getSalesDashboardStats({ from, to }), getGuestCounts({ from, to })]),
+    28000,
+    "This is taking longer than expected — please try again in a moment."
+  );
   const fromCsv = stats.source === "csv";
+  const avgSpendPerGuest = guests.totalGuests > 0 ? stats.netRevenue / guests.totalGuests : null;
 
   return (
     <>
@@ -780,6 +787,12 @@ async function SalesDashboardTab({ from, to }: { from: string; to: string }) {
               <div className="l">Discounts Given</div>
               <div className="d">{fmt(stats.discountRatePct, 1)}% of gross</div>
             </div>
+            <div className={`kpi${stats.totalVoidAmount > 0 ? " accent-bad" : ""}`}>
+              <div className="kpi-icon">🚫</div>
+              <div className="n" style={{ color: stats.totalVoidAmount > 0 ? "var(--bad)" : "inherit" }}>{stats.hasVoidData ? money(stats.totalVoidAmount, 2) : "—"}</div>
+              <div className="l">Voided</div>
+              <div className="d">{stats.hasVoidData ? (stats.grossRevenue ? `${fmt((stats.totalVoidAmount / stats.grossRevenue) * 100, 1)}% of gross` : "Excluded from revenue") : "Not in this source"}</div>
+            </div>
             <div className="kpi accent-good">
               <div className="kpi-icon">💰</div>
               <div className="n">{money(stats.netRevenue, 2)}</div>
@@ -793,6 +806,18 @@ async function SalesDashboardTab({ from, to }: { from: string; to: string }) {
               <div className="l">{fromCsv ? "Items Sold" : "Orders"}</div>
               <div className="d">Last {stats.days} days</div>
             </div>
+            <div className="kpi">
+              <div className="kpi-icon">🧑‍🤝‍🧑</div>
+              <div className="n">{avgSpendPerGuest != null ? money(avgSpendPerGuest, 2) : "—"}</div>
+              <div className="l">Avg Spend / Guest</div>
+              <div className="d">{guests.totalGuests > 0 ? `${fmt(guests.totalGuests, 0)} guest(s) logged` : "Log guest counts below"}</div>
+            </div>
+            <div className="kpi">
+              <div className="kpi-icon">💸</div>
+              <div className="n">{guests.totalTips > 0 ? money(guests.totalTips, 2) : "—"}</div>
+              <div className="l">Tips</div>
+              <div className="d">{guests.totalTips > 0 ? "Logged manually" : "Log tips below"}</div>
+            </div>
           </div>
           <div className="panel">
             <div className="panel-head"><h3>Net Revenue — Daily</h3></div>
@@ -800,8 +825,34 @@ async function SalesDashboardTab({ from, to }: { from: string; to: string }) {
               <TrendLineChart data={stats.trend} format="money2" />
             </div>
           </div>
+          <div style={{ height: 16 }} />
+          <div className="panel">
+            <div className="panel-head">
+              <h3>Day by Day</h3>
+              {!stats.hasVoidData && <span style={{ fontSize: 11, color: "var(--ink-faint)" }}>Void % not available from live POS order totals</span>}
+            </div>
+            <div className="table-wrap" style={{ maxHeight: 420 }}>
+              <table className="data">
+                <thead><tr><th>Date</th><th className="right">Gross</th><th className="right">Net</th><th className="right">Voided</th><th className="right">Discount %</th><th className="right">Void %</th></tr></thead>
+                <tbody>
+                  {stats.dailyBreakdown.map((d) => (
+                    <tr key={d.date}>
+                      <td>{d.date}</td>
+                      <td className="mono-r">{money(d.gross, 2)}</td>
+                      <td className="mono-r">{money(d.net, 2)}</td>
+                      <td className="mono-r" style={{ color: d.voidAmount ? "var(--bad)" : undefined }}>{stats.hasVoidData ? money(d.voidAmount, 2) : "—"}</td>
+                      <td className="right">{fmt(d.discountPct, 1)}%</td>
+                      <td className="right">{stats.hasVoidData ? `${fmt(d.voidPct, 1)}%` : "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </>
       )}
+      <div style={{ height: 16 }} />
+      <GuestCountForm rows={guests.rows} />
     </>
   );
 }

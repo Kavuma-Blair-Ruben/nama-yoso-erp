@@ -1338,6 +1338,25 @@ export const recipeSales = pgTable(
   (t) => [unique("recipe_sales_source_order_unique").on(t.source, t.sourceOrderId)]
 );
 
+// Manual daily guest/cover count — neither the per-product Foodics CSV nor
+// the current webhook payload carries this (both are product/order-total
+// shaped, not table/cover shaped), so until a real order-level export or a
+// guest-count field in the live POS payload is available, this is filled in
+// by hand. One row per date; joined against recipe_sales/pos_orders by date
+// to compute average spend per guest, never stored as a derived value itself.
+export const dailyGuestCounts = pgTable("daily_guest_counts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  date: date("date").notNull().unique(),
+  guestCount: integer("guest_count").notNull(),
+  // Same story as guestCount — tips are an order/payment-level figure, not
+  // something either the per-product CSV or the current POS payload
+  // carries, so it's logged by hand alongside the guest count for the day.
+  tipsAmount: money("tips_amount"),
+  notes: text("notes"),
+  enteredBy: uuid("entered_by").references(() => profiles.id),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 // One row per POS provider, holding the credential the user enters through
 // the Integrations settings page (not an env var — unlike WhatsApp/Anthropic,
 // this genuinely needs to be self-service editable by a business owner
