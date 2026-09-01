@@ -255,7 +255,7 @@ async function PurchasingTab() {
               format="money0"
               height={180}
             />
-            <div style={{ fontSize: 11, color: "var(--ink-faint)", marginTop: 8 }}>Aging is calculated from invoice date to today, based on the historical expense register.</div>
+            <div style={{ fontSize: 11, color: "var(--ink-faint)", marginTop: 8 }}>Aging is calculated from invoice date to today, across the historical expense register and every posted GRN with an invoice on file.</div>
           </div>
         </div>
         <div className="panel">

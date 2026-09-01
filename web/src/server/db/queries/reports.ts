@@ -341,13 +341,17 @@ function weekStart(dateStr: string): string {
   return dt.toISOString().slice(0, 10);
 }
 
-// AP aging + spend KPIs across the full historical invoice ledger — a
-// dedicated, unlimited fetch (unlike listInvoices's 500-row UI cap) so the
-// totals here are exact, not a truncated sample.
+// AP aging + spend KPIs across the full historical invoice ledger, plus
+// every posted GRN that carries a real invoice/delivery note — same "GRN
+// doubles as its own AP record" definition as listInvoices in invoices.ts.
+// Without this second half, a GRN entered directly (no LPO, or before any
+// matching historical import) was real spend that never showed up here.
+// A dedicated, unlimited fetch (unlike listInvoices's 500-row UI cap) so
+// the totals here are exact, not a truncated sample.
 export async function getPurchasingStats() {
-  // Independent whole-table scans — fetched concurrently instead of three
+  // Independent whole-table scans — fetched concurrently instead of five
   // sequential round trips.
-  const [invoices, lines, items] = await Promise.all([
+  const [invoices, lines, items, grnInvoices, grnItemLines] = await Promise.all([
     db.select({ total: invoicesHistorical.total, status: invoicesHistorical.status, terms: invoicesHistorical.termsNormalized, invoiceDate: invoicesHistorical.invoiceDate, weekLabel: invoicesHistorical.weekLabel }).from(invoicesHistorical),
     db.select({ itemLabel: purchaseLinesHistorical.itemLabel, amount: purchaseLinesHistorical.amount }).from(purchaseLinesHistorical),
     // Historical purchase lines carry only a free-text item label, no
@@ -356,12 +360,36 @@ export async function getPurchasingStats() {
     // dashboard's "Top Purchased Items" can link straight to the product
     // instead of a text search when the label happens to match verbatim.
     db.select({ legacyCode: stockItems.legacyCode, name: stockItems.name }).from(stockItems),
+    db
+      .select({
+        receivedDate: grns.receivedDate,
+        paymentMethod: grns.paymentMethod,
+        paymentStatus: grns.paymentStatus,
+        // Single-table-looking subqueries here still risk the silent
+        // bare-id bug documented elsewhere in this codebase — literal-
+        // qualify every reference (same shape as listInvoices).
+        net: sql<number>`coalesce((select sum(case when grn_lines.is_foc then 0 else grn_lines.received_qty * grn_lines.rate * (1 - grn_lines.discount_pct / 100) end) from grn_lines where grn_lines.grn_id = grns.id), 0)::float8`,
+        vat: sql<number>`coalesce((select sum(case when grn_lines.is_foc then 0 else grn_lines.received_qty * grn_lines.rate * (1 - grn_lines.discount_pct / 100) * grn_lines.tax_rate / 100 end) from grn_lines where grn_lines.grn_id = grns.id), 0)::float8`,
+      })
+      .from(grns)
+      .where(and(eq(grns.status, "POSTED"), isNotNull(grns.invoiceNumber), ne(grns.invoiceNumber, ""))),
+    db
+      .select({ name: stockItems.name, amount: sql<number>`case when ${grnLines.isFoc} then 0 else ${grnLines.receivedQty} * ${grnLines.rate} * (1 - ${grnLines.discountPct} / 100) end` })
+      .from(grnLines)
+      .innerJoin(grns, eq(grnLines.grnId, grns.id))
+      .innerJoin(stockItems, eq(grnLines.stockItemId, stockItems.id))
+      .where(and(eq(grns.status, "POSTED"), isNotNull(grns.invoiceNumber), ne(grns.invoiceNumber, ""))),
   ]);
   const codeByName = new Map(items.map((i) => [i.name, i.legacyCode]));
+  const grnTotals = grnInvoices.map((g) => ({ ...g, total: g.net + g.vat }));
 
-  const totalSpend = invoices.reduce((s, i) => s + (i.total ?? 0), 0);
-  const outstanding = invoices.filter((i) => i.status === "OUTSTANDING").reduce((s, i) => s + (i.total ?? 0), 0);
-  const cashSpend = invoices.filter((i) => i.terms === "cash" || i.terms === "petty cash" || i.terms === "paid").reduce((s, i) => s + (i.total ?? 0), 0);
+  const totalSpend = invoices.reduce((s, i) => s + (i.total ?? 0), 0) + grnTotals.reduce((s, g) => s + g.total, 0);
+  const outstanding =
+    invoices.filter((i) => i.status === "OUTSTANDING").reduce((s, i) => s + (i.total ?? 0), 0) +
+    grnTotals.filter((g) => g.paymentStatus === "OUTSTANDING").reduce((s, g) => s + g.total, 0);
+  const cashSpend =
+    invoices.filter((i) => i.terms === "cash" || i.terms === "petty cash" || i.terms === "paid").reduce((s, i) => s + (i.total ?? 0), 0) +
+    grnTotals.filter((g) => g.paymentMethod === "PETTY_CASH").reduce((s, g) => s + g.total, 0);
   const creditSpend = totalSpend - cashSpend;
 
   const today = todayStr();
@@ -374,11 +402,21 @@ export async function getPurchasingStats() {
     const b = age > 90 ? "90+" : age > 60 ? "61-90" : age > 30 ? "31-60" : age > 14 ? "15-30" : "0-14";
     buckets[b] += i.total ?? 0;
   }
+  for (const g of grnTotals) {
+    if (g.paymentStatus !== "OUTSTANDING") continue;
+    outstandingCount++;
+    const age = daysBetween(g.receivedDate, today);
+    const b = age > 90 ? "90+" : age > 60 ? "61-90" : age > 30 ? "31-60" : age > 14 ? "15-30" : "0-14";
+    buckets[b] += g.total;
+  }
 
   const itemSpend = new Map<string, number>();
   for (const l of lines) {
     if (!l.itemLabel) continue;
     itemSpend.set(l.itemLabel, (itemSpend.get(l.itemLabel) ?? 0) + (l.amount ?? 0));
+  }
+  for (const l of grnItemLines) {
+    itemSpend.set(l.name, (itemSpend.get(l.name) ?? 0) + l.amount);
   }
   const topItems = [...itemSpend.entries()]
     .sort((a, b) => b[1] - a[1])
@@ -391,9 +429,13 @@ export async function getPurchasingStats() {
     if (!w) continue;
     weekSpend.set(w, (weekSpend.get(w) ?? 0) + (i.total ?? 0));
   }
+  for (const g of grnTotals) {
+    const w = weekStart(g.receivedDate);
+    weekSpend.set(w, (weekSpend.get(w) ?? 0) + g.total);
+  }
   const weeks = [...weekSpend.entries()].sort((a, b) => a[0].localeCompare(b[0]));
 
-  return { totalSpend, outstanding, outstandingCount, cashSpend, creditSpend, invoiceCount: invoices.length, buckets, topItems, weeks };
+  return { totalSpend, outstanding, outstandingCount, cashSpend, creditSpend, invoiceCount: invoices.length + grnTotals.length, buckets, topItems, weeks };
 }
 
 // Stock on hand across every item, with negative/below-minimum/above-par

@@ -34,6 +34,24 @@ export async function listSuppliers(q?: string) {
     .groupBy(grns.supplierId)
     .as("grn_agg");
 
+  // A posted GRN with a real invoice/delivery note doubles as its own AP
+  // record (same "GRN counts as an invoice" definition invoices.ts and the
+  // Purchasing dashboard use) — without this, a supplier's spend/outstanding
+  // here only ever reflected the imported historical ledger, never a GRN
+  // entered directly against them.
+  const grnLineTotal = sql`case when ${grnLines.isFoc} then 0 else ${grnLines.receivedQty} * ${grnLines.rate} * (1 - ${grnLines.discountPct} / 100) * (1 + ${grnLines.taxRate} / 100) end`;
+  const grnSpendAgg = db
+    .select({
+      supplierId: grns.supplierId,
+      totalSpend: sql<number>`coalesce(sum(${grnLineTotal}), 0)::float8`.as("grn_total_spend"),
+      outstanding: sql<number>`coalesce(sum(case when ${grns.paymentStatus} = 'OUTSTANDING' then (${grnLineTotal}) else 0 end), 0)::float8`.as("grn_outstanding"),
+    })
+    .from(grnLines)
+    .innerJoin(grns, eq(grnLines.grnId, grns.id))
+    .where(sql`${grns.status} = 'POSTED' and ${grns.invoiceNumber} is not null and ${grns.invoiceNumber} != ''`)
+    .groupBy(grns.supplierId)
+    .as("grn_spend_agg");
+
   const grnLinesAgg = db
     .select({
       supplierId: grns.supplierId,
@@ -61,8 +79,8 @@ export async function listSuppliers(q?: string) {
     .select({
       id: suppliers.id,
       name: suppliers.name,
-      totalSpend: sql<number>`coalesce(${invoiceAgg.totalSpend}, 0)`,
-      outstanding: sql<number>`coalesce(${invoiceAgg.outstanding}, 0)`,
+      totalSpend: sql<number>`coalesce(${invoiceAgg.totalSpend}, 0) + coalesce(${grnSpendAgg.totalSpend}, 0)`,
+      outstanding: sql<number>`coalesce(${invoiceAgg.outstanding}, 0) + coalesce(${grnSpendAgg.outstanding}, 0)`,
       deliveryCount: sql<number>`coalesce(${grnAgg.deliveryCount}, 0)`,
       acceptedLines: sql<number>`coalesce(${grnLinesAgg.acceptedLines}, 0)`,
       totalLines: sql<number>`coalesce(${grnLinesAgg.totalLines}, 0)`,
@@ -70,6 +88,7 @@ export async function listSuppliers(q?: string) {
     })
     .from(suppliers)
     .leftJoin(invoiceAgg, eq(invoiceAgg.supplierId, suppliers.id))
+    .leftJoin(grnSpendAgg, eq(grnSpendAgg.supplierId, suppliers.id))
     .leftJoin(grnAgg, eq(grnAgg.supplierId, suppliers.id))
     .leftJoin(grnLinesAgg, eq(grnLinesAgg.supplierId, suppliers.id))
     .leftJoin(leadTimeAgg, eq(leadTimeAgg.supplierId, suppliers.id))

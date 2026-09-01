@@ -2,7 +2,7 @@ import "server-only";
 import { unstable_cache } from "next/cache";
 import { db } from "@/server/db";
 import { stockItems, mainRecipes, subRecipes, categories, suppliers, invoicesHistorical, priceHistory, recipeSales, grns, grnLines } from "@/server/db/schema";
-import { eq, and, gte, lte, sql, count, sum, isNotNull } from "drizzle-orm";
+import { eq, and, gte, lte, sql, count, sum, isNotNull, ne } from "drizzle-orm";
 import { loadCostingGraph, recipeCurrentCost, recipeOriginalCost, type CostingGraph } from "@/server/costing/recipeCost";
 import { getReorderAlertCount } from "@/server/db/queries/forecasting";
 import { getSalesTodayStats } from "@/server/db/queries/sales";
@@ -38,21 +38,52 @@ export async function getDashboardData(preloadedGraph?: CostingGraph) {
     .select({ count: count(), total: sum(invoicesHistorical.total) })
     .from(invoicesHistorical);
 
-  const outstandingBySupplier = await db
+  // A posted GRN with a real invoice/delivery note doubles as its own AP
+  // record (same definition listInvoices in invoices.ts uses) — without
+  // this, spend and payables never counted a GRN entered directly (no
+  // LPO, or before any matching historical import), even though it's real.
+  const grnApRows = await db
+    .select({
+      supplierId: grns.supplierId,
+      supplierName: suppliers.name,
+      paymentStatus: grns.paymentStatus,
+      net: sql<number>`coalesce((select sum(case when grn_lines.is_foc then 0 else grn_lines.received_qty * grn_lines.rate * (1 - grn_lines.discount_pct / 100) end) from grn_lines where grn_lines.grn_id = grns.id), 0)::float8`,
+      vat: sql<number>`coalesce((select sum(case when grn_lines.is_foc then 0 else grn_lines.received_qty * grn_lines.rate * (1 - grn_lines.discount_pct / 100) * grn_lines.tax_rate / 100 end) from grn_lines where grn_lines.grn_id = grns.id), 0)::float8`,
+    })
+    .from(grns)
+    .innerJoin(suppliers, eq(grns.supplierId, suppliers.id))
+    .where(and(eq(grns.status, "POSTED"), isNotNull(grns.invoiceNumber), ne(grns.invoiceNumber, "")));
+  const grnTotalSpend = grnApRows.reduce((s, r) => s + r.net + r.vat, 0);
+
+  const outstandingBySupplierHistorical = await db
     .select({ supplierId: invoicesHistorical.supplierId, supplierName: suppliers.name, outstanding: sum(invoicesHistorical.total) })
     .from(invoicesHistorical)
     .innerJoin(suppliers, eq(invoicesHistorical.supplierId, suppliers.id))
     .where(eq(invoicesHistorical.status, "OUTSTANDING"))
-    .groupBy(invoicesHistorical.supplierId, suppliers.name)
-    .orderBy(sql`sum(${invoicesHistorical.total}) desc`)
-    .limit(6);
+    .groupBy(invoicesHistorical.supplierId, suppliers.name);
 
-  const [{ value: outstandingSupplierCount }] = await db
-    .select({ value: sql<number>`count(distinct ${invoicesHistorical.supplierId})` })
-    .from(invoicesHistorical)
-    .where(eq(invoicesHistorical.status, "OUTSTANDING"));
+  // Merged (not limited to the top 6 yet) so totalOutstanding and the
+  // distinct-supplier count below are exact, not just a sum of the slice
+  // that ends up on screen.
+  const outstandingMap = new Map<string, { supplierName: string; outstanding: number }>();
+  for (const r of outstandingBySupplierHistorical) {
+    if (!r.supplierId) continue;
+    outstandingMap.set(r.supplierId, { supplierName: r.supplierName, outstanding: Number(r.outstanding ?? 0) });
+  }
+  for (const r of grnApRows) {
+    if (r.paymentStatus !== "OUTSTANDING" || !r.supplierId) continue;
+    const amt = r.net + r.vat;
+    const existing = outstandingMap.get(r.supplierId);
+    if (existing) existing.outstanding += amt;
+    else outstandingMap.set(r.supplierId, { supplierName: r.supplierName, outstanding: amt });
+  }
+  const outstandingBySupplier = [...outstandingMap.entries()]
+    .map(([supplierId, v]) => ({ supplierId, supplierName: v.supplierName, outstanding: v.outstanding }))
+    .sort((a, b) => b.outstanding - a.outstanding)
+    .slice(0, 6);
 
-  const totalOutstanding = outstandingBySupplier.reduce((s, r) => s + Number(r.outstanding ?? 0), 0);
+  const outstandingSupplierCount = outstandingMap.size;
+  const totalOutstanding = [...outstandingMap.values()].reduce((s, v) => s + v.outstanding, 0);
 
   const [{ value: priceChangeCount }] = await db.select({ value: count() }).from(priceHistory);
 
@@ -87,8 +118,8 @@ export async function getDashboardData(preloadedGraph?: CostingGraph) {
     subRecipeCount,
     mainSectionCount,
     subSectionCount,
-    totalPurchaseSpend: Number(invoiceAgg.total ?? 0),
-    invoiceCount: invoiceAgg.count,
+    totalPurchaseSpend: Number(invoiceAgg.total ?? 0) + grnTotalSpend,
+    invoiceCount: invoiceAgg.count + grnApRows.length,
     totalOutstanding,
     outstandingSupplierCount,
     priceChangeCount,
