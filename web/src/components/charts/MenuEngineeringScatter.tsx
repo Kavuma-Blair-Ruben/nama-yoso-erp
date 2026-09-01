@@ -43,7 +43,7 @@ export function MenuEngineeringScatter({ items, avgQty, avgMargin }: { items: It
                 <div style={{ color: CLASS_COLOR[p.classification] }}>{p.classification}</div>
                 <div>Qty sold: {p.qty}</div>
                 <div>Margin/unit: {money(p.margin, 2)}</div>
-                <div>Revenue: {money(p.revenue, 0)}</div>
+                <div>Revenue: {money(p.revenue, 2)}</div>
               </div>
             );
           }}

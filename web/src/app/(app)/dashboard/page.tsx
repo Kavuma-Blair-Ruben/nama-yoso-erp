@@ -72,7 +72,7 @@ async function OverviewTab() {
         </Link>
         <Link href={`/reports?tab=sales&from=${todayStr()}&to=${todayStr()}`} className="kpi">
           <div className="kpi-icon">💵</div>
-          <div className="n">{money(digest.salesToday.revenue, 0)}</div>
+          <div className="n">{money(digest.salesToday.revenue, 2)}</div>
           <div className="l">Sales Today</div>
           <div className="d">{fmt(digest.salesToday.orderCount, 0)} recipe(s) sold</div>
         </Link>
@@ -532,12 +532,12 @@ async function CogsAnalysisTab({ from, to, view }: { from: string; to: string; v
           <div className="kpi-grid">
             <div className="kpi">
               <div className="kpi-icon">💵</div>
-              <div className="n">{money(data.totalRevenue, 0)}</div>
+              <div className="n">{money(data.totalRevenue, 2)}</div>
               <div className="l">Revenue</div>
             </div>
             <div className={`kpi${overTarget ? " accent-bad" : " accent-good"}`}>
               <div className="kpi-icon">🍳</div>
-              <div className="n">{money(data.totalCogs, 0)}</div>
+              <div className="n">{money(data.totalCogs, 2)}</div>
               <div className="l">COGS (Food Cost)</div>
             </div>
             <div className={`kpi${overTarget ? " accent-bad" : ""}`}>
@@ -548,7 +548,7 @@ async function CogsAnalysisTab({ from, to, view }: { from: string; to: string; v
             </div>
             <div className="kpi accent-good">
               <div className="kpi-icon">📈</div>
-              <div className="n">{money(data.grossProfit, 0)}</div>
+              <div className="n">{money(data.grossProfit, 2)}</div>
               <div className="l">Gross Profit</div>
             </div>
           </div>
@@ -568,8 +568,8 @@ async function CogsAnalysisTab({ from, to, view }: { from: string; to: string; v
                               {c.category === "food" ? "🍽 Food" : "🍹 Beverage"}{activeCategory === c.category ? " (showing below)" : ""}
                             </Link>
                           </td>
-                          <td className="mono-r">{money(c.revenue, 0)}</td>
-                          <td className="mono-r">{money(c.cogs, 0)}</td>
+                          <td className="mono-r">{money(c.revenue, 2)}</td>
+                          <td className="mono-r">{money(c.cogs, 2)}</td>
                           <td className="right">{c.cogsPct != null ? <span className={`tag ${c.cogsPct > 35 ? "bad" : "good"}`}>{fmt(c.cogsPct, 1)}%</span> : "—"}</td>
                         </tr>
                       ))}
@@ -594,7 +594,7 @@ async function CogsAnalysisTab({ from, to, view }: { from: string; to: string; v
             <div className="panel">
               <div className="panel-head"><h3>COGS by Section</h3></div>
               <div className="panel-body chart-card">
-                <HorizontalBarChart data={data.bySection.map((s) => ({ label: s.section, value: s.cogs }))} format="money0" color="var(--chart-4)" />
+                <HorizontalBarChart data={data.bySection.map((s) => ({ label: s.section, value: s.cogs }))} format="money2" color="var(--chart-4)" />
               </div>
             </div>
             <div className="panel">
@@ -612,8 +612,8 @@ async function CogsAnalysisTab({ from, to, view }: { from: string; to: string; v
                           <td>{r.code ? <Link href={`/recipes/main/${r.code}`}>{r.name}</Link> : r.name}</td>
                           <td className="mono-r">{fmt(r.qty, 0)}</td>
                           <td className="mono-r">{money(r.qty ? r.cogs / r.qty : 0, 2)}</td>
-                          <td className="mono-r">{money(r.revenue, 0)}</td>
-                          <td className="mono-r">{money(r.cogs, 0)}</td>
+                          <td className="mono-r">{money(r.revenue, 2)}</td>
+                          <td className="mono-r">{money(r.cogs, 2)}</td>
                           <td className="right">{r.cogsPct != null ? <span className={`tag ${r.cogsPct > 35 ? "bad" : "good"}`}>{fmt(r.cogsPct, 1)}%</span> : "—"}</td>
                         </tr>
                       ))
@@ -683,7 +683,7 @@ async function MenuEngineeringTab({ from, to, view }: { from: string; to: string
                       <tr key={i}>
                         <td>{it.code ? <Link href={`/recipes/main/${it.code}`}>{it.name}</Link> : it.name}</td>
                         <td className="mono-r">{fmt(it.qty, 0)}</td>
-                        <td className="mono-r">{money(it.revenue, 0)}</td>
+                        <td className="mono-r">{money(it.revenue, 2)}</td>
                         <td className="mono-r" style={{ color: it.margin < 0 ? "var(--bad)" : "inherit" }}>{money(it.margin, 2)}</td>
                         <td>
                           <span className={`tag ${it.classification === "Star" ? "good" : it.classification === "Dog" ? "bad" : "neutral"}`}>{it.classification}</span>
@@ -751,50 +751,53 @@ async function CostCenterTab({ from, to }: { from: string; to: string }) {
 
 async function SalesDashboardTab({ from, to }: { from: string; to: string }) {
   const stats = await withTimeout(getSalesDashboardStats({ from, to }), 28000, "This is taking longer than expected — please try again in a moment.");
+  const fromCsv = stats.source === "csv";
 
   return (
     <>
       <DateRangeBar tab="salesdashboard" from={from} to={to} />
       <div className="callout">
-        <b>What this shows:</b> order-level financial totals from your POS integration (Foodics) — gross revenue before
-        discounts, discounts given, and net collected. Separate from the Recipe Sales Report, which breaks revenue down
-        per dish rather than per order.
+        <b>What this shows:</b> gross revenue before discounts, discounts given, and net collected —{" "}
+        {fromCsv
+          ? "from your imported sales CSVs, since no live Foodics order data is in this range yet. Switches to real order-level totals automatically once the POS integration is sending data."
+          : "order-level totals straight from your POS integration (Foodics)."}{" "}
+        Separate from the Recipe Sales Report, which breaks revenue down per dish rather than per order.
       </div>
       {!stats.hasData ? (
-        <div className="callout">No POS order data yet for the last {stats.days} days — this fills in automatically once Foodics orders start arriving.</div>
+        <div className="callout">No sales data yet for the last {stats.days} days — this fills in once you import a sales CSV or Foodics orders start arriving.</div>
       ) : (
         <>
           <div className="kpi-grid">
             <div className="kpi">
               <div className="kpi-icon">💵</div>
-              <div className="n">{money(stats.grossRevenue, 0)}</div>
+              <div className="n">{money(stats.grossRevenue, 2)}</div>
               <div className="l">Gross Revenue</div>
               <div className="d">Before discounts, last {stats.days} days</div>
             </div>
             <div className={`kpi${stats.totalDiscount > 0 ? " accent-bad" : ""}`}>
               <div className="kpi-icon">🏷️</div>
-              <div className="n" style={{ color: stats.totalDiscount > 0 ? "var(--bad)" : "inherit" }}>{money(stats.totalDiscount, 0)}</div>
+              <div className="n" style={{ color: stats.totalDiscount > 0 ? "var(--bad)" : "inherit" }}>{money(stats.totalDiscount, 2)}</div>
               <div className="l">Discounts Given</div>
               <div className="d">{fmt(stats.discountRatePct, 1)}% of gross</div>
             </div>
             <div className="kpi accent-good">
               <div className="kpi-icon">💰</div>
-              <div className="n">{money(stats.netRevenue, 0)}</div>
+              <div className="n">{money(stats.netRevenue, 2)}</div>
               <div className="l">Net Collected</div>
-              <div className="d">{money(stats.avgOrderValue, 2)} avg order value</div>
+              <div className="d">{money(stats.avgOrderValue, 2)} avg {fromCsv ? "item" : "order"} value</div>
               {stats.trend.length > 1 && <div style={{ marginTop: 6 }}><Sparkline data={stats.trend.map((t) => t.value)} color="var(--chart-3)" /></div>}
             </div>
             <div className="kpi">
               <div className="kpi-icon">🧾</div>
               <div className="n">{fmt(stats.orderCount, 0)}</div>
-              <div className="l">Orders</div>
+              <div className="l">{fromCsv ? "Items Sold" : "Orders"}</div>
               <div className="d">Last {stats.days} days</div>
             </div>
           </div>
           <div className="panel">
             <div className="panel-head"><h3>Net Revenue — Daily</h3></div>
             <div className="panel-body chart-card">
-              <TrendLineChart data={stats.trend} format="money0" />
+              <TrendLineChart data={stats.trend} format="money2" />
             </div>
           </div>
         </>
@@ -822,7 +825,7 @@ async function SalesVsPurchasesTab({ from, to }: { from: string; to: string }) {
           <div className="kpi-grid">
             <div className="kpi">
               <div className="kpi-icon">💵</div>
-              <div className="n">{money(stats.totalSales, 0)}</div>
+              <div className="n">{money(stats.totalSales, 2)}</div>
               <div className="l">Total Sales</div>
             </div>
             <div className="kpi">
@@ -851,7 +854,7 @@ async function SalesVsPurchasesTab({ from, to }: { from: string; to: string }) {
             <div className="panel">
               <div className="panel-head"><h3>Daily Sales</h3></div>
               <div className="panel-body chart-card">
-                <TrendLineChart data={stats.trend.map((t) => ({ label: t.date, value: t.sales }))} format="money0" color="var(--chart-3)" />
+                <TrendLineChart data={stats.trend.map((t) => ({ label: t.date, value: t.sales }))} format="money2" color="var(--chart-3)" />
               </div>
             </div>
             <div className="panel">

@@ -145,19 +145,19 @@ async function RecipeSalesTab({ from, to, view }: { from: string; to: string; vi
             return (
               <>
                 <div className="kpi-grid">
-                  <div className="kpi"><div className="n">{money(report.totalRevenue, 0)}</div><div className="l">Net Revenue</div><div className="d">{fmt(report.totalQty, 0)} items sold</div></div>
+                  <div className="kpi"><div className="n">{money(report.totalRevenue, 2)}</div><div className="l">Net Revenue</div><div className="d">{fmt(report.totalQty, 0)} items sold</div></div>
                   <div className="kpi">
-                    <div className="n">{report.totalGrossRevenue ? money(report.totalGrossRevenue, 0) : "—"}</div>
+                    <div className="n">{report.totalGrossRevenue ? money(report.totalGrossRevenue, 2) : "—"}</div>
                     <div className="l">Gross Revenue</div>
                     <div className="d">{report.totalGrossRevenue ? "Before tax/discount" : "Not in this source"}</div>
                   </div>
                   <div className={`kpi${report.totalVoidAmount > 0 ? " accent-bad" : ""}`}>
-                    <div className="n" style={{ color: report.totalVoidAmount > 0 ? "var(--bad)" : "inherit" }}>{report.totalVoidAmount ? money(report.totalVoidAmount, 0) : "—"}</div>
+                    <div className="n" style={{ color: report.totalVoidAmount > 0 ? "var(--bad)" : "inherit" }}>{report.totalVoidAmount ? money(report.totalVoidAmount, 2) : "—"}</div>
                     <div className="l">Voided</div>
                     <div className="d">{report.totalVoidAmount ? "Excluded from revenue above" : "Not in this source"}</div>
                   </div>
-                  <div className="kpi"><div className="n">{money(report.totalCost, 0)}</div><div className="l">Total Food Cost</div><div className="d">{report.totalRevenue ? fmt((report.totalCost / report.totalRevenue) * 100, 1) : "—"}% of revenue</div></div>
-                  <div className="kpi"><div className="n" style={{ color: report.totalProfit >= 0 ? "var(--good)" : "var(--bad)" }}>{money(report.totalProfit, 0)}</div><div className="l">Gross Profit</div><div className="d">Across matched recipes</div></div>
+                  <div className="kpi"><div className="n">{money(report.totalCost, 2)}</div><div className="l">Total Food Cost</div><div className="d">{report.totalRevenue ? fmt((report.totalCost / report.totalRevenue) * 100, 1) : "—"}% of revenue</div></div>
+                  <div className="kpi"><div className="n" style={{ color: report.totalProfit >= 0 ? "var(--good)" : "var(--bad)" }}>{money(report.totalProfit, 2)}</div><div className="l">Gross Profit</div><div className="d">Across matched recipes</div></div>
                   <Link href={kpiHref("unmatched")} className={`kpi${activeView === "unmatched" ? " accent-bad" : ""}`}>
                     <div className="n" style={{ color: report.unmatchedCount ? "var(--bad)" : "inherit" }}>{report.unmatchedCount}</div>
                     <div className="l">Unmatched Item Labels</div>
@@ -172,7 +172,7 @@ async function RecipeSalesTab({ from, to, view }: { from: string; to: string; vi
                 <div className="panel">
                   <div className="panel-head"><h3>Top Sellers by Revenue</h3></div>
                   <div className="panel-body chart-card">
-                    <HorizontalBarChart data={report.rows.slice(0, 10).map((r) => ({ label: r.name, value: r.revenue }))} format="money0" color="var(--chart-1)" />
+                    <HorizontalBarChart data={report.rows.slice(0, 10).map((r) => ({ label: r.name, value: r.revenue }))} format="money2" color="var(--chart-1)" />
                   </div>
                 </div>
                 <div style={{ height: 16 }} />
@@ -187,13 +187,13 @@ async function RecipeSalesTab({ from, to, view }: { from: string; to: string; vi
                             <td>{r.code ? <Link href={`/recipes/main/${r.code}`}>{r.name}</Link> : <span>{r.name} <span className="tag bad" style={{ marginLeft: 4 }}>unmatched</span></span>}</td>
                             <td className="mono-r">{fmt(r.qty, 0)}</td>
                             <td className="mono-r">{money(r.avgPrice, 2)}</td>
-                            <td className="mono-r">{money(r.revenue, 0)}</td>
+                            <td className="mono-r">{money(r.revenue, 2)}</td>
                             <td className="mono-r" style={{ color: r.voidAmount ? "var(--bad)" : undefined }}>
-                              {r.voidAmount ? `${money(r.voidAmount, 0)} (${fmt(r.voidQty ?? 0, 0)})` : "—"}
+                              {r.voidAmount ? `${money(r.voidAmount, 2)} (${fmt(r.voidQty ?? 0, 0)})` : "—"}
                             </td>
-                            <td className="mono-r">{r.totalCost != null ? money(r.totalCost, 0) : "—"}</td>
+                            <td className="mono-r">{r.totalCost != null ? money(r.totalCost, 2) : "—"}</td>
                             <td className="right">{r.foodCostPct != null ? <span className={`tag ${r.foodCostPct > 35 ? "bad" : "good"}`}>{fmt(r.foodCostPct, 1)}%</span> : "—"}</td>
-                            <td className="mono-r" style={{ color: r.grossProfit != null && r.grossProfit < 0 ? "var(--bad)" : "inherit" }}>{r.grossProfit != null ? money(r.grossProfit, 0) : "—"}</td>
+                            <td className="mono-r" style={{ color: r.grossProfit != null && r.grossProfit < 0 ? "var(--bad)" : "inherit" }}>{r.grossProfit != null ? money(r.grossProfit, 2) : "—"}</td>
                           </tr>
                         ))}
                       </tbody>
