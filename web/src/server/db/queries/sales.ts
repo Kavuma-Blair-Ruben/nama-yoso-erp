@@ -12,6 +12,9 @@ export type RecipeSalesRow = {
   matched: boolean;
   qty: number;
   revenue: number;
+  grossRevenue: number | null;
+  voidAmount: number | null;
+  voidQty: number | null;
   avgPrice: number;
   costPerUnit: number | null;
   totalCost: number | null;
@@ -23,21 +26,34 @@ export type RecipeSalesRow = {
 // for anything that didn't match a real recipe on import) and prices it
 // against the live costing graph — the same "actual" cost every other
 // costed view in the app uses, not a stale build-time snapshot.
-export async function getRecipeSalesReport(filters: DateRangeFilter = {}): Promise<{ rows: RecipeSalesRow[]; totalRevenue: number; totalQty: number; totalCost: number; totalProfit: number; unmatchedCount: number; hasData: boolean }> {
+export async function getRecipeSalesReport(
+  filters: DateRangeFilter = {}
+): Promise<{ rows: RecipeSalesRow[]; totalRevenue: number; totalGrossRevenue: number; totalVoidAmount: number; totalQty: number; totalCost: number; totalProfit: number; unmatchedCount: number; hasData: boolean }> {
   const conditions = [];
   if (filters.from) conditions.push(gte(recipeSales.saleDate, filters.from));
   if (filters.to) conditions.push(lte(recipeSales.saleDate, filters.to));
   const rows = await db
-    .select({ mainRecipeId: recipeSales.mainRecipeId, itemLabel: recipeSales.itemLabel, qty: recipeSales.qty, revenue: recipeSales.revenue })
+    .select({
+      mainRecipeId: recipeSales.mainRecipeId,
+      itemLabel: recipeSales.itemLabel,
+      qty: recipeSales.qty,
+      revenue: recipeSales.revenue,
+      grossRevenue: recipeSales.grossRevenue,
+      voidAmount: recipeSales.voidAmount,
+      voidQty: recipeSales.voidQty,
+    })
     .from(recipeSales)
     .where(conditions.length ? and(...conditions) : undefined);
 
-  const byKey = new Map<string, { key: string; label: string; mainRecipeId: string | null; qty: number; revenue: number }>();
+  const byKey = new Map<string, { key: string; label: string; mainRecipeId: string | null; qty: number; revenue: number; grossRevenue: number; voidAmount: number; voidQty: number }>();
   for (const r of rows) {
     const key = r.mainRecipeId ?? `unmatched:${r.itemLabel}`;
-    const g = byKey.get(key) ?? { key, label: r.itemLabel, mainRecipeId: r.mainRecipeId, qty: 0, revenue: 0 };
+    const g = byKey.get(key) ?? { key, label: r.itemLabel, mainRecipeId: r.mainRecipeId, qty: 0, revenue: 0, grossRevenue: 0, voidAmount: 0, voidQty: 0 };
     g.qty += r.qty;
     g.revenue += r.revenue;
+    g.grossRevenue += r.grossRevenue ?? 0;
+    g.voidAmount += r.voidAmount ?? 0;
+    g.voidQty += r.voidQty ?? 0;
     byKey.set(key, g);
   }
 
@@ -55,6 +71,9 @@ export async function getRecipeSalesReport(filters: DateRangeFilter = {}): Promi
         matched: !!recipe,
         qty: g.qty,
         revenue: g.revenue,
+        grossRevenue: g.grossRevenue || null,
+        voidAmount: g.voidAmount || null,
+        voidQty: g.voidQty || null,
         avgPrice: g.qty ? g.revenue / g.qty : 0,
         costPerUnit,
         totalCost,
@@ -65,11 +84,13 @@ export async function getRecipeSalesReport(filters: DateRangeFilter = {}): Promi
     .sort((a, b) => b.revenue - a.revenue);
 
   const totalRevenue = results.reduce((s, r) => s + r.revenue, 0);
+  const totalGrossRevenue = results.reduce((s, r) => s + (r.grossRevenue ?? 0), 0);
+  const totalVoidAmount = results.reduce((s, r) => s + (r.voidAmount ?? 0), 0);
   const totalQty = results.reduce((s, r) => s + r.qty, 0);
   const totalCost = results.reduce((s, r) => s + (r.totalCost ?? 0), 0);
   const unmatchedCount = results.filter((r) => !r.matched).length;
 
-  return { rows: results, totalRevenue, totalQty, totalCost, totalProfit: totalRevenue - totalCost, unmatchedCount, hasData: rows.length > 0 };
+  return { rows: results, totalRevenue, totalGrossRevenue, totalVoidAmount, totalQty, totalCost, totalProfit: totalRevenue - totalCost, unmatchedCount, hasData: rows.length > 0 };
 }
 
 export type MenuEngineeringItem = { code: string | null; name: string; qty: number; margin: number; revenue: number; classification: "Star" | "Plow-Horse" | "Puzzle" | "Dog" };

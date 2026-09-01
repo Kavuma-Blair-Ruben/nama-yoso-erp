@@ -1313,6 +1313,17 @@ export const recipeSales = pgTable(
     itemLabel: text("item_label").notNull(),
     qty: numeric("qty", { precision: 14, scale: 2, mode: "number" }).notNull(),
     revenue: money("revenue").notNull(),
+    // All nullable — only populated when the source (a POS export CSV, the
+    // Foodics webhook) actually carries this breakdown; revenue above stays
+    // the one field every report reads for net sales, so an older row or a
+    // source that only ever had a flat total still works everywhere.
+    grossRevenue: money("gross_revenue"),
+    discountAmount: money("discount_amount"),
+    // A voided sale — qty/revenue reflect what's left after the void (often
+    // 0), voidAmount/voidQty record what was voided so it's still visible
+    // instead of the line just disappearing on import.
+    voidAmount: money("void_amount"),
+    voidQty: numeric("void_qty", { precision: 14, scale: 2, mode: "number" }),
     // "csv" (manual upload) or a POS provider key ("foodics"). sourceOrderId
     // is the POS's own order/line id, only set for POS-synced rows — lets a
     // repeated sync of the same date range be idempotent (onConflictDoNothing

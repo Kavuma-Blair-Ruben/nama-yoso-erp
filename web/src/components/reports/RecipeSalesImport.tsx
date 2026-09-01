@@ -13,25 +13,38 @@ export function RecipeSalesImport({ hasData, unmatchedCount }: { hasData: boolea
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [confirmingClear, setConfirmingClear] = useState(false);
+  // A per-product Foodics export (Product/SKU/Gross/Net/Void columns, one
+  // row per dish) has no date column of its own — the report's date is
+  // implicit in when it was run, so it has to be supplied here instead.
+  const [saleDate, setSaleDate] = useState("");
 
   function handleFile(file: File) {
     setError(null);
     setInfo(null);
+    if (!saleDate) {
+      setError("Pick the date this sales file covers first.");
+      return;
+    }
     const reader = new FileReader();
     reader.onload = (evt) => {
       const csvRows = parseCsv(String(evt.target?.result ?? ""));
       const rows: SalesImportRow[] = csvRows
         .map((r) => {
-          const saleDate = pickField(r, ["date", "sale date", "saledate"]);
+          const rowDate = pickField(r, ["date", "sale date", "saledate"]) || saleDate;
           const itemLabel = pickField(r, ["item", "recipe", "item name", "product", "menu item"]);
-          const qty = Number(pickField(r, ["qty", "quantity", "units sold"])) || 0;
-          const revenue = Number(pickField(r, ["revenue", "sales", "amount", "total"])) || 0;
-          return { saleDate, itemLabel, qty, revenue };
+          const sku = pickField(r, ["sku", "product sku", "code"]) || undefined;
+          const qty = Number(pickField(r, ["qty", "quantity", "units sold", "net quantity"])) || 0;
+          const revenue = Number(pickField(r, ["revenue", "sales", "amount", "total", "net sales"])) || 0;
+          const grossRevenue = Number(pickField(r, ["gross sales without tax", "gross sales", "gross revenue"])) || undefined;
+          const discountAmount = Number(pickField(r, ["discount amount", "discount"])) || undefined;
+          const voidAmount = Number(pickField(r, ["void amount"])) || undefined;
+          const voidQty = Number(pickField(r, ["void quantity", "void qty"])) || undefined;
+          return { saleDate: rowDate, itemLabel, sku, qty, revenue, grossRevenue, discountAmount, voidAmount, voidQty };
         })
-        .filter((r) => r.saleDate && r.itemLabel && r.qty > 0);
+        .filter((r) => r.saleDate && r.itemLabel && (r.qty > 0 || (r.voidQty ?? 0) > 0));
 
       if (rows.length === 0) {
-        setError("No valid rows found — expecting columns like Date, Item, Qty, Revenue.");
+        setError("No valid rows found — expecting columns like Date, Item, Qty, Revenue (or Product/Net Quantity/Net Sales for a Foodics export).");
         return;
       }
       startTransition(async () => {
@@ -64,8 +77,14 @@ export function RecipeSalesImport({ hasData, unmatchedCount }: { hasData: boolea
       <div className="panel-head"><h3>Import Sales Data</h3></div>
       <div className="panel-body">
         <div className="callout">
-          Upload a CSV export from your POS with columns for Date, Item, Qty, and Revenue. Item names are matched against your recipe
-          list automatically — unmatched rows still count toward totals but won&apos;t show per-recipe cost/profit.
+          Upload a CSV export from your POS with columns for Date, Item, Qty, and Revenue — or a per-product Foodics export
+          (Product, SKU, Net Quantity, Net Sales, Void columns), which has no date of its own, so pick the date it covers
+          below first. Items are matched by SKU/code where the file has one, and by name otherwise — unmatched rows still
+          count toward totals but won&apos;t show per-recipe cost/profit.
+        </div>
+        <div className="btn-row" style={{ marginBottom: 8 }}>
+          <label style={{ fontSize: 12, fontWeight: 600, alignSelf: "center" }}>Date this file covers</label>
+          <input type="date" value={saleDate} onChange={(e) => setSaleDate(e.target.value)} style={{ maxWidth: 160 }} />
         </div>
         <div className="btn-row">
           <button className="btn accent" disabled={pending} onClick={() => fileRef.current?.click()}>

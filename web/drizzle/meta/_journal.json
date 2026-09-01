@@ -386,6 +386,13 @@
       "when": 1788296541456,
       "tag": "0054_add_ingredient_swap_events",
       "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1788299263279,
+      "tag": "0055_add_recipe_sales_gross_void",
+      "breakpoints": true
     }
   ]
 }

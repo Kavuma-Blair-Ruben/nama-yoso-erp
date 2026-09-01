@@ -8,22 +8,53 @@ import { bestTextMatch } from "@/lib/textMatch";
 
 export type SalesImportResult = { error?: string; imported?: number; matched?: number; unmatched?: number };
 
-export type SalesImportRow = { saleDate: string; itemLabel: string; qty: number; revenue: number };
+// sku, when present, is tried against a recipe's own legacy_code before
+// falling back to fuzzy name matching — a POS export's own SKU column often
+// lines up directly with ours, which is far more reliable than matching on
+// the display name alone. grossRevenue/discountAmount/voidAmount/voidQty
+// are all optional — only set when the source file actually breaks sales
+// down that far (see schema.ts comment on recipe_sales).
+export type SalesImportRow = {
+  saleDate: string;
+  itemLabel: string;
+  sku?: string;
+  qty: number;
+  revenue: number;
+  grossRevenue?: number;
+  discountAmount?: number;
+  voidAmount?: number;
+  voidQty?: number;
+};
 
 const BATCH_SIZE = 500;
 
 export async function importRecipeSales(rows: SalesImportRow[]): Promise<SalesImportResult> {
   const session = await assertPermission("reports", "edit");
-  const validRows = rows.filter((r) => r.saleDate && r.itemLabel && r.qty > 0);
+  // A row is worth keeping if it represents any real activity — a sale
+  // (qty > 0) or a void (voidQty > 0) — not just a positive net qty, so a
+  // fully-voided line still gets recorded instead of silently vanishing.
+  const validRows = rows.filter((r) => r.saleDate && r.itemLabel && (r.qty > 0 || (r.voidQty ?? 0) > 0));
   if (validRows.length === 0) return { error: "No valid rows found — expecting Date, Item, Qty, Revenue columns." };
 
-  const recipes = await db.select({ id: mainRecipes.id, name: mainRecipes.name }).from(mainRecipes);
+  const recipes = await db.select({ id: mainRecipes.id, legacyCode: mainRecipes.legacyCode, name: mainRecipes.name }).from(mainRecipes);
+  const byCode = new Map(recipes.map((r) => [r.legacyCode, r]));
 
   let matched = 0;
   const insertRows = validRows.map((r) => {
-    const match = bestTextMatch(r.itemLabel, recipes, (x) => x.name);
+    const match = (r.sku && byCode.get(r.sku)) || bestTextMatch(r.itemLabel, recipes, (x) => x.name);
     if (match) matched++;
-    return { saleDate: r.saleDate, mainRecipeId: match?.id, itemLabel: r.itemLabel, qty: r.qty, revenue: r.revenue, importedBy: session.profile.id };
+    return {
+      saleDate: r.saleDate,
+      mainRecipeId: match?.id,
+      itemLabel: r.itemLabel,
+      qty: r.qty,
+      revenue: r.revenue,
+      grossRevenue: r.grossRevenue,
+      discountAmount: r.discountAmount,
+      voidAmount: r.voidAmount,
+      voidQty: r.voidQty,
+      importedBy: session.profile.id,
+    };
   });
 
   for (let i = 0; i < insertRows.length; i += BATCH_SIZE) {
