@@ -63,18 +63,19 @@ function CategoryRow({ category }: { category: MenuCategory }) {
   );
 }
 
-export function MenuCategorySettings({ categories }: { categories: MenuCategory[] }) {
+export function MenuCategorySettings({ categories, scope = "main" }: { categories: MenuCategory[]; scope?: "main" | "sub" }) {
   const router = useRouter();
   const [newName, setNewName] = useState("");
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const isSub = scope === "sub";
 
   function add() {
     setError(null);
     const trimmed = newName.trim();
     if (!trimmed) return;
     startTransition(async () => {
-      const result = await createMenuCategory(trimmed);
+      const result = await createMenuCategory(trimmed, scope);
       if (result.error) setError(result.error);
       else {
         setNewName("");
@@ -85,17 +86,18 @@ export function MenuCategorySettings({ categories }: { categories: MenuCategory[
 
   return (
     <div className="panel">
-      <div className="panel-head"><h3>Menu Categories</h3></div>
+      <div className="panel-head"><h3>{isSub ? "Sub-Recipe Categories" : "Menu Categories"}</h3></div>
       <div className="panel-body">
         <div className="callout">
-          These are your menu's sections (Breakfast, Mains, Desserts...) — separate from ingredient categories.
-          Recipes pick from this list instead of typing a section freehand.
+          {isSub
+            ? "These are the production lines/batches your sub-recipes are grouped into (Hot Line, Bar Production...) — separate from main-recipe menu sections. Sub-recipes pick from this list instead of typing a section freehand."
+            : "These are your menu's sections (Breakfast, Mains, Desserts...) — separate from ingredient categories. Recipes pick from this list instead of typing a section freehand."}
         </div>
         {categories.length ? categories.map((c) => <CategoryRow key={c.id} category={c} />) : (
-          <div style={{ fontSize: 12, color: "var(--ink-faint)", padding: "8px 0" }}>No menu categories yet — add one below.</div>
+          <div style={{ fontSize: 12, color: "var(--ink-faint)", padding: "8px 0" }}>No {isSub ? "sub-recipe" : "menu"} categories yet — add one below.</div>
         )}
         <div className="line-builder-row" style={{ gridTemplateColumns: "1fr auto", marginTop: 10 }}>
-          <input type="text" placeholder="e.g. Breakfast" value={newName} onChange={(e) => setNewName(e.target.value)} />
+          <input type="text" placeholder={isSub ? "e.g. hot-line-production" : "e.g. Breakfast"} value={newName} onChange={(e) => setNewName(e.target.value)} />
           <button className="btn accent" disabled={pending} onClick={add}>Add Category</button>
         </div>
         {error && <div className="login-error" style={{ marginTop: 8 }}>{error}</div>}

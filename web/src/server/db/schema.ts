@@ -96,11 +96,21 @@ export const subcategories = pgTable(
 // free text in their own `section` column (unchanged, every existing
 // reader of that column keeps working) — this table only backs a managed
 // dropdown of names instead of freehand typing.
-export const menuCategories = pgTable("menu_categories", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  name: text("name").notNull().unique(),
-  sortOrder: integer("sort_order").notNull().default(0),
-});
+export const menuCategories = pgTable(
+  "menu_categories",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull().unique(),
+    sortOrder: integer("sort_order").notNull().default(0),
+    // 'main' = a main-recipe menu section (To Begin, Ramen...); 'sub' = a
+    // sub-recipe production-line category (hot-line-porduction...). Same
+    // table, same picker mechanism for both recipe types, but a main
+    // recipe's Section dropdown and a sub-recipe's should only ever offer
+    // the categories that make sense for that type.
+    scope: text("scope").notNull().default("main"),
+  },
+  (t) => [check("menu_categories_scope_check", sql`${t.scope} in ('main','sub')`)]
+);
 
 export const storageTypeEnum = pgEnum("storage_type", ["DRY", "CHILLED", "FROZEN"]);
 

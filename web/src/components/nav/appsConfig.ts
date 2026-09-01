@@ -78,7 +78,17 @@ export const APPS: AppDef[] = [
       { href: "/menu/coming-soon", label: "Groups", ico: "📁", section: "recipes" },
     ],
   },
-  { id: "recipes", label: "Recipe Costing", icon: "∑", color: "#6a4fb3", colorDark: "#4f3888", items: [{ href: "/recipes", label: "Recipe Costing", ico: "∑", section: "recipes" }] },
+  {
+    id: "recipes",
+    label: "Recipe Costing",
+    icon: "∑",
+    color: "#6a4fb3",
+    colorDark: "#4f3888",
+    items: [
+      { href: "/recipes", label: "Recipe Costing", ico: "∑", section: "recipes" },
+      { href: "/recipes/sub-categories", label: "Sub-Recipe Categories", ico: "🗂", section: "subrecipes" },
+    ],
+  },
   { id: "production", label: "Production", icon: "⚙", color: "#2f8f8f", colorDark: "#216565", items: [{ href: "/production", label: "Production", ico: "⚙", section: "subrecipes" }] },
   {
     id: "operations",

@@ -1,0 +1,2 @@
+ALTER TABLE "menu_categories" ADD COLUMN "scope" text DEFAULT 'main' NOT NULL;--> statement-breakpoint
+ALTER TABLE "menu_categories" ADD CONSTRAINT "menu_categories_scope_check" CHECK ("menu_categories"."scope" in ('main','sub'));

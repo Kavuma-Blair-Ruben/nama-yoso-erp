@@ -108,7 +108,7 @@ export function RecipeBuilder({
     const trimmed = newCategoryName.trim();
     if (!trimmed) return;
     startCategoryTransition(async () => {
-      const result = await createMenuCategory(trimmed);
+      const result = await createMenuCategory(trimmed, type === "sub" ? "sub" : "main");
       if (!result.error) {
         setCategoryOptions((cs) => [...cs, { id: trimmed, name: trimmed }].sort((a, b) => a.name.localeCompare(b.name)));
         setSection(trimmed);

@@ -2,14 +2,12 @@ import Link from "next/link";
 import { requireSection, hasAccess } from "@/server/auth/permissions";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { listRecipesWithCost, type RecipeType } from "@/server/db/queries/recipes";
-import { listMenuCategories } from "@/server/db/queries/menuCategories";
 import { RecipesCsvImport } from "@/components/recipes/RecipesCsvImport";
-import { MenuCategorySettings } from "@/components/menu/MenuCategorySettings";
 import { fmt, money, pct } from "@/lib/format";
 import { withTimeout } from "@/lib/withTimeout";
 
-type PageTab = "main" | "sub" | "modifier" | "combo" | "categories";
-const TAB_LABELS: Record<PageTab, string> = { main: "Main Recipes", sub: "Sub-Recipes", modifier: "Modifiers", combo: "Combos", categories: "Categories" };
+type PageTab = "main" | "sub" | "modifier" | "combo";
+const TAB_LABELS: Record<PageTab, string> = { main: "Main Recipes", sub: "Sub-Recipes", modifier: "Modifiers", combo: "Combos" };
 // Modifiers/Combos aren't new recipe types — they're existing Main/Sub
 // Recipes flagged as order-time add-ons/bundles (see schema.ts isModifier/
 // isCombo comments) — this just maps the page's 4 tabs onto the 2 real
@@ -21,30 +19,7 @@ function underlyingType(tab: PageTab): RecipeType {
 export default async function RecipesPage({ searchParams }: PageProps<"/recipes">) {
   const session = await requireSection("recipes", "view");
   const sp = await searchParams;
-  const tab: PageTab = sp.tab === "sub" || sp.tab === "modifier" || sp.tab === "combo" || sp.tab === "categories" ? sp.tab : "main";
-
-  // Categories isn't a recipe listing at all — same underlying
-  // menu_categories table /menu/categories manages (a category used by
-  // sub-recipes' Section field just as much as main recipes'), surfaced here
-  // too so adding one doesn't require leaving Recipe Costing. Branch out
-  // before the recipe-listing query, which this tab has no use for.
-  if (tab === "categories") {
-    const categories = await withTimeout(listMenuCategories(), 20000, "This is taking longer than expected — please try again in a moment.");
-    return (
-      <>
-        <PageHeader title="Recipe Costing" subtitle="Main recipes and sub-recipes, costed live against current ingredient prices." />
-        <div className="pill-tabs">
-          {(Object.keys(TAB_LABELS) as PageTab[]).map((t) => (
-            <Link key={t} href={`/recipes?tab=${t}`} className={`btn ${tab === t ? "" : "ghost"}`} style={{ borderRadius: 20 }}>
-              {TAB_LABELS[t]}
-            </Link>
-          ))}
-        </div>
-        <MenuCategorySettings categories={categories} />
-      </>
-    );
-  }
-
+  const tab: PageTab = sp.tab === "sub" || sp.tab === "modifier" || sp.tab === "combo" ? sp.tab : "main";
   const type = underlyingType(tab);
   const onlyFlagged = tab === "modifier" || tab === "combo";
   const q = typeof sp.q === "string" ? sp.q : undefined;

@@ -16,7 +16,7 @@ export default async function EditRecipePage({ params }: PageProps<"/recipes/[ty
     getRecipeForEdit(type, code),
     listRecipeIngredientPickerItems(type, code),
     listActiveBranches(),
-    listMenuCategories(),
+    listMenuCategories(type),
   ]), 20000, "This is taking longer than expected — please try again in a moment.");
   if (!data) notFound();
   const { recipe, ingredients, branchPrices } = data;

@@ -17,7 +17,7 @@ export default async function NewRecipePage({ searchParams }: PageProps<"/recipe
     listRecipeIngredientPickerItems(type),
     cloneFrom ? getRecipeForEdit(type, cloneFrom) : null,
     listActiveBranches(),
-    listMenuCategories(),
+    listMenuCategories(type),
   ]), 20000, "This is taking longer than expected — please try again in a moment.");
 
   const initial = cloneData

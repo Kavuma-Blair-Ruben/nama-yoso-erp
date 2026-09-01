@@ -6,15 +6,16 @@ import { db } from "@/server/db";
 import { menuCategories, auditLog } from "@/server/db/schema";
 import { assertPermission } from "@/server/auth/permissions";
 
-export async function createMenuCategory(name: string): Promise<{ error?: string }> {
+export async function createMenuCategory(name: string, scope: "main" | "sub" = "main"): Promise<{ error?: string }> {
   const session = await assertPermission("recipes", "edit");
   const trimmed = name.trim();
   if (!trimmed) return { error: "Enter a category name." };
   const [{ maxOrder }] = await db.select({ maxOrder: sql<number>`coalesce(max(sort_order), 0)` }).from(menuCategories);
-  await db.insert(menuCategories).values({ name: trimmed, sortOrder: maxOrder + 1 }).onConflictDoNothing();
-  await db.insert(auditLog).values({ actorId: session.profile.id, action: "Created", entity: "Menu Category", entityLabel: trimmed, detail: "Added" });
+  await db.insert(menuCategories).values({ name: trimmed, sortOrder: maxOrder + 1, scope }).onConflictDoNothing();
+  await db.insert(auditLog).values({ actorId: session.profile.id, action: "Created", entity: "Menu Category", entityLabel: trimmed, detail: `Added (${scope})` });
   revalidatePath("/menu/categories");
   revalidatePath("/recipes");
+  revalidatePath("/recipes/sub-categories");
   return {};
 }
 
