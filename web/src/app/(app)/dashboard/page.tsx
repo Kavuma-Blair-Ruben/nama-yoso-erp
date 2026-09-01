@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireAuth, hasAccess } from "@/server/auth/permissions";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { getCachedOverviewData, getCachedCostDashboardData } from "@/server/db/queries/dashboard";
+import { getCachedOverviewData, getCachedCostDashboardData, getSalesVsPurchasesStats } from "@/server/db/queries/dashboard";
 import { getPurchasingStats, getCostCenterStats } from "@/server/db/queries/reports";
 import { listSuppliers } from "@/server/db/queries/suppliers";
 import { getMenuEngineeringData, getCogsAnalysis } from "@/server/db/queries/sales";
@@ -18,7 +18,7 @@ import { TrendLineChart } from "@/components/charts/TrendLineChart";
 import { MenuEngineeringScatter } from "@/components/charts/MenuEngineeringScatter";
 import { Sparkline } from "@/components/charts/Sparkline";
 
-type Tab = "overview" | "purchasing" | "suppliers" | "cost" | "cogs" | "menuengineering" | "costcenter" | "salesdashboard";
+type Tab = "overview" | "purchasing" | "suppliers" | "cost" | "cogs" | "menuengineering" | "costcenter" | "salesdashboard" | "salesvspurchases";
 
 export default async function DashboardPage({ searchParams }: PageProps<"/dashboard">) {
   const session = await requireAuth(); // dashboard itself has no section gate, matching index.html
@@ -40,6 +40,7 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
       {canSeeAnalytics && tab === "menuengineering" && <MenuEngineeringTab from={from} to={to} view={typeof sp.view === "string" ? sp.view : undefined} />}
       {canSeeAnalytics && tab === "costcenter" && <CostCenterTab from={from} to={to} />}
       {canSeeAnalytics && tab === "salesdashboard" && <SalesDashboardTab from={from} to={to} />}
+      {canSeeAnalytics && tab === "salesvspurchases" && <SalesVsPurchasesTab from={from} to={to} />}
     </>
   );
 }
@@ -791,6 +792,93 @@ async function SalesDashboardTab({ from, to }: { from: string; to: string }) {
             <div className="panel-head"><h3>Net Revenue — Daily</h3></div>
             <div className="panel-body chart-card">
               <TrendLineChart data={stats.trend} format="money0" />
+            </div>
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
+async function SalesVsPurchasesTab({ from, to }: { from: string; to: string }) {
+  const stats = await withTimeout(getSalesVsPurchasesStats({ from, to }), 28000, "This is taking longer than expected — please try again in a moment.");
+  const overallColor = stats.overallPurchasesPct != null && stats.overallPurchasesPct > 100 ? "var(--bad)" : "var(--good)";
+
+  return (
+    <>
+      <DateRangeBar tab="salesvspurchases" from={from} to={to} />
+      <div className="callout">
+        <b>What this shows:</b> revenue recorded (Recipe Sales — CSV import or POS sync) against goods actually received
+        (posted GRNs) for each day, regardless of whether what was received has been sold yet. This is a day-to-day
+        cash-flow read, not the same as COGS % (which compares revenue to the cost of what was sold).
+      </div>
+      {!stats.hasData ? (
+        <div className="callout">No sales or purchases recorded in this date range yet.</div>
+      ) : (
+        <>
+          <div className="kpi-grid">
+            <div className="kpi">
+              <div className="kpi-icon">💵</div>
+              <div className="n">{money(stats.totalSales, 0)}</div>
+              <div className="l">Total Sales</div>
+            </div>
+            <div className="kpi">
+              <div className="kpi-icon">🛒</div>
+              <div className="n">{money(stats.totalPurchases, 0)}</div>
+              <div className="l">Total Purchases</div>
+            </div>
+            <div className="kpi" style={{ borderColor: overallColor }}>
+              <div className="kpi-icon">⚖️</div>
+              <div className="n" style={{ color: overallColor }}>{stats.overallPurchasesPct != null ? `${fmt(stats.overallPurchasesPct, 1)}%` : "—"}</div>
+              <div className="l">Purchases as % of Sales</div>
+              <div className="d">{stats.overallPurchasesPct != null && stats.overallPurchasesPct > 100 ? "Buying more than selling" : "Within sales"}</div>
+            </div>
+          </div>
+
+          <div className="panel">
+            <div className="panel-head"><h3>Purchases as % of Sales — Daily</h3></div>
+            <div className="panel-body chart-card">
+              <TrendLineChart data={stats.trend.filter((t) => t.purchasesPct != null).map((t) => ({ label: t.date, value: t.purchasesPct as number }))} format="percent" color={overallColor} />
+            </div>
+          </div>
+
+          <div style={{ height: 16 }} />
+
+          <div className="grid-2">
+            <div className="panel">
+              <div className="panel-head"><h3>Daily Sales</h3></div>
+              <div className="panel-body chart-card">
+                <TrendLineChart data={stats.trend.map((t) => ({ label: t.date, value: t.sales }))} format="money0" color="var(--chart-3)" />
+              </div>
+            </div>
+            <div className="panel">
+              <div className="panel-head"><h3>Daily Purchases</h3></div>
+              <div className="panel-body chart-card">
+                <TrendLineChart data={stats.trend.map((t) => ({ label: t.date, value: t.purchases }))} format="money0" color="var(--chart-2)" />
+              </div>
+            </div>
+          </div>
+
+          <div style={{ height: 16 }} />
+
+          <div className="panel">
+            <div className="panel-head"><h3>Day by Day</h3></div>
+            <div className="table-wrap" style={{ maxHeight: 420 }}>
+              <table className="data">
+                <thead><tr><th>Date</th><th className="right">Sales</th><th className="right">Purchases</th><th className="right">Purchases % of Sales</th></tr></thead>
+                <tbody>
+                  {[...stats.trend].reverse().map((t) => (
+                    <tr key={t.date}>
+                      <td>{t.date}</td>
+                      <td className="mono-r">{money(t.sales, 2)}</td>
+                      <td className="mono-r">{money(t.purchases, 2)}</td>
+                      <td className="right">
+                        {t.purchasesPct != null ? <span className={`tag ${t.purchasesPct > 100 ? "bad" : "good"}`}>{fmt(t.purchasesPct, 1)}%</span> : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
         </>

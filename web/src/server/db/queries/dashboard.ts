@@ -1,8 +1,8 @@
 import "server-only";
 import { unstable_cache } from "next/cache";
 import { db } from "@/server/db";
-import { stockItems, mainRecipes, subRecipes, categories, suppliers, invoicesHistorical, priceHistory } from "@/server/db/schema";
-import { eq, sql, count, sum, isNotNull } from "drizzle-orm";
+import { stockItems, mainRecipes, subRecipes, categories, suppliers, invoicesHistorical, priceHistory, recipeSales, grns, grnLines } from "@/server/db/schema";
+import { eq, and, gte, lte, sql, count, sum, isNotNull } from "drizzle-orm";
 import { loadCostingGraph, recipeCurrentCost, recipeOriginalCost, type CostingGraph } from "@/server/costing/recipeCost";
 import { getReorderAlertCount } from "@/server/db/queries/forecasting";
 import { getSalesTodayStats } from "@/server/db/queries/sales";
@@ -167,3 +167,51 @@ export const getCachedCostDashboardData = unstable_cache(
   ["dashboard-cost-tab-v1"],
   { revalidate: 45 }
 );
+
+// Day-by-day Sales vs. Purchases, and purchases as a % of sales — a
+// cash-flow-style read distinct from COGS% (which compares revenue to the
+// cost of what was actually SOLD). This compares revenue to what was
+// actually RECEIVED that day, regardless of whether it's been sold yet.
+// Sales come from recipe_sales (populated by both CSV import and the
+// Foodics webhook — the same source the COGS/Menu Engineering tabs use).
+// Purchases come from posted GRNs (grn_lines.line_amount), not
+// invoices_historical, since that table is intentionally being kept at
+// zero post-go-live and real purchases now flow through GRN posting.
+export async function getSalesVsPurchasesStats(filters: { from?: string; to?: string } = {}) {
+  const salesConditions = [];
+  if (filters.from) salesConditions.push(gte(recipeSales.saleDate, filters.from));
+  if (filters.to) salesConditions.push(lte(recipeSales.saleDate, filters.to));
+  const salesRows = await db
+    .select({ saleDate: recipeSales.saleDate, revenue: recipeSales.revenue })
+    .from(recipeSales)
+    .where(salesConditions.length ? and(...salesConditions) : undefined);
+
+  const purchaseConditions = [eq(grns.status, "POSTED")];
+  if (filters.from) purchaseConditions.push(gte(grns.receivedDate, filters.from));
+  if (filters.to) purchaseConditions.push(lte(grns.receivedDate, filters.to));
+  const purchaseRows = await db
+    .select({ receivedDate: grns.receivedDate, lineAmount: grnLines.lineAmount })
+    .from(grnLines)
+    .innerJoin(grns, eq(grnLines.grnId, grns.id))
+    .where(and(...purchaseConditions));
+
+  const salesByDate = new Map<string, number>();
+  for (const r of salesRows) salesByDate.set(r.saleDate, (salesByDate.get(r.saleDate) ?? 0) + r.revenue);
+  const purchasesByDate = new Map<string, number>();
+  for (const r of purchaseRows) purchasesByDate.set(r.receivedDate, (purchasesByDate.get(r.receivedDate) ?? 0) + r.lineAmount);
+
+  const allDates = new Set([...salesByDate.keys(), ...purchasesByDate.keys()]);
+  const trend = [...allDates]
+    .sort()
+    .map((date) => {
+      const sales = salesByDate.get(date) ?? 0;
+      const purchases = purchasesByDate.get(date) ?? 0;
+      return { date, sales, purchases, purchasesPct: sales ? (purchases / sales) * 100 : null };
+    });
+
+  const totalSales = trend.reduce((s, t) => s + t.sales, 0);
+  const totalPurchases = trend.reduce((s, t) => s + t.purchases, 0);
+  const overallPurchasesPct = totalSales ? (totalPurchases / totalSales) * 100 : null;
+
+  return { trend, totalSales, totalPurchases, overallPurchasesPct, hasData: trend.length > 0 };
+}

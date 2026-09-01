@@ -29,6 +29,7 @@ export const APPS: AppDef[] = [
       { href: "/dashboard?tab=menuengineering", label: "Menu Engineering", ico: "🍽", section: "reports" },
       { href: "/dashboard?tab=costcenter", label: "Cost by Sector", ico: "🏢", section: "reports" },
       { href: "/dashboard?tab=salesdashboard", label: "Sales Dashboard", ico: "💰", section: "reports" },
+      { href: "/dashboard?tab=salesvspurchases", label: "Sales vs Purchases", ico: "⚖️", section: "reports" },
     ],
   },
   { id: "scanner", label: "Scanner", icon: "📷", color: "#3a7d44", colorDark: "#285a2f", items: [{ href: "/scanner", label: "Scanner", ico: "📷", section: null }] },
