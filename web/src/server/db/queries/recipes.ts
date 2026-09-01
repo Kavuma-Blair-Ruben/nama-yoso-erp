@@ -253,6 +253,8 @@ export async function listIngredientPickerItems() {
       issueUnit: stockItems.issueUnit,
       ratePerKgL: stockItems.ratePerKgL,
       sourceType: stockItems.sourceType,
+      unitWeight: stockItems.unitWeight,
+      purchaseUnit: stockItems.purchaseUnit,
     })
     .from(stockItems)
     .where(eq(stockItems.isActive, true))

@@ -15,6 +15,11 @@ const lineSchema = z.object({
   stockItemId: z.string().min(1),
   systemQty: z.number(),
   countedQty: z.number().nullable(),
+  // Optional raw two-part breakdown behind countedQty (see stockCountLines
+  // schema comment) — purely for display/re-editing, never read for the
+  // actual stock adjustment math, which always uses countedQty.
+  storageQty: z.number().nullable().optional(),
+  ingredientQty: z.number().nullable().optional(),
   unitLabel: z.string().optional(),
   rate: z.number().min(0).optional(),
 });
@@ -73,6 +78,8 @@ async function insertStockCount(tx: Db, input: z.infer<typeof stockCountInputSch
       stockItemId: l.stockItemId,
       systemQty: l.systemQty,
       countedQty: l.countedQty ?? undefined,
+      storageQty: l.storageQty ?? undefined,
+      ingredientQty: l.ingredientQty ?? undefined,
       unitLabel: l.unitLabel,
       rateAtCount: rate,
     });
@@ -162,7 +169,7 @@ export async function postStockCountDraft(id: string): Promise<StockCountActionR
       costCenterId: stockCount.costCenterId,
       countDate: stockCount.countDate,
       staffName: stockCount.staffName ?? undefined,
-      lines: lines.map((l) => ({ stockItemId: l.stockItemId, systemQty: l.systemQty, countedQty: l.countedQty, unitLabel: l.unitLabel ?? undefined, rate: l.rateAtCount ?? undefined })),
+      lines: lines.map((l) => ({ stockItemId: l.stockItemId, systemQty: l.systemQty, countedQty: l.countedQty, storageQty: l.storageQty, ingredientQty: l.ingredientQty, unitLabel: l.unitLabel ?? undefined, rate: l.rateAtCount ?? undefined })),
     };
     const totalVarianceValue = computeTotalVarianceValue(input);
     await applyStockCountSideEffects(tx, id, stockCount.branchId, stockCount.costCenterId, input, session.profile.id);
@@ -220,6 +227,8 @@ export async function updateStockCountDraft(id: string, input: z.infer<typeof st
           stockItemId: l.stockItemId,
           systemQty: l.systemQty,
           countedQty: l.countedQty ?? undefined,
+          storageQty: l.storageQty ?? undefined,
+          ingredientQty: l.ingredientQty ?? undefined,
           unitLabel: l.unitLabel,
           rateAtCount: rate,
           countedBy: l.countedQty != null ? session.profile.id : undefined,
@@ -229,6 +238,8 @@ export async function updateStockCountDraft(id: string, input: z.infer<typeof st
           set: {
             systemQty: l.systemQty,
             countedQty: l.countedQty ?? undefined,
+            storageQty: l.storageQty ?? undefined,
+            ingredientQty: l.ingredientQty ?? undefined,
             unitLabel: l.unitLabel,
             rateAtCount: rate,
             ...(l.countedQty != null ? { countedBy: session.profile.id } : {}),

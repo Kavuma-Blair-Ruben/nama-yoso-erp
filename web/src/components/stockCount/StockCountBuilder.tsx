@@ -5,17 +5,47 @@ import { useRouter } from "next/navigation";
 import { postStockCount, saveStockCountDraft, updateStockCountDraft, removeStockCountDraftLine, pullStockCountDraftLines } from "@/server/actions/stockCount";
 import { createStockCountTemplate } from "@/server/actions/stockCountTemplates";
 import { fmt, money, todayStr, num } from "@/lib/format";
-import { canonicalUnitLabel } from "@/lib/unitMath";
+import { canonicalUnitLabel, convertQtyToCanonical } from "@/lib/unitMath";
 import { ScanInput } from "@/components/ui/ScanInput";
 import { extractProductCode } from "@/lib/scanCode";
 import { ItemSearchSelect } from "@/components/ui/ItemSearchSelect";
 
-type PickerItem = { id: string; legacyCode: string; name: string; issueUnit: string | null; ratePerKgL: number | null };
+type PickerItem = { id: string; legacyCode: string; name: string; issueUnit: string | null; ratePerKgL: number | null; unitWeight: number | null; purchaseUnit: string | null };
 // countedQty is a raw string while editing ("" = not yet counted) — see num()
 // in @/lib/format for why a number can't be stored straight back into the input.
+// storageQty/ingredientQty are the friendlier two-part entry behind
+// countedQty (sealed purchase units + loose issue-unit qty, same split as
+// GRN receiving) — countedQty is always kept in sync via recomputeCountedQty
+// whenever either changes, and stays the one field actually submitted for
+// the stock adjustment. Both stay "" together with countedQty when nothing's
+// been entered yet.
 // countedByName is who last saved a counted qty for this line — set once
 // this draft has been saved at least once (see updateStockCountDraft).
-type Line = { stockItemId: string; legacyCode: string; name: string; unitLabel: string; systemQty: number; countedQty: string; rate: number; countedByName?: string | null };
+type Line = {
+  stockItemId: string;
+  legacyCode: string;
+  name: string;
+  unitLabel: string;
+  issueUnit: string | null;
+  unitWeight: number | null;
+  purchaseUnit: string | null;
+  systemQty: number;
+  countedQty: string;
+  storageQty: string;
+  ingredientQty: string;
+  rate: number;
+  countedByName?: string | null;
+};
+
+// storageQty (whole/sealed purchase units) * unitWeight + ingredientQty
+// (loose, already in issue-unit terms) = total in issue units, then down to
+// canonical KG/L — identical formula to GRN receiving. Returns "" (not yet
+// counted) only when both inputs are blank.
+function recomputeCountedQty(storageQty: string, ingredientQty: string, unitWeight: number | null, issueUnit: string | null): string {
+  if (storageQty === "" && ingredientQty === "") return "";
+  const totalIssueQty = num(storageQty) * (unitWeight ?? 1) + num(ingredientQty);
+  return String(convertQtyToCanonical(totalIssueQty, issueUnit));
+}
 type Template = { id: string; name: string; costCenter: string | null; stockItemIds: string[] };
 type CostCenter = { id: string; branchId: string; name: string };
 
@@ -70,11 +100,27 @@ export function StockCountBuilder({
     return stockBalances.find((b) => b.stockItemId === stockItemId && b.branchId === branchId && b.costCenterId === costCenterId)?.qtyOnHand ?? 0;
   }
 
+  function lineFor(p: PickerItem): Line {
+    return {
+      stockItemId: p.id,
+      legacyCode: p.legacyCode,
+      name: `${p.legacyCode} — ${p.name}`,
+      unitLabel: canonicalUnitLabel(p.issueUnit),
+      issueUnit: p.issueUnit,
+      unitWeight: p.unitWeight,
+      purchaseUnit: p.purchaseUnit,
+      systemQty: availableFor(p.id),
+      countedQty: "",
+      storageQty: "",
+      ingredientQty: "",
+      rate: p.ratePerKgL ?? 0,
+    };
+  }
   function addLine() {
     const p = items.find((x) => x.id === pickerId);
     if (!p) return;
     if (lines.some((l) => l.stockItemId === p.id)) return;
-    setLines((ls) => [...ls, { stockItemId: p.id, legacyCode: p.legacyCode, name: `${p.legacyCode} — ${p.name}`, unitLabel: canonicalUnitLabel(p.issueUnit), systemQty: availableFor(p.id), countedQty: "", rate: p.ratePerKgL ?? 0 }]);
+    setLines((ls) => [...ls, lineFor(p)]);
   }
   function addLineByScan(scanned: string) {
     const code = extractProductCode(scanned).trim().toLowerCase();
@@ -83,10 +129,22 @@ export function StockCountBuilder({
     setError(null);
     if (lines.some((l) => l.stockItemId === p.id)) return setInfo(`${p.name} is already in this count.`);
     setInfo(null);
-    setLines((ls) => [...ls, { stockItemId: p.id, legacyCode: p.legacyCode, name: `${p.legacyCode} — ${p.name}`, unitLabel: canonicalUnitLabel(p.issueUnit), systemQty: availableFor(p.id), countedQty: "", rate: p.ratePerKgL ?? 0 }]);
+    setLines((ls) => [...ls, lineFor(p)]);
   }
   function updateLine(i: number, patch: Partial<Line>) {
     setLines((ls) => ls.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
+  }
+  // Storage/ingredient inputs always write together with the recomputed
+  // countedQty so every existing consumer (variance, buildInput, posting)
+  // keeps reading one number without knowing about the two-part entry.
+  function updateBreakdown(i: number, field: "storageQty" | "ingredientQty", value: string) {
+    setLines((ls) =>
+      ls.map((l, idx) => {
+        if (idx !== i) return l;
+        const next = { ...l, [field]: value };
+        return { ...next, countedQty: recomputeCountedQty(next.storageQty, next.ingredientQty, next.unitWeight, next.issueUnit) };
+      })
+    );
   }
   // For an existing (already-saved) draft, a line the user removes locally
   // has to be deleted server-side immediately too — now that saves upsert
@@ -105,7 +163,7 @@ export function StockCountBuilder({
   }
   function zeroUncounted() {
     const n = lines.filter((l) => l.countedQty === "").length;
-    setLines(lines.map((l) => (l.countedQty === "" ? { ...l, countedQty: "0" } : l)));
+    setLines(lines.map((l) => (l.countedQty === "" ? { ...l, countedQty: "0", storageQty: "0", ingredientQty: "0" } : l)));
     setInfo(`Set ${n} uncounted item(s) to zero.`);
   }
   // Merges in lines that exist in the DB but not locally yet (added by
@@ -125,16 +183,24 @@ export function StockCountBuilder({
       }
       setLines((ls) => [
         ...ls,
-        ...added.map((f) => ({
-          stockItemId: f.stockItemId,
-          legacyCode: f.legacyCode,
-          name: `${f.legacyCode} — ${f.name}`,
-          unitLabel: f.unitLabel ?? "",
-          systemQty: f.systemQty,
-          countedQty: f.countedQty != null ? String(f.countedQty) : "",
-          rate: f.rateAtCount ?? 0,
-          countedByName: f.countedByName,
-        })),
+        ...added.map((f) => {
+          const p = items.find((x) => x.id === f.stockItemId);
+          return {
+            stockItemId: f.stockItemId,
+            legacyCode: f.legacyCode,
+            name: `${f.legacyCode} — ${f.name}`,
+            unitLabel: f.unitLabel ?? "",
+            issueUnit: p?.issueUnit ?? null,
+            unitWeight: p?.unitWeight ?? null,
+            purchaseUnit: p?.purchaseUnit ?? null,
+            systemQty: f.systemQty,
+            countedQty: f.countedQty != null ? String(f.countedQty) : "",
+            storageQty: f.storageQty != null ? String(f.storageQty) : "",
+            ingredientQty: f.ingredientQty != null ? String(f.ingredientQty) : "",
+            rate: f.rateAtCount ?? 0,
+            countedByName: f.countedByName,
+          };
+        }),
       ]);
       setInfo(`Pulled in ${added.length} item(s) counted by someone else.`);
     });
@@ -157,7 +223,7 @@ export function StockCountBuilder({
       if (existingIds.has(stockItemId)) continue;
       const p = items.find((x) => x.id === stockItemId);
       if (!p) continue;
-      next.push({ stockItemId: p.id, legacyCode: p.legacyCode, name: `${p.legacyCode} — ${p.name}`, unitLabel: canonicalUnitLabel(p.issueUnit), systemQty: availableFor(p.id), countedQty: "", rate: p.ratePerKgL ?? 0 });
+      next.push(lineFor(p));
       added++;
     }
     setLines(next);
@@ -187,8 +253,8 @@ export function StockCountBuilder({
       setError("Add items to the count first, then export a blank sheet.");
       return;
     }
-    const header = ["Item", "Code", "Unit", "System Qty", "Counted Qty"];
-    const rows = lines.map((l) => [l.name.replace(/^.*? — /, ""), l.legacyCode, l.unitLabel, blindCounts ? "" : String(l.systemQty), ""]);
+    const header = ["Item", "Code", "Purchase Unit", "Storage Qty", "Ingredient Unit", "Ingredient Qty", "Unit", "System Qty", "Counted Qty"];
+    const rows = lines.map((l) => [l.name.replace(/^.*? — /, ""), l.legacyCode, l.purchaseUnit ?? "", "", l.issueUnit ?? "", "", l.unitLabel, blindCounts ? "" : String(l.systemQty), ""]);
     const csv = [header, ...rows].map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
@@ -223,20 +289,32 @@ export function StockCountBuilder({
           const next = [...ls];
           for (const row of rows) {
             const code = row["Code"] ?? row["code"];
-            const qtyStr = row["Counted Qty"] ?? row["counted qty"];
-            if (!code || qtyStr === undefined || qtyStr === "" || Number.isNaN(Number(qtyStr))) continue;
+            const storageStr = row["Storage Qty"] ?? row["storage qty"];
+            const ingredientStr = row["Ingredient Qty"] ?? row["ingredient qty"];
+            const legacyQtyStr = row["Counted Qty"] ?? row["counted qty"];
+            const hasBreakdown = (storageStr && storageStr !== "" && !Number.isNaN(Number(storageStr))) || (ingredientStr && ingredientStr !== "" && !Number.isNaN(Number(ingredientStr)));
+            const hasLegacyQty = legacyQtyStr !== undefined && legacyQtyStr !== "" && !Number.isNaN(Number(legacyQtyStr));
+            if (!code || (!hasBreakdown && !hasLegacyQty)) continue;
             const p = items.find((x) => x.legacyCode === code);
             if (!p) continue;
+            const storageQty = hasBreakdown ? (storageStr && storageStr !== "" ? storageStr : "0") : "";
+            const ingredientQty = hasBreakdown ? (ingredientStr && ingredientStr !== "" ? ingredientStr : "0") : "";
+            const countedQty = hasBreakdown ? recomputeCountedQty(storageQty, ingredientQty, p.unitWeight, p.issueUnit) : legacyQtyStr;
             const existing = next.find((l) => l.stockItemId === p.id);
-            if (existing) existing.countedQty = qtyStr;
-            else next.push({ stockItemId: p.id, legacyCode: p.legacyCode, name: `${p.legacyCode} — ${p.name}`, unitLabel: canonicalUnitLabel(p.issueUnit), systemQty: availableFor(p.id), countedQty: qtyStr, rate: p.ratePerKgL ?? 0 });
+            if (existing) {
+              existing.storageQty = storageQty;
+              existing.ingredientQty = ingredientQty;
+              existing.countedQty = countedQty;
+            } else {
+              next.push({ ...lineFor(p), storageQty, ingredientQty, countedQty });
+            }
             imported++;
           }
           return next;
         });
         setInfo(`Imported ${imported} counted line(s) from the sheet.`);
       } catch {
-        setError("Could not read that file — expecting the exported CSV format (Item, Code, Unit, System Qty, Counted Qty).");
+        setError("Could not read that file — expecting the exported CSV format (Item, Code, Purchase Unit, Storage Qty, Ingredient Unit, Ingredient Qty, Unit, System Qty, Counted Qty).");
       }
     };
     reader.readAsText(file);
@@ -247,7 +325,15 @@ export function StockCountBuilder({
       branchId,
       costCenterId,
       countDate,
-      lines: lines.map((l) => ({ stockItemId: l.stockItemId, systemQty: l.systemQty, countedQty: l.countedQty === "" ? null : num(l.countedQty), unitLabel: l.unitLabel || undefined, rate: l.rate })),
+      lines: lines.map((l) => ({
+        stockItemId: l.stockItemId,
+        systemQty: l.systemQty,
+        countedQty: l.countedQty === "" ? null : num(l.countedQty),
+        storageQty: l.storageQty === "" ? null : num(l.storageQty),
+        ingredientQty: l.ingredientQty === "" ? null : num(l.ingredientQty),
+        unitLabel: l.unitLabel || undefined,
+        rate: l.rate,
+      })),
     };
   }
 
@@ -359,7 +445,9 @@ export function StockCountBuilder({
               <tr>
                 <th>Item</th>
                 {!blindCounts && <th className="right">System</th>}
-                <th className="right">Counted</th>
+                <th className="right">Storage Qty</th>
+                <th className="right">Ingredient Qty</th>
+                <th className="right">Total</th>
                 <th>Unit</th>
                 {!blindCounts && <th className="right">Variance</th>}
                 {!blindCounts && <th className="right">Value</th>}
@@ -382,12 +470,27 @@ export function StockCountBuilder({
                         <input
                           type="text"
                           inputMode="decimal"
-                          style={{ width: 80 }}
-                          value={l.countedQty}
+                          style={{ width: 70 }}
+                          value={l.storageQty}
                           placeholder="—"
-                          onChange={(e) => updateLine(i, { countedQty: e.target.value })}
+                          title={l.purchaseUnit ? `Whole/sealed units, e.g. unopened ${l.purchaseUnit}` : "Whole/sealed units"}
+                          onChange={(e) => updateBreakdown(i, "storageQty", e.target.value)}
                         />
+                        {l.purchaseUnit && <div style={{ fontSize: 9.5, color: "var(--ink-faint)" }}>{l.purchaseUnit}</div>}
                       </td>
+                      <td>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          style={{ width: 70 }}
+                          value={l.ingredientQty}
+                          placeholder="—"
+                          title={l.issueUnit ? `Loose/opened qty already in ${l.issueUnit}` : "Loose/opened qty"}
+                          onChange={(e) => updateBreakdown(i, "ingredientQty", e.target.value)}
+                        />
+                        {l.issueUnit && <div style={{ fontSize: 9.5, color: "var(--ink-faint)" }}>{l.issueUnit}</div>}
+                      </td>
+                      <td className="mono-r">{l.countedQty === "" ? "—" : fmt(num(l.countedQty), 3)}</td>
                       <td>{l.unitLabel}</td>
                       {!blindCounts && (
                         <td className="mono-r" style={{ color: variance == null ? undefined : variance === 0 ? undefined : variance > 0 ? "var(--good)" : "var(--bad)" }}>
@@ -400,7 +503,7 @@ export function StockCountBuilder({
                   );
                 })
               ) : (
-                <tr className="empty-row"><td colSpan={blindCounts ? 4 : 7}>No items added yet — use the dropdown above.</td></tr>
+                <tr className="empty-row"><td colSpan={blindCounts ? 6 : 9}>No items added yet — use the dropdown above.</td></tr>
               )}
             </tbody>
           </table>

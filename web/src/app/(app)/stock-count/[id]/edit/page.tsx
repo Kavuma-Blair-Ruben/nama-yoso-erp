@@ -40,16 +40,24 @@ export default async function EditStockCountDraftPage({ params }: PageProps<"/st
         initialBranchId={stockCount.branchId}
         initialCostCenterId={stockCount.costCenterId ?? undefined}
         initialCountDate={stockCount.countDate}
-        initialLines={lines.map((l) => ({
-          stockItemId: l.stockItemId,
-          legacyCode: l.legacyCode,
-          name: `${l.legacyCode} — ${l.name}`,
-          unitLabel: l.unitLabel ?? "",
-          systemQty: l.systemQty,
-          countedQty: l.countedQty != null ? String(l.countedQty) : "",
-          rate: l.rateAtCount ?? 0,
-          countedByName: l.countedByName,
-        }))}
+        initialLines={lines.map((l) => {
+          const p = items.find((x) => x.id === l.stockItemId);
+          return {
+            stockItemId: l.stockItemId,
+            legacyCode: l.legacyCode,
+            name: `${l.legacyCode} — ${l.name}`,
+            unitLabel: l.unitLabel ?? "",
+            issueUnit: p?.issueUnit ?? null,
+            unitWeight: p?.unitWeight ?? null,
+            purchaseUnit: p?.purchaseUnit ?? null,
+            systemQty: l.systemQty,
+            countedQty: l.countedQty != null ? String(l.countedQty) : "",
+            storageQty: l.storageQty != null ? String(l.storageQty) : "",
+            ingredientQty: l.ingredientQty != null ? String(l.ingredientQty) : "",
+            rate: l.rateAtCount ?? 0,
+            countedByName: l.countedByName,
+          };
+        })}
       />
     </>
   );

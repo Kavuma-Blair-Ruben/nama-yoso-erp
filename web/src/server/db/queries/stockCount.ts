@@ -59,6 +59,8 @@ export async function getStockCountDetail(id: string) {
       legacyCode: stockItems.legacyCode,
       systemQty: stockCountLines.systemQty,
       countedQty: stockCountLines.countedQty,
+      storageQty: stockCountLines.storageQty,
+      ingredientQty: stockCountLines.ingredientQty,
       unitLabel: stockCountLines.unitLabel,
       rateAtCount: stockCountLines.rateAtCount,
     })
@@ -98,6 +100,8 @@ export async function getStockCountDraftLines(id: string) {
       name: stockItems.name,
       systemQty: stockCountLines.systemQty,
       countedQty: stockCountLines.countedQty,
+      storageQty: stockCountLines.storageQty,
+      ingredientQty: stockCountLines.ingredientQty,
       unitLabel: stockCountLines.unitLabel,
       rateAtCount: stockCountLines.rateAtCount,
       countedByName: profiles.name,

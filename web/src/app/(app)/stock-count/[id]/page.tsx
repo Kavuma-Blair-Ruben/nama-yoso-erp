@@ -56,6 +56,7 @@ export default async function StockCountDetailPage({ params }: PageProps<"/stock
             <tr>
               <th>Item</th>
               <th className="right">System</th>
+              <th className="right">Breakdown</th>
               <th className="right">Counted</th>
               <th className="right">Variance</th>
               <th className="right">Value</th>
@@ -65,10 +66,14 @@ export default async function StockCountDetailPage({ params }: PageProps<"/stock
             {lines.map((l) => {
               const variance = l.countedQty != null ? l.countedQty - l.systemQty : null;
               const varianceValue = variance != null ? variance * (l.rateAtCount ?? 0) : null;
+              const hasBreakdown = l.storageQty != null || l.ingredientQty != null;
               return (
                 <tr key={l.id}>
                   <td>{l.legacyCode} — {l.name}</td>
                   <td className="mono-r">{fmt(l.systemQty, 2)} {l.unitLabel ?? ""}</td>
+                  <td className="mono-r" style={{ fontSize: 11, color: "var(--ink-faint)" }}>
+                    {hasBreakdown ? `${fmt(l.storageQty ?? 0, 2)} storage + ${fmt(l.ingredientQty ?? 0, 2)} loose` : "—"}
+                  </td>
                   <td className="mono-r">{l.countedQty != null ? `${fmt(l.countedQty, 2)} ${l.unitLabel ?? ""}` : "—"}</td>
                   <td className="mono-r">{variance == null ? "—" : `${variance >= 0 ? "+" : ""}${fmt(variance, 2)}`}</td>
                   <td className="mono-r">{varianceValue == null ? "—" : money(varianceValue, 2)}</td>

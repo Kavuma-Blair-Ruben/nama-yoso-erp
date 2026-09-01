@@ -1052,6 +1052,18 @@ export const stockCountLines = pgTable(
     stockItemId: uuid("stock_item_id").notNull().references(() => stockItems.id),
     systemQty: numeric("system_qty", { precision: 14, scale: 4, mode: "number" }).notNull(),
     countedQty: numeric("counted_qty", { precision: 14, scale: 4, mode: "number" }),
+    // Raw two-part physical count a counter actually sees on the shelf —
+    // storageQty is whole/sealed purchase units (e.g. 3 unopened boxes),
+    // ingredientQty is loose/opened stock already in issue-unit terms (e.g.
+    // 250g from an opened bag). Both nullable/optional: a count can still be
+    // entered as one combined countedQty (CSV import, legacy drafts) with no
+    // breakdown. When present, countedQty = storageQty * stockItems.unitWeight
+    // + ingredientQty, converted to canonical KG/L — same formula as GRN
+    // receiving (see convertQtyToCanonical in @/lib/unitMath). Purely a
+    // friendlier entry path; countedQty stays the one field every downstream
+    // consumer (variance, posting, dashboard) reads.
+    storageQty: numeric("storage_qty", { precision: 14, scale: 4, mode: "number" }),
+    ingredientQty: numeric("ingredient_qty", { precision: 14, scale: 4, mode: "number" }),
     unitLabel: text("unit_label"),
     rateAtCount: money("rate_at_count"),
     // Who actually counted this specific line — set whenever a save touches
