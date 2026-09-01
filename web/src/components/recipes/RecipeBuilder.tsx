@@ -146,7 +146,11 @@ export function RecipeBuilder({
       ingredientMainRecipeId: l.ingredientMainRecipeId,
       unitLabel: l.unitLabel,
       wastagePct: String(l.wastagePct),
-      qtyNeeded: String(l.qty * (1 - (l.wastagePct || 0) / 100)),
+      // Rounded to 4dp — backing this out of the stored (wastage-inflated)
+      // qty is plain float division and otherwise reliably lands on 15+
+      // digits of noise (e.g. 0.010520731999999998) for an entirely
+      // ordinary KG quantity like 0.0105.
+      qtyNeeded: String(Math.round(l.qty * (1 - (l.wastagePct || 0) / 100) * 10000) / 10000),
     })) ?? []
   );
   const [photoUrl, setPhotoUrl] = useState(initial?.photoUrl ?? null);
@@ -344,13 +348,15 @@ export function RecipeBuilder({
 
         <div className="section-title">Ingredients</div>
         <div className="callout" style={{ fontSize: 11.5 }}>
-          <b>Qty Needed</b> (how much you actually use after prep) &rarr; add back <b>Wastage %</b> (peel/trim/cook loss) &rarr; <b>Qty to Buy</b> (bigger number, what you&apos;re actually charged for) &times; Rate = <b>Line Cost</b>.
+          <b>Qty Needed</b> (how much you actually use after prep, in KG/L — e.g. 0.125) &times; <b>Rate/KG</b> = <b>Amount</b> (cost before wastage) &rarr; add back <b>Wastage %</b> (peel/trim/cook loss, e.g. 5 for 5%) &rarr; <b>Qty to Buy</b> (bigger number, what you&apos;re actually charged for) &times; Rate = <b>Line Cost</b>.
         </div>
         <div className="line-builder">
-          <div className="line-builder-row head" style={{ gridTemplateColumns: "2fr 90px 80px 80px 90px 90px 32px" }}>
+          <div className="line-builder-row head" style={{ gridTemplateColumns: "1.6fr 80px 60px 70px 80px 70px 80px 80px 32px" }}>
             <div>Ingredient</div>
             <div>Qty Needed</div>
             <div>Unit</div>
+            <div>Rate/KG</div>
+            <div>Amount</div>
             <div>Wastage %</div>
             <div>Qty to Buy</div>
             <div>Line Cost</div>
@@ -358,14 +364,18 @@ export function RecipeBuilder({
           </div>
           {lines.map((l, i) => {
             const p = findPickerItem(items, l);
+            const rate = p?.ratePerKgL ?? 0;
+            const amount = num(l.qtyNeeded) * rate;
             const buy = qtyToBuy(l);
-            const lineCost = buy * (p?.ratePerKgL ?? 0);
+            const lineCost = buy * rate;
             return (
-              <div className="line-builder-row" key={i} style={{ gridTemplateColumns: "2fr 90px 80px 80px 90px 90px 32px" }}>
+              <div className="line-builder-row" key={i} style={{ gridTemplateColumns: "1.6fr 80px 60px 70px 80px 70px 80px 80px 32px" }}>
                 <ItemSearchSelect options={itemOptions} value={pickerValue(l)} onChange={(v) => updateLineItem(i, v)} placeholder="Search ingredient…" />
-                <input type="text" inputMode="decimal" value={l.qtyNeeded} onChange={(e) => updateLine(i, { qtyNeeded: e.target.value })} />
+                <input type="text" inputMode="decimal" placeholder="e.g. 0.125" value={l.qtyNeeded} onChange={(e) => updateLine(i, { qtyNeeded: e.target.value })} />
                 <input type="text" value={l.unitLabel} onChange={(e) => updateLine(i, { unitLabel: e.target.value })} />
-                <input type="text" inputMode="decimal" value={l.wastagePct} onChange={(e) => updateLine(i, { wastagePct: e.target.value })} />
+                <div className="mono-r" style={{ alignSelf: "center" }}>{money(rate, 2)}</div>
+                <div className="mono-r" style={{ alignSelf: "center" }}>{money(amount, 2)}</div>
+                <input type="text" inputMode="decimal" placeholder="e.g. 5" value={l.wastagePct} onChange={(e) => updateLine(i, { wastagePct: e.target.value })} />
                 <div className="mono-r" style={{ alignSelf: "center" }}>{fmt(buy, 2)}</div>
                 <div className="mono-r" style={{ alignSelf: "center" }}>{money(lineCost, 2)}</div>
                 <button className="line-remove" onClick={() => removeLine(i)}>✕</button>
