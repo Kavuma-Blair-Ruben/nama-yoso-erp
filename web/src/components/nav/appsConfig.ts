@@ -127,6 +127,7 @@ export const APPS: AppDef[] = [
       { href: "/reports?tab=slowmoving", label: "Slow Moving Items", ico: "🐌", section: "reports" },
       { href: "/reports?tab=pricechange", label: "Item Price Change", ico: "🔺", section: "reports" },
       { href: "/reports?tab=costadjustments", label: "Cost Adjustments", ico: "🧮", section: "reports" },
+      { href: "/reports?tab=ingredientswaps", label: "Ingredient Swaps", ico: "🔁", section: "reports" },
       { href: "/reports?tab=sections", label: "Cost by Brand & Section", ico: "🗂", section: "reports" },
       { href: "/reports?tab=purchaseorders", label: "Purchase Orders", ico: "▤", section: "reports" },
       { href: "/reports?tab=grns", label: "GRNs", ico: "▦", section: "reports" },

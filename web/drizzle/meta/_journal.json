@@ -379,6 +379,13 @@
       "when": 1788295410044,
       "tag": "0053_add_menu_categories_scope",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1788296541456,
+      "tag": "0054_add_ingredient_swap_events",
+      "breakpoints": true
     }
   ]
 }

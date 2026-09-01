@@ -740,6 +740,39 @@ export const priceHistory = pgTable(
   (t) => [check("price_history_source_check", sql`${t.source} in ('manual','grn','bulk')`)]
 );
 
+// Repointing every recipe_ingredients line from one stock item to another
+// across the whole recipe book (e.g. an ingredient runs out and gets
+// replaced with an alternative from a different supplier under a
+// different product) — a distinct concept from price_history (that's a
+// rate change on one item; this is an FK repoint touching potentially many
+// recipes at once), so it gets its own event log rather than overloading
+// price_history's source enum.
+export const ingredientSwapEvents = pgTable("ingredient_swap_events", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  fromStockItemId: uuid("from_stock_item_id").notNull().references(() => stockItems.id),
+  toStockItemId: uuid("to_stock_item_id").notNull().references(() => stockItems.id),
+  reason: text("reason"),
+  affectedLineCount: integer("affected_line_count").notNull(),
+  totalCostImpact: money("total_cost_impact").notNull(),
+  createdBy: uuid("created_by").references(() => profiles.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// One row per recipe affected by a swap event — recipeType/recipeCode are
+// a loose, non-FK-enforced polymorphic reference (same convention as
+// stock_movements.ref_type) since a recipe is either a main_recipes or
+// sub_recipes row; recipeCode/recipeName are denormalized so the report
+// never needs to join back to a recipe that might itself change name later.
+export const ingredientSwapEventLines = pgTable("ingredient_swap_event_lines", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  eventId: uuid("event_id").notNull().references(() => ingredientSwapEvents.id, { onDelete: "cascade" }),
+  recipeType: text("recipe_type").notNull(),
+  recipeCode: text("recipe_code").notNull(),
+  recipeName: text("recipe_name").notNull(),
+  costBefore: money("cost_before").notNull(),
+  costAfter: money("cost_after").notNull(),
+});
+
 /* ============================================================
    Credit Notes — a lightweight "request credit/return from supplier" flag
    tied to a posted GRN (damaged/rejected goods, short delivery, etc.). No

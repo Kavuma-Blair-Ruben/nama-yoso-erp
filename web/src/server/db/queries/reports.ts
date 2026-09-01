@@ -21,8 +21,12 @@ import {
   stockCounts,
   stockCountLines,
   recipeSales,
+  ingredientSwapEvents,
+  ingredientSwapEventLines,
+  profiles,
 } from "@/server/db/schema";
 import { and, eq, isNotNull, ne, sql, gte, lte, desc } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { loadCostingGraph, recipeCurrentCost, getSubRecipeCost, type CostingGraph } from "@/server/costing/recipeCost";
 import { todayStr } from "@/lib/format";
 
@@ -177,6 +181,68 @@ export async function listCostAdjustmentEvents(filters: { q?: string; from?: str
     .sort((a, b) => b.date.localeCompare(a.date));
 
   return events;
+}
+
+// Past ingredient swaps (an out-of-stock item replaced with an alternative
+// across every recipe that used it — see src/server/actions/ingredientSwap.ts)
+// and their recorded cost impact, for the Ingredient Swaps report tab.
+const swapFromItem = alias(stockItems, "swap_from_item");
+const swapToItem = alias(stockItems, "swap_to_item");
+
+export async function listIngredientSwapEvents(filters: { from?: string; to?: string } = {}) {
+  const conditions = [];
+  if (filters.from) conditions.push(gte(ingredientSwapEvents.createdAt, new Date(filters.from + "T00:00:00")));
+  if (filters.to) conditions.push(lte(ingredientSwapEvents.createdAt, new Date(filters.to + "T23:59:59")));
+
+  return db
+    .select({
+      id: ingredientSwapEvents.id,
+      fromCode: swapFromItem.legacyCode,
+      fromName: swapFromItem.name,
+      toCode: swapToItem.legacyCode,
+      toName: swapToItem.name,
+      reason: ingredientSwapEvents.reason,
+      affectedLineCount: ingredientSwapEvents.affectedLineCount,
+      totalCostImpact: ingredientSwapEvents.totalCostImpact,
+      createdByName: profiles.name,
+      createdAt: ingredientSwapEvents.createdAt,
+    })
+    .from(ingredientSwapEvents)
+    .innerJoin(swapFromItem, eq(ingredientSwapEvents.fromStockItemId, swapFromItem.id))
+    .innerJoin(swapToItem, eq(ingredientSwapEvents.toStockItemId, swapToItem.id))
+    .leftJoin(profiles, eq(ingredientSwapEvents.createdBy, profiles.id))
+    .where(conditions.length ? and(...conditions) : undefined)
+    .orderBy(desc(ingredientSwapEvents.createdAt));
+}
+
+export async function getIngredientSwapEventDetail(id: string) {
+  const [event] = await db
+    .select({
+      id: ingredientSwapEvents.id,
+      fromCode: swapFromItem.legacyCode,
+      fromName: swapFromItem.name,
+      toCode: swapToItem.legacyCode,
+      toName: swapToItem.name,
+      reason: ingredientSwapEvents.reason,
+      affectedLineCount: ingredientSwapEvents.affectedLineCount,
+      totalCostImpact: ingredientSwapEvents.totalCostImpact,
+      createdByName: profiles.name,
+      createdAt: ingredientSwapEvents.createdAt,
+    })
+    .from(ingredientSwapEvents)
+    .innerJoin(swapFromItem, eq(ingredientSwapEvents.fromStockItemId, swapFromItem.id))
+    .innerJoin(swapToItem, eq(ingredientSwapEvents.toStockItemId, swapToItem.id))
+    .leftJoin(profiles, eq(ingredientSwapEvents.createdBy, profiles.id))
+    .where(eq(ingredientSwapEvents.id, id));
+  if (!event) return null;
+
+  const lines = await db
+    .select()
+    .from(ingredientSwapEventLines)
+    .where(eq(ingredientSwapEventLines.eventId, id))
+    .orderBy(desc(sql`abs(${ingredientSwapEventLines.costAfter} - ${ingredientSwapEventLines.costBefore})`));
+
+  return { event, lines };
 }
 
 // Purchase spend split by operational sector — historical-ledger only, same

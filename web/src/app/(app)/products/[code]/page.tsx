@@ -135,7 +135,14 @@ export default async function ProductDetailPage({ params }: PageProps<"/products
           </div>
 
           <div className="panel">
-            <div className="panel-head"><h3>Used In ({usedIn.length})</h3></div>
+            <div className="panel-head">
+              <h3>Used In ({usedIn.length})</h3>
+              {canEdit && (
+                <Link href={`/products/${item.legacyCode}/swap`} className="btn ghost" style={{ fontSize: 11.5 }}>
+                  🔁 Replace Everywhere
+                </Link>
+              )}
+            </div>
             <div className="panel-body">
               {usedIn.length ? (
                 usedIn.slice(0, 40).map((u) => (

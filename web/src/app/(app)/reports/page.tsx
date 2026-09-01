@@ -5,6 +5,7 @@ import {
   listSlowMovingItems,
   listPriceChangeEvents,
   listCostAdjustmentEvents,
+  listIngredientSwapEvents,
   getSectionStats,
   getStockPageRows,
   getVarianceAnalysis,
@@ -40,7 +41,7 @@ const TIMEOUT_MS = 20000;
 const TIMEOUT_MSG = "This is taking longer than expected — please try again in a moment.";
 
 type Tab =
-  | "sales" | "slowmoving" | "pricechange" | "costadjustments" | "sections" | "stock" | "varianceanalysis"
+  | "sales" | "slowmoving" | "pricechange" | "costadjustments" | "ingredientswaps" | "sections" | "stock" | "varianceanalysis"
   | "purchaseorders" | "grns" | "supplierreturns" | "invoices" | "wastage" | "transfers" | "stockcounts" | "production";
 
 export default async function ReportsPage({ searchParams }: PageProps<"/reports">) {
@@ -74,6 +75,7 @@ export default async function ReportsPage({ searchParams }: PageProps<"/reports"
       {tab === "slowmoving" && <SlowMovingTab minDays={typeof sp.minDays === "string" ? Number(sp.minDays) : 0} />}
       {tab === "pricechange" && <PriceChangeTab from={from} to={to} view={typeof sp.view === "string" ? sp.view : undefined} />}
       {tab === "costadjustments" && <CostAdjustmentsTab q={typeof sp.q === "string" ? sp.q : undefined} view={typeof sp.view === "string" ? sp.view : undefined} from={from} to={to} />}
+      {tab === "ingredientswaps" && <IngredientSwapsTab from={from} to={to} />}
       {tab === "sections" && <SectionsTab sector={typeof sp.sector === "string" ? sp.sector : undefined} />}
       {tab === "purchaseorders" && <PurchaseOrdersTab q={typeof sp.q === "string" ? sp.q : undefined} status={typeof sp.status === "string" ? sp.status : undefined} from={from} to={to} />}
       {tab === "grns" && <GrnsTab q={typeof sp.q === "string" ? sp.q : undefined} status={typeof sp.status === "string" ? sp.status : undefined} from={from} to={to} />}
@@ -620,6 +622,70 @@ async function CostAdjustmentsTab({ q, view, from, to }: { q?: string; view?: st
                 ))
               ) : (
                 <tr className="empty-row"><td colSpan={6}>No price changes recorded yet — this fills in as you update prices in Product Master.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </>
+  );
+}
+
+async function IngredientSwapsTab({ from, to }: { from: string; to: string }) {
+  const events = await withTimeout(listIngredientSwapEvents({ from, to }), TIMEOUT_MS, TIMEOUT_MSG);
+  const totalImpact = events.reduce((s, e) => s + e.totalCostImpact, 0);
+  const totalLines = events.reduce((s, e) => s + e.affectedLineCount, 0);
+
+  return (
+    <>
+      <div className="callout">
+        Every time an out-of-stock ingredient was replaced with an alternative across the recipes that used it, and the
+        recorded cost impact of that swap.
+      </div>
+      <div className="kpi-grid">
+        <div className="kpi"><div className="n">{events.length}</div><div className="l">Swaps</div></div>
+        <div className="kpi"><div className="n">{totalLines}</div><div className="l">Ingredient Lines Repointed</div></div>
+        <div className={`kpi${totalImpact > 0 ? " accent-bad" : totalImpact < 0 ? " accent-good" : ""}`}>
+          <div className="n" style={{ color: totalImpact > 0 ? "var(--bad)" : totalImpact < 0 ? "var(--good)" : undefined }}>
+            {totalImpact >= 0 ? "+" : ""}
+            {money(totalImpact, 2)}
+          </div>
+          <div className="l">Total Cost Impact</div>
+        </div>
+      </div>
+      <form className="filterbar" method="get">
+        <input type="hidden" name="tab" value="ingredientswaps" />
+        <div className="daterange">📅<input type="date" name="from" defaultValue={from} /><span>–</span><input type="date" name="to" defaultValue={to} /></div>
+        <button className="btn ghost" type="submit">Filter</button>
+        <span style={{ marginLeft: "auto", alignSelf: "center", fontSize: 12, color: "var(--ink-soft)" }}>{events.length} swap(s)</span>
+      </form>
+      <div className="panel">
+        <div className="table-wrap" style={{ maxHeight: 560 }}>
+          <table className="data">
+            <thead><tr><th>Date</th><th>Swap</th><th>Reason</th><th className="right">Lines</th><th className="right">Impact</th><th>By</th></tr></thead>
+            <tbody>
+              {events.length ? (
+                events.map((e) => (
+                  <tr key={e.id}>
+                    <td>{e.createdAt.toISOString().slice(0, 10)}</td>
+                    <td>
+                      <Link href={`/reports/ingredient-swaps/${e.id}`}>
+                        {e.fromName} → {e.toName}
+                      </Link>
+                    </td>
+                    <td style={{ fontSize: 11.5, color: "var(--ink-soft)" }}>{e.reason ?? "—"}</td>
+                    <td className="mono-r">{e.affectedLineCount}</td>
+                    <td className="right">
+                      <span className={`tag ${e.totalCostImpact > 0 ? "bad" : e.totalCostImpact < 0 ? "good" : "neutral"}`}>
+                        {e.totalCostImpact >= 0 ? "+" : ""}
+                        {money(e.totalCostImpact, 2)}
+                      </span>
+                    </td>
+                    <td style={{ fontSize: 11.5 }}>{e.createdByName ?? "—"}</td>
+                  </tr>
+                ))
+              ) : (
+                <tr className="empty-row"><td colSpan={6}>No ingredient swaps recorded yet — replace an item from its Product page ("Replace Everywhere") to see it here.</td></tr>
               )}
             </tbody>
           </table>
