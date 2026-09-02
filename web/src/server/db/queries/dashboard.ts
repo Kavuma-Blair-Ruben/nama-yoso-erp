@@ -28,10 +28,10 @@ export async function getDashboardData(preloadedGraph?: CostingGraph) {
     db.select({ value: count() }).from(stockItems).where(eq(stockItems.isActive, true)),
     db.select({ value: count() }).from(categories),
     db.select({ value: count() }).from(suppliers),
-    db.select({ value: count() }).from(mainRecipes),
-    db.select({ value: count() }).from(subRecipes),
-    db.select({ value: sql<number>`count(distinct ${mainRecipes.section})` }).from(mainRecipes).where(isNotNull(mainRecipes.section)),
-    db.select({ value: sql<number>`count(distinct ${subRecipes.section})` }).from(subRecipes).where(isNotNull(subRecipes.section)),
+    db.select({ value: count() }).from(mainRecipes).where(eq(mainRecipes.isArchived, false)),
+    db.select({ value: count() }).from(subRecipes).where(eq(subRecipes.isArchived, false)),
+    db.select({ value: sql<number>`count(distinct ${mainRecipes.section})` }).from(mainRecipes).where(and(isNotNull(mainRecipes.section), eq(mainRecipes.isArchived, false))),
+    db.select({ value: sql<number>`count(distinct ${subRecipes.section})` }).from(subRecipes).where(and(isNotNull(subRecipes.section), eq(subRecipes.isArchived, false))),
   ]);
 
   const [invoiceAgg] = await db
@@ -96,12 +96,21 @@ export async function getDashboardData(preloadedGraph?: CostingGraph) {
     .orderBy(sql`count(*) desc`);
 
   const graph = preloadedGraph ?? (await loadCostingGraph());
-  const costed = graph.mainRecipes.map((r) => {
-    const cur = recipeCurrentCost(graph, r);
-    const orig = recipeOriginalCost(r, 1);
-    const variancePct = orig.perUnit ? ((cur.perUnit - orig.perUnit) / orig.perUnit) * 100 : 0;
-    return { recipe: r, cur, orig, variancePct };
-  });
+  // loadCostingGraph() deliberately includes archived recipes (one must
+  // stay resolvable as another recipe's combo ingredient — same reasoning
+  // documented on listRecipesWithCost/listMenuProducts), so this dashboard
+  // excludes them itself: a discontinued dish showing up in "Highest Food
+  // Cost" or "Most Impacted by Price Changes" isn't actionable menu
+  // guidance, it's noise from something no longer being sold at all.
+  const archivedMainIds = new Set((await db.select({ id: mainRecipes.id }).from(mainRecipes).where(eq(mainRecipes.isArchived, true))).map((r) => r.id));
+  const costed = graph.mainRecipes
+    .filter((r) => !archivedMainIds.has(r.id))
+    .map((r) => {
+      const cur = recipeCurrentCost(graph, r);
+      const orig = recipeOriginalCost(r, 1);
+      const variancePct = orig.perUnit ? ((cur.perUnit - orig.perUnit) / orig.perUnit) * 100 : 0;
+      return { recipe: r, cur, orig, variancePct };
+    });
   const allMissing = new Set<string>();
   costed.forEach((c) => c.cur.missing.forEach((m) => allMissing.add(m.code + "|" + m.name)));
   const topCost = [...costed].sort((a, b) => b.cur.perUnit - a.cur.perUnit).slice(0, 6);
