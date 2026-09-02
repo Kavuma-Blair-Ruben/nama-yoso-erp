@@ -2,7 +2,7 @@ import Link from "next/link";
 
 type SP = Record<string, string | string[] | undefined>;
 
-const FORWARDED_KEYS = ["minDays", "q", "sector", "status"];
+const FORWARDED_KEYS = ["minDays", "q", "sector", "status", "from", "to"];
 
 function buildQuery(sp: SP): string {
   const params = new URLSearchParams();
