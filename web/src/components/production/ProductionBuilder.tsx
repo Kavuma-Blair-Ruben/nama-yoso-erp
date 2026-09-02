@@ -93,6 +93,18 @@ export function ProductionBuilder({
     }
   }
   const [scaleMultiplier, setScaleMultiplier] = useState(String(initialScaleMultiplier ?? 1));
+  // Lets the multiplier be driven either directly, or backed out from a
+  // target yield weight the user actually wants to produce (e.g. "make me
+  // 5 KG of this" instead of mentally converting that into "2.4x the
+  // recipe") — both ultimately just set scaleMultiplier, so every existing
+  // downstream calc (scaledLines, yieldQty, cost) stays untouched.
+  const [inputMode, setInputMode] = useState<"multiplier" | "weight">("multiplier");
+  const [targetYieldQty, setTargetYieldQty] = useState(initialYieldQty != null ? String(initialYieldQty) : "");
+  function handleTargetYieldChange(value: string) {
+    setTargetYieldQty(value);
+    const baseYield = selected?.yieldQty ?? 0;
+    if (baseYield > 0) setScaleMultiplier(String(num(value) / baseYield));
+  }
   const [producedDate, setProducedDate] = useState(initialProducedDate ?? todayStr());
   const [expiryDate, setExpiryDate] = useState(initialExpiryDate ?? "");
   const [expiryTouched, setExpiryTouched] = useState(!!existingBatchId);
@@ -135,6 +147,8 @@ export function ProductionBuilder({
     setSubRecipeId(id);
     setManualLines(null);
     setExpiryTouched(false);
+    setInputMode("multiplier");
+    setTargetYieldQty("");
   }
 
   function updateLine(i: number, patch: Partial<IngredientLine>) {
@@ -223,23 +237,51 @@ export function ProductionBuilder({
         </div>
 
         <div className="line-builder-row head" style={{ gridTemplateColumns: "1fr 1fr 1fr 1fr" }}>
-          <div>Scale multiplier</div>
+          <div>
+            {inputMode === "multiplier" ? "Scale multiplier" : `Weight to produce${yieldUnit ? ` (${yieldUnit})` : ""}`}
+            {!manualLines && (selected?.yieldQty ?? 0) > 0 && (
+              <button
+                type="button"
+                className="btn ghost"
+                style={{ padding: "1px 6px", fontSize: 10, marginLeft: 6 }}
+                onClick={() => setInputMode((m) => (m === "multiplier" ? "weight" : "multiplier"))}
+              >
+                {inputMode === "multiplier" ? "Enter by weight instead" : "Enter multiplier instead"}
+              </button>
+            )}
+          </div>
           <div>Produced date</div>
           <div>Expiry date</div>
           <div>Staff</div>
         </div>
         <div className="line-builder-row" style={{ gridTemplateColumns: "1fr 1fr 1fr 1fr", marginBottom: 10 }}>
-          <input
-            type="text"
-            inputMode="decimal"
-            value={scaleMultiplier}
-            disabled={!!manualLines}
-            onChange={(e) => setScaleMultiplier(e.target.value)}
-          />
+          {inputMode === "multiplier" ? (
+            <input
+              type="text"
+              inputMode="decimal"
+              value={scaleMultiplier}
+              disabled={!!manualLines}
+              onChange={(e) => setScaleMultiplier(e.target.value)}
+            />
+          ) : (
+            <input
+              type="text"
+              inputMode="decimal"
+              placeholder={`e.g. 5`}
+              value={targetYieldQty}
+              disabled={!!manualLines}
+              onChange={(e) => handleTargetYieldChange(e.target.value)}
+            />
+          )}
           <input type="date" value={producedDate} onChange={(e) => setProducedDate(e.target.value)} />
           <input type="date" value={expiryDate} onChange={(e) => { setExpiryDate(e.target.value); setExpiryTouched(true); }} />
           <input type="text" value={staffName} placeholder="Staff name" onChange={(e) => setStaffName(e.target.value)} />
         </div>
+        {inputMode === "weight" && (
+          <div style={{ fontSize: 11, color: "var(--ink-faint)", marginTop: -6, marginBottom: 4 }}>
+            = {fmt(num(scaleMultiplier), 3)}x the recipe (recipe yields {fmt(selected?.yieldQty, 3)} {yieldUnit} per batch).
+          </div>
+        )}
         <div style={{ fontSize: 11, color: "var(--ink-faint)", marginTop: -6, marginBottom: 10 }}>
           Ingredient quantities scale automatically with the multiplier. Edit a line below to fine-tune it directly (this stops it from
           auto-scaling further).
