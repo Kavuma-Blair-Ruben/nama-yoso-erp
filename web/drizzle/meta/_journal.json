@@ -421,6 +421,13 @@
       "when": 1788302504276,
       "tag": "0059_add_pos_orders_order_count_void",
       "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1788306774549,
+      "tag": "0060_add_limit_override_requests",
+      "breakpoints": true
     }
   ]
 }

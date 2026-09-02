@@ -1,11 +1,32 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { eq, inArray } from "drizzle-orm";
+import { eq, inArray, and, isNull, gte, desc } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/server/db";
-import { locationOrderLimits, branchReceivingLimits, rolePurchaseLimits, policySettings, branches, roles, auditLog, poApprovalSteps } from "@/server/db/schema";
+import {
+  locationOrderLimits,
+  branchReceivingLimits,
+  rolePurchaseLimits,
+  policySettings,
+  branches,
+  roles,
+  auditLog,
+  poApprovalSteps,
+  purchaseLimitApprovers,
+  limitOverrideRequests,
+  profiles,
+} from "@/server/db/schema";
 import { assertPermission } from "@/server/auth/permissions";
+import { isDesignatedLimitApprover } from "@/server/db/queries/policies";
+
+// Accepts either the plain db client or a transaction's tx — purchaseOrders.ts
+// calls this with plain db (createPurchaseOrders isn't itself transactional),
+// while grn.ts calls it with its own tx from inside db.transaction(). Neither
+// is a subtype of the other ($client only on the plain client; schema/
+// rollback/etc only on a transaction), so this is a union of both rather
+// than one shared type.
+type Db = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 export type PolicyActionResult = { error?: string } | undefined;
 
@@ -174,4 +195,101 @@ export async function toggleInternalOnlyLocation(location: string, checked: bool
   });
   revalidatePath("/policies");
   return {};
+}
+
+export async function addLimitApprover(userId: string): Promise<{ error?: string }> {
+  const session = await assertPermission("policies", "edit");
+  const [user] = await db.select({ name: profiles.name }).from(profiles).where(eq(profiles.id, userId));
+  if (!user) return { error: "User not found." };
+
+  await db.insert(purchaseLimitApprovers).values({ userId }).onConflictDoNothing({ target: purchaseLimitApprovers.userId });
+  await db.insert(auditLog).values({ actorId: session.profile.id, action: "Added", entity: "Limit Approver", entityLabel: user.name });
+  revalidatePath("/policies");
+  return {};
+}
+
+export async function removeLimitApprover(userId: string): Promise<{ error?: string }> {
+  const session = await assertPermission("policies", "edit");
+  const [user] = await db.select({ name: profiles.name }).from(profiles).where(eq(profiles.id, userId));
+  await db.delete(purchaseLimitApprovers).where(eq(purchaseLimitApprovers.userId, userId));
+  await db.insert(auditLog).values({ actorId: session.profile.id, action: "Removed", entity: "Limit Approver", entityLabel: user?.name ?? userId });
+  revalidatePath("/policies");
+  return {};
+}
+
+// Raised by GRNBuilder/POBuilder right after a role-cap block, so the same
+// blocked amount/context the requester just saw is what the approver
+// reviews — self-service, no separate "policies:edit" gate, since anyone
+// who can attempt a purchase should be able to ask for an exception to it.
+export async function requestLimitOverride(requestType: "PO" | "GRN", amount: number, context: string): Promise<{ error?: string; id?: string }> {
+  const session = await assertPermission(requestType === "GRN" ? "grn" : "orders", "edit");
+  if (!(amount > 0)) return { error: "Enter a valid amount." };
+
+  const [row] = await db
+    .insert(limitOverrideRequests)
+    .values({ requestedBy: session.profile.id, requestType, amount, context: context.slice(0, 500) })
+    .returning({ id: limitOverrideRequests.id });
+  await db.insert(auditLog).values({
+    actorId: session.profile.id,
+    action: "Requested",
+    entity: "Limit Override",
+    entityLabel: `${requestType} AED ${amount.toFixed(2)}`,
+    detail: context,
+  });
+  revalidatePath("/policies");
+  return { id: row.id };
+}
+
+export async function reviewLimitOverride(id: string, decision: "APPROVED" | "DENIED", note?: string): Promise<{ error?: string }> {
+  const session = await assertPermission("policies", "view");
+  const isApprover = await isDesignatedLimitApprover(session.profile.id);
+  if (!isApprover) return { error: "You're not a designated limit approver." };
+
+  const [existing] = await db.select().from(limitOverrideRequests).where(eq(limitOverrideRequests.id, id));
+  if (!existing) return { error: "Request not found." };
+  if (existing.status !== "PENDING") return { error: "This request was already reviewed." };
+
+  await db
+    .update(limitOverrideRequests)
+    .set({ status: decision, reviewedBy: session.profile.id, reviewedAt: new Date(), reviewNote: note?.trim() || undefined })
+    .where(eq(limitOverrideRequests.id, id));
+  await db.insert(auditLog).values({
+    actorId: session.profile.id,
+    action: decision === "APPROVED" ? "Approved" : "Denied",
+    entity: "Limit Override",
+    entityLabel: `${existing.requestType} AED ${existing.amount.toFixed(2)}`,
+    detail: note ?? undefined,
+  });
+  revalidatePath("/policies");
+  return {};
+}
+
+// Atomically finds and consumes the requester's best-matching APPROVED
+// exception, inside the caller's own GRN/PO transaction — "found" and
+// "consumed" have to be one step so two near-simultaneous posts can't both
+// spend the same approval. Returns null if there's no usable exception,
+// leaving the caller to fall back to its normal role-cap block.
+export async function claimUsableLimitOverride(tx: Db, userId: string, requestType: "PO" | "GRN", amount: number): Promise<boolean> {
+  const [candidate] = await tx
+    .select({ id: limitOverrideRequests.id })
+    .from(limitOverrideRequests)
+    .where(
+      and(
+        eq(limitOverrideRequests.requestedBy, userId),
+        eq(limitOverrideRequests.requestType, requestType),
+        eq(limitOverrideRequests.status, "APPROVED"),
+        isNull(limitOverrideRequests.consumedAt),
+        gte(limitOverrideRequests.amount, amount)
+      )
+    )
+    .orderBy(desc(limitOverrideRequests.createdAt))
+    .limit(1);
+  if (!candidate) return false;
+
+  const claimed = await tx
+    .update(limitOverrideRequests)
+    .set({ consumedAt: new Date() })
+    .where(and(eq(limitOverrideRequests.id, candidate.id), isNull(limitOverrideRequests.consumedAt)))
+    .returning({ id: limitOverrideRequests.id });
+  return claimed.length > 0;
 }

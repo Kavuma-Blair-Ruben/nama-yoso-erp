@@ -298,6 +298,45 @@ export const rolePurchaseLimits = pgTable("role_purchase_limits", {
   maxGrnAmount: money("max_grn_amount"),
 });
 
+// Named individuals (not a role) who can approve a one-time exception to a
+// role's PO/GRN cap above — the user explicitly wanted approval routed to
+// specific designated people, not "anyone in the Owner role", so this is
+// deliberately its own by-name list rather than another role-permission
+// check.
+export const purchaseLimitApprovers = pgTable("purchase_limit_approvers", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().unique().references(() => profiles.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// A blocked PO/GRN (over the requester's role cap) can be escalated here
+// instead of being a dead end. Deliberately doesn't store the full PO/GRN
+// payload to replay automatically on approval — prices/stock could drift
+// between request and approval, so the requester re-submits the same form
+// themselves once approved; checkRoleGrnCap/checkRolePoCap just needs to
+// find an APPROVED, not-yet-consumed row covering the amount and let it
+// through, then mark it consumed.
+export const limitOverrideRequests = pgTable(
+  "limit_override_requests",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    requestedBy: uuid("requested_by").notNull().references(() => profiles.id),
+    requestType: text("request_type").notNull(),
+    amount: money("amount").notNull(),
+    context: text("context"),
+    status: text("status").notNull().default("PENDING"),
+    reviewedBy: uuid("reviewed_by").references(() => profiles.id),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    reviewNote: text("review_note"),
+    consumedAt: timestamp("consumed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check("limit_override_requests_type_check", sql`${t.requestType} in ('PO','GRN')`),
+    check("limit_override_requests_status_check", sql`${t.status} in ('PENDING','APPROVED','DENIED')`),
+  ]
+);
+
 export const unitsOfMeasure = pgTable(
   "units_of_measure",
   {

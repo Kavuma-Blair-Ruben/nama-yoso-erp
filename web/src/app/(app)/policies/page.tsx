@@ -1,7 +1,18 @@
 import { requireSection, hasAccess } from "@/server/auth/permissions";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { listLocationOrderLimits, listBranchReceivingLimits, listRolePurchaseLimits, getPolicySettings, listRoles, listPoApprovalSteps } from "@/server/db/queries/policies";
+import {
+  listLocationOrderLimits,
+  listBranchReceivingLimits,
+  listRolePurchaseLimits,
+  getPolicySettings,
+  listRoles,
+  listPoApprovalSteps,
+  listLimitApprovers,
+  listPendingLimitOverrideRequests,
+  isDesignatedLimitApprover,
+} from "@/server/db/queries/policies";
 import { listBranches } from "@/server/db/queries/purchaseOrders";
+import { listProfilesWithRole } from "@/server/db/queries/permissions";
 import { POLICY_LOCATIONS } from "@/server/db/schema";
 import { LocationLimits } from "@/components/policies/LocationLimits";
 import { BranchReceivingLimits } from "@/components/policies/BranchReceivingLimits";
@@ -9,12 +20,14 @@ import { RolePurchaseLimits } from "@/components/policies/RolePurchaseLimits";
 import { PolicyPercentSettings } from "@/components/policies/PolicyPercentSettings";
 import { InternalOnlyLocations } from "@/components/policies/InternalOnlyLocations";
 import { ApprovalPolicySettings } from "@/components/policies/ApprovalPolicySettings";
+import { LimitApprovers } from "@/components/policies/LimitApprovers";
+import { PendingLimitOverrides } from "@/components/policies/PendingLimitOverrides";
 import { withTimeout } from "@/lib/withTimeout";
 
 export default async function PoliciesPage() {
   const session = await requireSection("policies", "view");
   const canEdit = hasAccess(session, "policies", "edit");
-  const [limits, branchLimits, roleLimits, settings, roles, branches, approvalSteps] = await withTimeout(
+  const [limits, branchLimits, roleLimits, settings, roles, branches, approvalSteps, approvers, profiles, pendingOverrides, isApprover] = await withTimeout(
     Promise.all([
       listLocationOrderLimits(),
       listBranchReceivingLimits(),
@@ -23,6 +36,10 @@ export default async function PoliciesPage() {
       listRoles(),
       listBranches(),
       listPoApprovalSteps(),
+      listLimitApprovers(),
+      listProfilesWithRole(),
+      listPendingLimitOverrideRequests(),
+      isDesignatedLimitApprover(session.profile.id),
     ]),
     20000,
     "This is taking longer than expected — please try again in a moment."
@@ -39,6 +56,8 @@ export default async function PoliciesPage() {
 
       <ApprovalPolicySettings threshold={settings.poApprovalThreshold} steps={approvalSteps} roles={roles} canEdit={canEdit} />
       <RolePurchaseLimits roleLimits={roleLimits} canEdit={canEdit} />
+      <LimitApprovers approvers={approvers} profiles={profiles} canEdit={canEdit} />
+      <PendingLimitOverrides requests={pendingOverrides} isApprover={isApprover} />
       <LocationLimits limits={limits} locations={POLICY_LOCATIONS} canEdit={canEdit} />
       <BranchReceivingLimits limits={branchLimits} branches={branches} canEdit={canEdit} />
       <PolicyPercentSettings abovePparOverPct={settings.abovePparOverPct} receiveAbovePricePct={settings.receiveAbovePricePct} canEdit={canEdit} />

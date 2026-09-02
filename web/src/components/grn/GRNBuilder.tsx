@@ -3,6 +3,7 @@
 import { useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { postGRN, saveGrnDraft, updateGrnDraft, uploadGrnInvoice, deleteGrnInvoice } from "@/server/actions/grn";
+import { requestLimitOverride } from "@/server/actions/policies";
 import { extractGrnInvoice, type ExtractedInvoice } from "@/server/actions/invoiceOcr";
 import { InvoicePreview } from "@/components/ui/InvoicePreview";
 import { ScanInput } from "@/components/ui/ScanInput";
@@ -149,6 +150,8 @@ export function GRNBuilder({
   const [documentType, setDocumentType] = useState<"TAX_INVOICE" | "DELIVERY_NOTE" | "">(initialDocumentType ?? "");
   const [attachmentUrl, setAttachmentUrl] = useState(initialAttachmentUrl ?? "");
   const [error, setError] = useState<string | null>(null);
+  const [overrideRequested, setOverrideRequested] = useState(false);
+  const [overridePending, startOverrideTransition] = useTransition();
   const [pending, startTransition] = useTransition();
   const [uploadPending, startUploadTransition] = useTransition();
   const [deletePending, startDeleteTransition] = useTransition();
@@ -330,6 +333,7 @@ export function GRNBuilder({
 
   function handleSubmit(status: "draft" | "posted") {
     setError(null);
+    setOverrideRequested(false);
     if (mode === "direct" && !directSupplierId) {
       setError("Choose a supplier for this direct GRN.");
       return;
@@ -351,6 +355,21 @@ export function GRNBuilder({
           : await saveGrnDraft(input);
       if (result.error) setError(result.error);
       else router.push(result.warning ? `/grn/${result.id}?warning=${encodeURIComponent(result.warning)}` : `/grn/${result.id}`);
+    });
+  }
+
+  // Matches the wording checkRoleGrnCap in grn.ts returns — the only
+  // in-app signal available here that this specific error is a role-cap
+  // block (as opposed to a validation error), since postGRN just returns a
+  // plain string message either way.
+  const isRoleCapBreach = !!error && /per-GRN limit/.test(error);
+
+  function handleRequestOverride() {
+    const requestSupplierName = mode === "po" ? supplierName : suppliers.find((s) => s.id === directSupplierId)?.name;
+    startOverrideTransition(async () => {
+      const result = await requestLimitOverride("GRN", total, `${requestSupplierName ?? "Unknown supplier"} — ${lines.length} line(s)`);
+      if (result.error) setError(result.error);
+      else setOverrideRequested(true);
     });
   }
 
@@ -594,6 +613,18 @@ export function GRNBuilder({
         <div className="field-row" style={{ fontSize: 14 }}><span className="k"><b>Total</b></span><span className="v">{money(total, 2)}</span></div>
 
         {error && <div className="login-error">{error}</div>}
+        {isRoleCapBreach && !overrideRequested && (
+          <div className="btn-row" style={{ marginTop: 6 }}>
+            <button className="btn ghost" disabled={overridePending} onClick={handleRequestOverride}>
+              {overridePending ? "Sending…" : "Request Approval to Exceed Limit"}
+            </button>
+          </div>
+        )}
+        {overrideRequested && (
+          <div className="callout" style={{ marginTop: 6 }}>
+            Request sent to your designated limit approver(s) — once approved, click &quot;Confirm Receipt&quot; again to post this same GRN.
+          </div>
+        )}
         <div className="btn-row">
           {existingGrnId ? (
             <button className="btn accent" disabled={pending} onClick={() => handleSubmit("draft")}>

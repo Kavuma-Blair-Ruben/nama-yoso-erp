@@ -1,6 +1,17 @@
-import { eq } from "drizzle-orm";
+import { eq, and, gte, isNull, desc } from "drizzle-orm";
 import { db } from "@/server/db";
-import { locationOrderLimits, policySettings, roles, branches, branchReceivingLimits, rolePurchaseLimits, poApprovalSteps } from "@/server/db/schema";
+import {
+  locationOrderLimits,
+  policySettings,
+  roles,
+  branches,
+  branchReceivingLimits,
+  rolePurchaseLimits,
+  poApprovalSteps,
+  purchaseLimitApprovers,
+  limitOverrideRequests,
+  profiles,
+} from "@/server/db/schema";
 
 export async function listLocationOrderLimits() {
   return db.select().from(locationOrderLimits).orderBy(locationOrderLimits.location);
@@ -58,4 +69,70 @@ export async function listPoApprovalSteps() {
     .from(poApprovalSteps)
     .innerJoin(roles, eq(poApprovalSteps.roleId, roles.id))
     .orderBy(poApprovalSteps.stepOrder);
+}
+
+// Named individuals who can approve a one-time exception to a role's PO/GRN
+// cap — deliberately by-person, not by role (see schema.ts comment on
+// purchaseLimitApprovers).
+export async function listLimitApprovers() {
+  return db
+    .select({ id: purchaseLimitApprovers.id, userId: purchaseLimitApprovers.userId, name: profiles.name, email: profiles.email })
+    .from(purchaseLimitApprovers)
+    .innerJoin(profiles, eq(purchaseLimitApprovers.userId, profiles.id))
+    .orderBy(profiles.name);
+}
+
+export async function isDesignatedLimitApprover(userId: string): Promise<boolean> {
+  const [row] = await db.select({ id: purchaseLimitApprovers.id }).from(purchaseLimitApprovers).where(eq(purchaseLimitApprovers.userId, userId));
+  return !!row;
+}
+
+export async function listPendingLimitOverrideRequests() {
+  return db
+    .select({
+      id: limitOverrideRequests.id,
+      requestType: limitOverrideRequests.requestType,
+      amount: limitOverrideRequests.amount,
+      context: limitOverrideRequests.context,
+      requestedByName: profiles.name,
+      createdAt: limitOverrideRequests.createdAt,
+    })
+    .from(limitOverrideRequests)
+    .innerJoin(profiles, eq(limitOverrideRequests.requestedBy, profiles.id))
+    .where(eq(limitOverrideRequests.status, "PENDING"))
+    .orderBy(desc(limitOverrideRequests.createdAt));
+}
+
+// The requester's own recent requests, so they can see whether theirs was
+// approved/denied without needing approver access themselves.
+export async function listMyLimitOverrideRequests(userId: string) {
+  return db
+    .select()
+    .from(limitOverrideRequests)
+    .where(eq(limitOverrideRequests.requestedBy, userId))
+    .orderBy(desc(limitOverrideRequests.createdAt))
+    .limit(20);
+}
+
+// The most recent APPROVED, not-yet-consumed exception for this requester
+// and type that covers at least the amount now being blocked — found and
+// atomically claimed (consumedAt set) by the caller inside its own
+// transaction, not here, since "found" and "consumed" must be one atomic
+// step to avoid two concurrent requests spending the same approval twice.
+export async function findUsableLimitOverride(userId: string, requestType: "PO" | "GRN", amount: number) {
+  const [row] = await db
+    .select()
+    .from(limitOverrideRequests)
+    .where(
+      and(
+        eq(limitOverrideRequests.requestedBy, userId),
+        eq(limitOverrideRequests.requestType, requestType),
+        eq(limitOverrideRequests.status, "APPROVED"),
+        isNull(limitOverrideRequests.consumedAt),
+        gte(limitOverrideRequests.amount, amount)
+      )
+    )
+    .orderBy(desc(limitOverrideRequests.createdAt))
+    .limit(1);
+  return row ?? null;
 }

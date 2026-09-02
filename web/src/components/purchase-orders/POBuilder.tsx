@@ -3,6 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createPurchaseOrders } from "@/server/actions/purchaseOrders";
+import { requestLimitOverride } from "@/server/actions/policies";
 import { fmt, money, num } from "@/lib/format";
 import { canonicalToPurchaseQty } from "@/lib/unitMath";
 import { ItemSearchSelect } from "@/components/ui/ItemSearchSelect";
@@ -63,6 +64,8 @@ export function POBuilder({
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const [overrideRequested, setOverrideRequested] = useState(false);
+  const [overridePending, startOverrideTransition] = useTransition();
 
   function fillCartToPar() {
     setInfo(null);
@@ -129,6 +132,7 @@ export function POBuilder({
 
   async function handleSubmit() {
     setError(null);
+    setOverrideRequested(false);
     if (lines.length === 0) {
       setError("Add at least one item.");
       return;
@@ -148,6 +152,25 @@ export function POBuilder({
       });
       if (result.error) setError(result.error);
       else router.push(result.warning ? `/purchase-orders?warning=${encodeURIComponent(result.warning)}` : "/purchase-orders");
+    });
+  }
+
+  // Matches the wording checkRolePoCap in purchaseOrders.ts returns — the
+  // only in-app signal available here that this is a role-cap block rather
+  // than a validation error, and its embedded "AED X.XX" is the exact
+  // breaching supplier-group total (the multi-supplier `total` above could
+  // span groups that never breached anything).
+  const isRoleCapBreach = !!error && /per-PO limit/.test(error);
+  const capBreachAmount = (() => {
+    const m = error?.match(/This PO \(AED ([\d.]+)\)/);
+    return m ? Number(m[1]) : total;
+  })();
+
+  function handleRequestOverride() {
+    startOverrideTransition(async () => {
+      const result = await requestLimitOverride("PO", capBreachAmount, `${splitGroups.groups.length} supplier group(s) — ${lines.length} line(s)`);
+      if (result.error) setError(result.error);
+      else setOverrideRequested(true);
     });
   }
 
@@ -258,6 +281,18 @@ export function POBuilder({
         <div className="field-row" style={{ fontSize: 14 }}><span className="k"><b>Total (all suppliers)</b></span><span className="v">{money(total, 2)}</span></div>
 
         {error && <div className="login-error">{error}</div>}
+        {isRoleCapBreach && !overrideRequested && (
+          <div className="btn-row" style={{ marginTop: 6 }}>
+            <button className="btn ghost" disabled={overridePending} onClick={handleRequestOverride}>
+              {overridePending ? "Sending…" : "Request Approval to Exceed Limit"}
+            </button>
+          </div>
+        )}
+        {overrideRequested && (
+          <div className="callout" style={{ marginTop: 6 }}>
+            Request sent to your designated limit approver(s) — once approved, click &quot;Create Order(s)&quot; again to create this same order.
+          </div>
+        )}
         <div className="btn-row">
           <button className="btn accent" onClick={handleSubmit} disabled={pending}>
             {pending ? "Creating…" : "Create Order(s)"}

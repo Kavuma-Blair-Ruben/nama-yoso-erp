@@ -15,6 +15,13 @@ import { convertQtyToCanonical } from "@/lib/unitMath";
 import { checkSupplierReceivingLimit, checkAbovePriceBreach, checkBranchReceivingLimit } from "@/server/policyChecks";
 import { sendToRoutedPrinter } from "@/lib/printRouting";
 import { buildGrnLabelEscPos } from "@/lib/escpos";
+import { claimUsableLimitOverride } from "@/server/actions/policies";
+
+// Thrown inside a db.transaction() callback to trigger a real rollback when
+// a role-cap block survives the claimUsableLimitOverride check (no approved
+// exception found) — caught just outside the transaction and converted back
+// into this action's normal { error } return shape.
+class RoleCapBreachSignal extends Error {}
 
 const lineSchema = z.object({
   stockItemId: z.string().min(1),
@@ -259,25 +266,38 @@ export async function postGRN(input: z.infer<typeof grnInputSchema>): Promise<Gr
     return { error: "Upload or scan the supplier invoice before posting — a GRN can't be closed without it." };
   }
   await assertBranchAccess(session, parsed.data.branchId);
-  const roleCapBreach = await checkRoleGrnCap(session.role.id, grnTotal(parsed.data));
-  if (roleCapBreach) return { error: roleCapBreach };
+  const total = grnTotal(parsed.data);
+  const roleCapBreach = await checkRoleGrnCap(session.role.id, total);
 
   // Atomic: a failure partway through (e.g. the PO-status query) must not
   // leave a POSTED GRN with no price_history / PO-status side effects applied.
-  const { grnId, warning } = await db.transaction(async (tx) => {
-    const created = await insertGrn(tx, parsed.data, "POSTED", session.profile.id);
-    await applyGrnSideEffects(tx, created.grnId, created.costCenterId, parsed.data, session.profile.id);
-    const grnWarning = await computeGrnWarning(tx, parsed.data);
-    const [supplier] = await tx.select({ name: suppliers.name }).from(suppliers).where(eq(suppliers.id, parsed.data.supplierId));
-    await tx.insert(auditLog).values({
-      actorId: session.profile.id,
-      action: "Goods Received",
-      entity: "GRN",
-      entityLabel: created.grnNumber,
-      detail: `${supplier?.name ?? ""} — ${parsed.data.lines.length} line(s)${grnWarning ? " ⚠ " + grnWarning : ""}`,
-    });
-    return { ...created, warning: grnWarning };
-  });
+  let grnId: string, warning: string | undefined;
+  try {
+    ({ grnId, warning } = await db.transaction(async (tx) => {
+      // A blocked role cap isn't necessarily a dead end — if this requester
+      // has a designated approver's sign-off on file for this amount, spend
+      // it now instead of blocking (see requestLimitOverride/reviewLimitOverride).
+      if (roleCapBreach) {
+        const claimed = await claimUsableLimitOverride(tx, session.profile.id, "GRN", total);
+        if (!claimed) throw new RoleCapBreachSignal(roleCapBreach);
+      }
+      const created = await insertGrn(tx, parsed.data, "POSTED", session.profile.id);
+      await applyGrnSideEffects(tx, created.grnId, created.costCenterId, parsed.data, session.profile.id);
+      const grnWarning = await computeGrnWarning(tx, parsed.data);
+      const [supplier] = await tx.select({ name: suppliers.name }).from(suppliers).where(eq(suppliers.id, parsed.data.supplierId));
+      await tx.insert(auditLog).values({
+        actorId: session.profile.id,
+        action: "Goods Received",
+        entity: "GRN",
+        entityLabel: created.grnNumber,
+        detail: `${supplier?.name ?? ""} — ${parsed.data.lines.length} line(s)${grnWarning ? " ⚠ " + grnWarning : ""}`,
+      });
+      return { ...created, warning: grnWarning };
+    }));
+  } catch (e) {
+    if (e instanceof RoleCapBreachSignal) return { error: e.message };
+    throw e;
+  }
   // Best-effort, after the transaction commits — a missing/offline printer
   // must never undo a real GRN post that already adjusted stock.
   await printGrnLabels(grnId, parsed.data.branchId);
@@ -346,8 +366,12 @@ export async function postDraftGrn(id: string): Promise<GrnActionResult> {
         updatePrice: true,
       })),
     };
-    const roleCapBreach = await checkRoleGrnCap(session.role.id, grnTotal(input));
-    if (roleCapBreach) return { error: roleCapBreach };
+    const draftTotal = grnTotal(input);
+    const roleCapBreach = await checkRoleGrnCap(session.role.id, draftTotal);
+    if (roleCapBreach) {
+      const claimed = await claimUsableLimitOverride(tx, session.profile.id, "GRN", draftTotal);
+      if (!claimed) return { error: roleCapBreach };
+    }
     const costCenterId = grn.costCenterId ?? (await getDefaultCostCenterId(tx, grn.branchId));
     await applyGrnSideEffects(tx, id, costCenterId, input, session.profile.id);
     const grnWarning = await computeGrnWarning(tx, input);

@@ -13,6 +13,7 @@ import { buildPoPdfBuffer } from "@/server/pdf/purchaseOrderPdf";
 import { sendEmailWithAttachment } from "@/lib/email";
 import { sendWhatsAppDocument, isWhatsAppBusinessConfigured } from "@/lib/whatsappBusiness";
 import { uploadPdfBuffer } from "@/lib/supabaseAdmin";
+import { claimUsableLimitOverride } from "@/server/actions/policies";
 
 const lineSchema = z.object({
   stockItemId: z.string().min(1),
@@ -80,7 +81,14 @@ export async function createPurchaseOrders(input: z.infer<typeof createSchema>):
   for (const groupLines of groups.values()) {
     const groupTotal = groupLines.reduce((s, l) => s + lineTaxedTotal(l), 0);
     const roleCapBreach = await checkRolePoCap(session.role.id, groupTotal);
-    if (roleCapBreach) return { error: roleCapBreach };
+    if (roleCapBreach) {
+      // A blocked cap isn't necessarily a dead end — spend a designated
+      // approver's sign-off on file for this amount instead of blocking
+      // (see requestLimitOverride/reviewLimitOverride). One claim per
+      // breaching supplier group, since "a single PO" is the capped unit.
+      const claimed = await claimUsableLimitOverride(db, session.profile.id, "PO", groupTotal);
+      if (!claimed) return { error: roleCapBreach };
+    }
   }
 
   // Non-blocking policy warnings — checked live, same as index.html, but
