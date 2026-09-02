@@ -103,6 +103,8 @@ async function applyProductionSideEffects(
   costCenterId: string,
   input: z.infer<typeof productionInputSchema>,
   subRecipeStockItemId: string,
+  totalCost: number,
+  lotNo: string,
   actorId: string
 ) {
   for (const ing of input.ingredients) {
@@ -124,15 +126,21 @@ async function applyProductionSideEffects(
     // yieldQty is stored raw (e.g. 5500 "G", matching sub_recipes.yield_qty's
     // own convention) — canonicalize before crediting the ledger, which
     // speaks KG/LTR-or-piece throughout (see convertQtyToCanonical).
+    const canonicalYieldQty = convertQtyToCanonical(input.yieldQty, input.yieldUnit);
     await recordStockMovement(tx, {
       stockItemId: subRecipeStockItemId,
       branchId: input.branchId,
       costCenterId,
-      qtyDelta: convertQtyToCanonical(input.yieldQty, input.yieldUnit),
+      qtyDelta: canonicalYieldQty,
       unitLabel: input.yieldUnit,
       movementType: "PRODUCTION_OUTPUT",
       refType: "production_batch",
       refId: batchId,
+      // This batch's own cost per canonical unit — seeds the produced
+      // item's FIFO lot at what this specific batch actually cost to make,
+      // not whatever the item's blended rate happened to be before.
+      rate: canonicalYieldQty > 0 ? totalCost / canonicalYieldQty : undefined,
+      lotNo,
       actorId,
     });
   }
@@ -210,7 +218,7 @@ async function closeProductionBatchCore(id: string, session: Session, closeDetai
       ingredients: ingredientRows.map((r) => ({ stockItemId: r.stockItemId, qty: r.qty, unitLabel: r.unitLabel ?? undefined, rate: r.rateAtProduction ?? undefined })),
     };
     const costCenterId = batch.costCenterId ?? (await getDefaultCostCenterId(tx, batch.branchId, "Kitchen"));
-    await applyProductionSideEffects(tx, id, costCenterId, input, subRecipe.stockItemId, actorId);
+    await applyProductionSideEffects(tx, id, costCenterId, input, subRecipe.stockItemId, batch.totalCost, batch.lotNo, actorId);
     const postedAt = new Date();
     await tx.update(productionBatches).set({ status: "CLOSED", postedAt, postedBy: actorId }).where(eq(productionBatches.id, id));
     const durationMinutes = Math.round((postedAt.getTime() - batch.createdAt.getTime()) / 60000);

@@ -11,6 +11,7 @@ import {
   subRecipes,
   recipeIngredients,
   stockBalances,
+  stockLots,
   branches,
 } from "@/server/db/schema";
 import { and, eq, ilike, or, sql, desc, count, isNull } from "drizzle-orm";
@@ -143,8 +144,8 @@ export async function getProductByCode(code: string) {
   if (!item) return null;
 
   // Independent of each other — all keyed only off item.id — so fetched
-  // concurrently instead of five sequential round trips.
-  const [variants, history, usedInMain, usedInSub, stockByBranch] = await Promise.all([
+  // concurrently instead of six sequential round trips.
+  const [variants, history, usedInMain, usedInSub, stockByBranch, activeLots] = await Promise.all([
     db
       .select({
         id: productSupplierPackaging.id,
@@ -184,6 +185,24 @@ export async function getProductByCode(code: string) {
       .innerJoin(branches, eq(stockBalances.branchId, branches.id))
       .where(eq(stockBalances.stockItemId, item.id))
       .groupBy(stockBalances.branchId, branches.name),
+    // The FIFO lot stack — oldest first, since that's consumption order and
+    // also "what recipe costing is currently pricing this item at" (see
+    // recordStockMovement's syncItemRateFromOldestLot). Only lots still
+    // holding stock; fully depleted ones are history, not "active."
+    db
+      .select({
+        id: stockLots.id,
+        branchName: branches.name,
+        sourceType: stockLots.sourceType,
+        lotNo: stockLots.lotNo,
+        ratePerKgL: stockLots.ratePerKgL,
+        qtyRemaining: stockLots.qtyRemaining,
+        receivedAt: stockLots.receivedAt,
+      })
+      .from(stockLots)
+      .innerJoin(branches, eq(stockLots.branchId, branches.id))
+      .where(and(eq(stockLots.stockItemId, item.id), sql`${stockLots.qtyRemaining} != 0`))
+      .orderBy(stockLots.receivedAt),
   ]);
 
   return {
@@ -191,6 +210,7 @@ export async function getProductByCode(code: string) {
     variants,
     history,
     stockByBranch,
+    activeLots,
     usedIn: [
       ...usedInMain.map((r) => ({ type: "main" as const, ...r })),
       ...usedInSub.map((r) => ({ type: "sub" as const, ...r })),

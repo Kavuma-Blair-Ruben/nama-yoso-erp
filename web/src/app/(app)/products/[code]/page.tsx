@@ -7,8 +7,19 @@ import { UpdateRateForm } from "@/components/products/UpdateRateForm";
 import { VariantsPanel } from "@/components/products/VariantsPanel";
 import { ItemSetupPanel } from "@/components/products/ItemSetupPanel";
 import { fmt, money } from "@/lib/format";
+import type { StockLotSourceType } from "@/server/db/schema";
 import { categorizeUnit } from "@/lib/unitMath";
 import { withTimeout } from "@/lib/withTimeout";
+
+const LOT_SOURCE_LABELS: Record<StockLotSourceType, string> = {
+  grn: "GRN Receipt",
+  production: "Production",
+  transfer_in: "Transfer In",
+  customer_return: "Customer Return",
+  stock_count: "Stock Count",
+  opening_balance: "Opening Balance",
+  deficit: "Deficit (oversold)",
+};
 
 export default async function ProductDetailPage({ params }: PageProps<"/products/[code]">) {
   const session = await requireSection("items", "view");
@@ -19,7 +30,7 @@ export default async function ProductDetailPage({ params }: PageProps<"/products
     listSuppliersForFilter(),
   ]), 20000, "This is taking longer than expected — please try again in a moment.");
   if (!data) notFound();
-  const { item, variants, history, usedIn, stockByBranch } = data;
+  const { item, variants, history, usedIn, stockByBranch, activeLots } = data;
   const canEdit = hasAccess(session, "items", "edit");
   const canSwap = hasAccess(session, "ingredientswap", "edit");
   const onHandUnitCat = categorizeUnit(item.issueUnit);
@@ -57,6 +68,44 @@ export default async function ProductDetailPage({ params }: PageProps<"/products
                 ))
               ) : (
                 <div style={{ fontSize: 12, color: "var(--ink-faint)" }}>No GRN receipts or production output recorded for this item yet.</div>
+              )}
+            </div>
+          </div>
+
+          <div className="panel" style={{ marginBottom: 16 }}>
+            <div className="panel-head"><h3>Stock Lots (FIFO)</h3></div>
+            <div className="panel-body" style={{ padding: activeLots.length ? 0 : undefined }}>
+              {activeLots.length ? (
+                <>
+                  <div className="callout" style={{ fontSize: 11.5, margin: 12 }}>
+                    Oldest lot first — that&apos;s consumption order, and also what recipe costing currently prices this item at.
+                  </div>
+                  <table className="data">
+                    <thead><tr><th>Received</th><th>Branch</th><th>Source</th><th>Rate</th><th>Remaining</th></tr></thead>
+                    <tbody>
+                      {activeLots.map((l, i) => (
+                        <tr key={l.id}>
+                          <td>
+                            {i === 0 && <span className="tag good" style={{ marginRight: 6, fontSize: 10 }}>NEXT</span>}
+                            {l.receivedAt.toISOString().slice(0, 10)}
+                          </td>
+                          <td>{l.branchName}</td>
+                          <td>
+                            {l.lotNo ? (
+                              <Link href={`/lots/${l.lotNo}`}>{LOT_SOURCE_LABELS[l.sourceType as StockLotSourceType]}</Link>
+                            ) : (
+                              LOT_SOURCE_LABELS[l.sourceType as StockLotSourceType]
+                            )}
+                          </td>
+                          <td className="mono-r">{fmt(l.ratePerKgL, 3)}</td>
+                          <td className="mono-r">{fmt(l.qtyRemaining, 2)} {onHandUnit}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </>
+              ) : (
+                <div style={{ fontSize: 12, color: "var(--ink-faint)" }}>No active FIFO lots for this item yet.</div>
               )}
             </div>
           </div>

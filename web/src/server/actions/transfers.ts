@@ -104,6 +104,12 @@ async function applyTransferIn(tx: Db, transferId: string, input: z.infer<typeof
       movementType: "TRANSFER_IN",
       refType: "stock_transfer",
       refId: transferId,
+      // Carries the source lot's own FIFO cost through to the destination
+      // (stockTransferLines.rateAtTransfer was captured at send time from
+      // what was then the item's FIFO-derived rate) instead of re-pricing
+      // the arriving stock at whatever the destination's own rate happens
+      // to be right now.
+      rate: l.rate,
       actorId,
     });
   }

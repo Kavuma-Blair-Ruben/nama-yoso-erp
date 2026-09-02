@@ -28,6 +28,18 @@ export function categorizeUnit(unit: string | null | undefined): UnitCategory {
   return "count";
 }
 
+// ratePerKgL is a misnomer for a count-purchased item (issueUnit "pc"/"all"
+// etc.) — it's really just "live rate per issue unit" there, no gram/ml
+// conversion applies. Only a genuine weight/volume issueUnit needs the
+// ×1000 scale-up (unitWeight is stored in grams/ml for those, so dividing
+// by it first gives a per-gram/per-ml rate that then needs ×1000 to reach
+// per-kg/per-litre). Applying ×1000 unconditionally would silently inflate
+// a count item's live rate 1000x the moment it was ever re-saved.
+export function computeRatePerKgL(rate: number, unitWeight: number | null | undefined, issueUnit: string | null | undefined): number {
+  const perIssueUnit = unitWeight ? rate / unitWeight : rate;
+  return categorizeUnit(issueUnit) === "count" ? perIssueUnit : perIssueUnit * 1000;
+}
+
 /**
  * Converts a raw quantity in a given unit into the canonical KG/LTR-or-piece
  * basis used by recipe costing (recipe_ingredients.qty) and the stock ledger

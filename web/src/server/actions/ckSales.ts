@@ -153,6 +153,7 @@ export async function createCustomerReturn(input: z.infer<typeof returnInputSche
         movementType: "CUSTOMER_RETURN",
         refType: "customer_return",
         refId: ret.id,
+        rate: l.price,
         actorId: session.profile.id,
       });
     }

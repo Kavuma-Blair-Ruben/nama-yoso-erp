@@ -11,7 +11,7 @@ import { nextGrnNumber, nextBatchNumber, nextLotNumber } from "@/server/db/seque
 import { uploadPhoto, deletePhoto } from "@/lib/supabaseAdmin";
 import { recordStockMovement } from "@/server/db/stockLedger";
 import { getDefaultCostCenterId } from "@/server/db/costCenterDefaults";
-import { convertQtyToCanonical } from "@/lib/unitMath";
+import { convertQtyToCanonical, computeRatePerKgL } from "@/lib/unitMath";
 import { checkSupplierReceivingLimit, checkAbovePriceBreach, checkBranchReceivingLimit } from "@/server/policyChecks";
 import { sendToRoutedPrinter } from "@/lib/printRouting";
 import { buildGrnLabelEscPos } from "@/lib/escpos";
@@ -186,26 +186,34 @@ async function insertGrn(tx: Db, input: z.infer<typeof grnInputSchema>, status: 
 }
 
 async function applyGrnSideEffects(tx: Db, grnId: string, costCenterId: string, input: z.infer<typeof grnInputSchema>, actorId: string) {
-  // Rate changes vs. current master price -> price_history + live rate update,
-  // and a stock-in movement for every accepted line — the one place GRN
+  // updatePrice is a transient form flag, not persisted on grn_lines — keyed
+  // by stockItemId (a GRN doesn't repeat the same item across lines in
+  // practice) so it can be looked up against the authoritative DB rows below.
+  const updatePriceByItem = new Map(input.lines.map((l) => [l.stockItemId, l.updatePrice]));
+
+  // Read back the just-persisted grn_lines rows (rather than re-looping
+  // input.lines) so each line's own generated lotNo — needed to seed its
+  // FIFO lot — is available; insertGrn already wrote it moments ago in the
+  // same transaction (or, for a draft being posted later, at draft-save time).
+  const lines = await tx.select().from(grnLines).where(eq(grnLines.grnId, grnId));
+
+  // Rate changes vs. current master price -> price_history + live rate
+  // update, and a stock-in movement (which seeds this line's own FIFO lot —
+  // see recordStockMovement) for every accepted line — the one place GRN
   // receiving needs a unit conversion (purchase unit -> canonical KG/LTR-or-
   // piece basis), since production/recipe costing already speak that basis.
-  for (const line of input.lines) {
+  for (const line of lines) {
     if (line.condition !== "ACCEPTED") continue;
     const [item] = await tx.select().from(stockItems).where(eq(stockItems.id, line.stockItemId));
     if (!item) continue;
 
-    if (line.updatePrice && item.purchaseRate != null && item.purchaseRate !== line.rate) {
-      const scale = item.purchaseRate !== 0 ? line.rate / item.purchaseRate : 1;
-      await tx
-        .update(stockItems)
-        .set({
-          purchaseRate: line.rate,
-          ratePerKgL: item.ratePerKgL != null ? item.ratePerKgL * scale : undefined,
-          ratePerGMl: item.ratePerGMl != null ? item.ratePerGMl * scale : undefined,
-          updatedAt: new Date(),
-        })
-        .where(eq(stockItems.id, item.id));
+    // purchaseRate ("what would I pay to reorder this") always tracks the
+    // latest GRN rate — a genuinely different concept from ratePerKgL/
+    // ratePerGMl ("what does inventory currently cost"), which the FIFO lot
+    // this line seeds below now drives instead (see recordStockMovement's
+    // syncItemRateFromOldestLot). No more rescaling one off the other.
+    if ((updatePriceByItem.get(line.stockItemId) ?? true) && item.purchaseRate != null && item.purchaseRate !== line.rate) {
+      await tx.update(stockItems).set({ purchaseRate: line.rate, updatedAt: new Date() }).where(eq(stockItems.id, item.id));
       await tx.insert(priceHistory).values({ stockItemId: item.id, oldRate: item.purchaseRate, newRate: line.rate, changedBy: actorId, source: "grn", grnId });
     }
 
@@ -221,6 +229,8 @@ async function applyGrnSideEffects(tx: Db, grnId: string, costCenterId: string, 
         movementType: "GRN_RECEIPT",
         refType: "grn",
         refId: grnId,
+        rate: computeRatePerKgL(line.rate, item.unitWeight, item.issueUnit),
+        lotNo: line.lotNo,
         actorId,
       });
     }

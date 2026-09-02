@@ -940,6 +940,13 @@ export const stockMovements = pgTable("stock_movements", {
   refType: text("ref_type"), // 'grn' | 'production_batch' | 'wastage' | 'transfer' | 'stock_count' — loose, not FK-enforced (polymorphic source)
   refId: uuid("ref_id"),
   balanceAfter: numeric("balance_after", { precision: 14, scale: 4, mode: "number" }),
+  // The FIFO-resolved cost of this specific movement — the new lot's own
+  // rate for a receipt, or the weighted-average rate of whichever lots were
+  // actually drawn down for a consumption (see stockLots / recordStockMovement
+  // in src/server/db/stockLedger.ts). Nullable because every movement
+  // recorded before FIFO shipped has no lot to compute this from.
+  costPerUnit: numeric("cost_per_unit", { precision: 14, scale: 6, mode: "number" }),
+  totalCost: money("total_cost"),
   notes: text("notes"),
   createdBy: uuid("created_by").references(() => profiles.id),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -958,6 +965,51 @@ export const stockBalances = pgTable("stock_balances", {
   qtyOnHand: numeric("qty_on_hand", { precision: 14, scale: 4, mode: "number" }).notNull().default(0),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [unique("stock_balances_item_branch_costcenter_unique").on(t.stockItemId, t.branchId, t.costCenterId)]);
+
+/* ============================================================
+   FIFO lot ledger — the real per-receipt cost basis backing
+   stock_balances/stock_movements above. Scoped identically to
+   stock_balances (item + branch + cost center) so consumption at a given
+   branch/sector only ever draws down lots physically received there. Every
+   receipt (GRN, production output, transfer-in, a positive stock count
+   adjustment, a customer return) inserts one row here; every consumption
+   (wastage, POS/CK sale, production consume, transfer-out, a negative
+   stock count adjustment, a supplier return) depletes qtyRemaining
+   oldest-receivedAt-first via recordStockMovement in
+   src/server/db/stockLedger.ts — never written to directly elsewhere.
+   stock_items.rate_per_kg_l/rate_per_g_ml are kept in sync as a cached
+   rollup of the globally (cross-branch) oldest lot with qtyRemaining > 0,
+   so every existing reader of that field (recipe costing, Product Master,
+   dashboards) stays correct with no changes of its own.
+   ============================================================ */
+export const STOCK_LOT_SOURCE_TYPES = ["grn", "production", "transfer_in", "customer_return", "stock_count", "opening_balance", "deficit"] as const;
+export type StockLotSourceType = (typeof STOCK_LOT_SOURCE_TYPES)[number];
+
+export const stockLots = pgTable("stock_lots", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  stockItemId: uuid("stock_item_id").notNull().references(() => stockItems.id),
+  branchId: uuid("branch_id").notNull().references(() => branches.id),
+  costCenterId: uuid("cost_center_id").notNull().references(() => costCenters.id),
+  sourceType: text("source_type").notNull(),
+  // Loose pointer to the grn/production_batch/stock_transfer/etc that
+  // created this lot — same polymorphic convention as
+  // stock_movements.ref_id, not FK-enforced since it can point at several
+  // different tables depending on sourceType.
+  sourceRefId: uuid("source_ref_id"),
+  // Mirrors grn_lines.lot_no / production_batches.lot_no when this lot came
+  // from one of those, purely for display/traceability linkage — not unique
+  // here since a deficit or opening-balance lot has none.
+  lotNo: text("lot_no"),
+  ratePerKgL: numeric("rate_per_kg_l", { precision: 14, scale: 6, mode: "number" }).notNull(),
+  qtyReceived: numeric("qty_received", { precision: 14, scale: 4, mode: "number" }).notNull(),
+  qtyRemaining: numeric("qty_remaining", { precision: 14, scale: 4, mode: "number" }).notNull(),
+  receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  check(
+    "stock_lots_source_type_check",
+    sql`${t.sourceType} in ('grn','production','transfer_in','customer_return','stock_count','opening_balance','deficit')`
+  ),
+]);
 
 /* ============================================================
    Production — converts raw stock into a produced sub-recipe item. Consumes

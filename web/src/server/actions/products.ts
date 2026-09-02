@@ -8,22 +8,9 @@ import { db } from "@/server/db";
 import { stockItems, categories, subcategories, suppliers, productSupplierPackaging, priceHistory, auditLog } from "@/server/db/schema";
 import { assertPermission } from "@/server/auth/permissions";
 import { nextProductCode } from "@/server/db/sequences";
-import { categorizeUnit } from "@/lib/unitMath";
+import { computeRatePerKgL } from "@/lib/unitMath";
 import { sendToRoutedPrinter } from "@/lib/printRouting";
 import { buildProductLabelEscPos } from "@/lib/escpos";
-
-// ratePerKgL is a misnomer for a count-purchased item (issueUnit "pc"/"all"
-// etc.) — it's really just "live rate per issue unit" there, no gram/ml
-// conversion applies. Only a genuine weight/volume issueUnit needs the
-// ×1000 scale-up (unitWeight is stored in grams/ml for those, so dividing
-// by it first gives a per-gram/per-ml rate that then needs ×1000 to reach
-// per-kg/per-litre). Applying ×1000 unconditionally — as this used to —
-// silently inflated a count item's live rate 1000x the moment it was ever
-// re-saved through this path.
-function computeRatePerKgL(rate: number, unitWeight: number | null | undefined, issueUnit: string | null | undefined): number {
-  const perIssueUnit = unitWeight ? rate / unitWeight : rate;
-  return categorizeUnit(issueUnit) === "count" ? perIssueUnit : perIssueUnit * 1000;
-}
 
 export async function findOrCreateCategory(name: string): Promise<string> {
   const trimmed = name.trim();
