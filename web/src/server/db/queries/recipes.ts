@@ -314,8 +314,13 @@ export async function listRecipeIngredientPickerItems(type: RecipeType, excludeC
   if (type !== "main") return stockOptions;
 
   const graph = await loadCostingGraph();
+  // loadCostingGraph() deliberately includes archived recipes (one must
+  // stay resolvable as an existing combo's own ingredient), but a picker
+  // for building a NEW combo shouldn't offer a discontinued dish as
+  // something to bundle in going forward.
+  const archivedIds = new Set((await db.select({ id: mainRecipes.id }).from(mainRecipes).where(eq(mainRecipes.isArchived, true))).map((r) => r.id));
   const recipeOptions: RecipeIngredientPickerItem[] = graph.mainRecipes
-    .filter((m) => m.legacyCode !== excludeCode)
+    .filter((m) => m.legacyCode !== excludeCode && !archivedIds.has(m.id))
     .map((m) => ({
       kind: "recipe" as const,
       id: m.id,
