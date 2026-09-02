@@ -59,7 +59,10 @@ export function RecipeSalesImport({ hasData, unmatchedCount, branches }: { hasDa
         const result = await importRecipeSales(rows, branchId || undefined);
         if (result.error) setError(result.error);
         else {
-          setInfo(`Imported ${result.imported} row(s) — ${result.matched} matched to a recipe automatically, ${result.unmatched} unmatched.`);
+          const stockNote = !branchId
+            ? " Pick a branch next time to also deduct ingredient stock — skipped here with no branch selected."
+            : ` Stock deducted for ${result.stockDeducted} row(s)${result.stockSkipped ? `, skipped for ${result.stockSkipped} unmatched row(s)` : ""}.`;
+          setInfo(`Imported ${result.imported} row(s) — ${result.matched} matched to a recipe automatically, ${result.unmatched} unmatched.${stockNote}`);
           router.refresh();
         }
       });
@@ -88,7 +91,9 @@ export function RecipeSalesImport({ hasData, unmatchedCount, branches }: { hasDa
           Upload a CSV export from your POS with columns for Date, Item, Qty, and Revenue — or a per-product Foodics export
           (Product, SKU, Net Quantity, Net Sales, Void columns), which has no date of its own, so pick the date it covers
           below first. Items are matched by SKU/code where the file has one, and by name otherwise — unmatched rows still
-          count toward totals but won&apos;t show per-recipe cost/profit.
+          count toward totals but won&apos;t show per-recipe cost/profit. With a branch selected, a matched row also
+          deducts that recipe&apos;s ingredients from stock (same logic as a live POS sale) — pick one to keep stock on
+          hand accurate until the live Foodics connection is wired up.
         </div>
         <div className="btn-row" style={{ marginBottom: 8 }}>
           <label style={{ fontSize: 12, fontWeight: 600, alignSelf: "center" }}>Date this file covers</label>
