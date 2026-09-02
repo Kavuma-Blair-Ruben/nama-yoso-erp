@@ -1,0 +1,1 @@
+ALTER TABLE "main_recipes" ADD COLUMN "sort_order" integer DEFAULT 0 NOT NULL;

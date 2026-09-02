@@ -512,6 +512,10 @@ export const mainRecipes = pgTable(
     // any of its ingredients' own secondary names.
     secondaryName: text("secondary_name"),
     section: text("section"),
+    // Display order within its section — e.g. the printed menu's exact item
+    // sequence, not the section's own order (see menuCategories.sortOrder
+    // for that). Ties (the default 0) fall back to name ordering.
+    sortOrder: integer("sort_order").notNull().default(0),
     yieldQty: numeric("yield_qty", { precision: 14, scale: 4, mode: "number" }),
     yieldUnit: text("yield_unit"),
     isArchived: boolean("is_archived").notNull().default(false),

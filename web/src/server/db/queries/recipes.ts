@@ -1,6 +1,6 @@
 import "server-only";
 import { db } from "@/server/db";
-import { mainRecipes, subRecipes, recipeIngredients, stockItems, recipeBranchPrices, branches } from "@/server/db/schema";
+import { mainRecipes, subRecipes, recipeIngredients, stockItems, recipeBranchPrices, branches, menuCategories } from "@/server/db/schema";
 import { eq, asc, and, ilike, or } from "drizzle-orm";
 import { loadCostingGraph, recipeCurrentCost, recipeOriginalCost, getSubRecipeCost } from "@/server/costing/recipeCost";
 import { normalizeToKgLtr } from "@/lib/unitMath";
@@ -91,6 +91,19 @@ export async function listRecipesWithCost(type: RecipeType, filters: { q?: strin
     return true;
   });
 
+  // Not part of the shared costing graph (same reasoning as archivedIds/
+  // flaggedIds above) — a menu's actual display order (both which section
+  // comes first, and which item comes first within it) is presentation
+  // metadata the costing graph has no reason to carry for its other ~15
+  // call sites.
+  const [itemSortOrder, sectionSortOrder] =
+    type === "main"
+      ? [
+          new Map((await db.select({ id: mainRecipes.id, sortOrder: mainRecipes.sortOrder }).from(mainRecipes)).map((r) => [r.id, r.sortOrder])),
+          new Map((await db.select({ name: menuCategories.name, sortOrder: menuCategories.sortOrder }).from(menuCategories).where(eq(menuCategories.scope, "main"))).map((c) => [c.name, c.sortOrder])),
+        ]
+      : [new Map<string, number>(), new Map<string, number>()];
+
   const rows = filtered.map((r) => {
     let perUnit: number, missingCount: number, unreliableYield: boolean;
     if (type === "main") {
@@ -119,11 +132,23 @@ export async function listRecipesWithCost(type: RecipeType, filters: { q?: strin
       variancePct,
       missingCount,
       unreliableYield,
+      sortOrder: itemSortOrder.get((r as { id: string }).id) ?? 0,
     };
   });
 
+  if (type === "main") {
+    rows.sort((a, b) => {
+      const secDiff = (sectionSortOrder.get(a.section ?? "") ?? 999) - (sectionSortOrder.get(b.section ?? "") ?? 999);
+      if (secDiff !== 0) return secDiff;
+      return a.sortOrder - b.sortOrder || a.name.localeCompare(b.name);
+    });
+  }
+
   const active = source.filter((r) => !archivedIds.has((r as { id: string }).id));
-  const sections = [...new Set(active.map((r) => r.section).filter((s): s is string => !!s))].sort();
+  const sections =
+    type === "main"
+      ? [...new Set(active.map((r) => r.section).filter((s): s is string => !!s))].sort((a, b) => (sectionSortOrder.get(a) ?? 999) - (sectionSortOrder.get(b) ?? 999))
+      : [...new Set(active.map((r) => r.section).filter((s): s is string => !!s))].sort();
   return { rows, totalCount: active.length, sections };
 }
 
@@ -138,8 +163,11 @@ export async function listMenuProducts() {
   // recipe must stay resolvable as another recipe's combo ingredient), so
   // this browsable list filters it here instead — same pattern as
   // listRecipesWithCost.
-  const extras = await db.select({ id: mainRecipes.id, photoUrl: mainRecipes.photoUrl, sellingPrice: mainRecipes.sellingPrice, isArchived: mainRecipes.isArchived }).from(mainRecipes);
+  const extras = await db.select({ id: mainRecipes.id, photoUrl: mainRecipes.photoUrl, sellingPrice: mainRecipes.sellingPrice, isArchived: mainRecipes.isArchived, sortOrder: mainRecipes.sortOrder }).from(mainRecipes);
   const extraById = new Map(extras.map((e) => [e.id, e]));
+  const sectionSortOrder = new Map(
+    (await db.select({ name: menuCategories.name, sortOrder: menuCategories.sortOrder }).from(menuCategories).where(eq(menuCategories.scope, "main"))).map((c) => [c.name, c.sortOrder])
+  );
 
   const products = graph.mainRecipes.filter((r) => !extraById.get(r.id)?.isArchived).map((r) => {
     const cur = recipeCurrentCost(graph, r);
@@ -151,13 +179,17 @@ export async function listMenuProducts() {
       perUnit: cur.perUnit,
       photoUrl: extra?.photoUrl ?? null,
       sellingPrice: extra?.sellingPrice ?? null,
+      sortOrder: extra?.sortOrder ?? 0,
     };
   });
 
   const byCategory = new Map<string, typeof products>();
   for (const p of products) byCategory.set(p.section, [...(byCategory.get(p.section) ?? []), p]);
+  for (const items of byCategory.values()) items.sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
 
-  return [...byCategory.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([category, items]) => ({ category, items }));
+  return [...byCategory.entries()]
+    .sort((a, b) => (sectionSortOrder.get(a[0]) ?? 999) - (sectionSortOrder.get(b[0]) ?? 999))
+    .map(([category, items]) => ({ category, items }));
 }
 
 // Menu > Modifiers — the same card-grid treatment as listMenuProducts,
