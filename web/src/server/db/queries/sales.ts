@@ -101,7 +101,13 @@ export type MenuEngineeringItem = { code: string | null; name: string; qty: numb
 // own menu-engineering scatter uses.
 export async function getMenuEngineeringData(filters: DateRangeFilter = {}): Promise<{ items: MenuEngineeringItem[]; avgQty: number; avgMargin: number }> {
   const report = await getRecipeSalesReport(filters);
-  const matched = report.rows.filter((r) => r.matched && r.costPerUnit != null);
+  // getRecipeSalesReport deliberately keeps a void-only row (qty 0, revenue
+  // 0) instead of dropping it, so a full void is still visible there and in
+  // COGS. Popularity-vs-profitability has no meaning for something that was
+  // never actually served, though — qty 0 would otherwise show up as a
+  // phantom "Dog" (0 popularity, negative margin from cost alone) and drag
+  // the averages every other item is classified against.
+  const matched = report.rows.filter((r) => r.matched && r.costPerUnit != null && r.qty > 0);
   if (matched.length === 0) return { items: [], avgQty: 0, avgMargin: 0 };
 
   const avgQty = matched.reduce((s, r) => s + r.qty, 0) / matched.length;
