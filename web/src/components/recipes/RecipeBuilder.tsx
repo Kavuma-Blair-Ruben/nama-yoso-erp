@@ -6,7 +6,7 @@ import { createRecipe, updateRecipe, uploadRecipePhoto, type RecipeInput } from 
 import { createMenuCategory } from "@/server/actions/menuCategories";
 import type { RecipeType } from "@/server/db/queries/recipes";
 import { fmt, money, num } from "@/lib/format";
-import { canonicalUnitLabel } from "@/lib/unitMath";
+import { canonicalUnitLabel, computeYieldPct } from "@/lib/unitMath";
 import { ItemSearchSelect } from "@/components/ui/ItemSearchSelect";
 
 type PickerItem = { kind: "stock" | "recipe"; id: string; legacyCode: string; name: string; issueUnit: string | null; ratePerKgL: number | null; sourceType: string };
@@ -198,6 +198,14 @@ export function RecipeBuilder({
   }, 0);
   const sp = Number(sellingPrice) || 0;
   const estFoodCostPct = sp > 0 ? (estimatedCost / sp) * 100 : null;
+  const estimatedYieldPct =
+    type === "sub"
+      ? computeYieldPct(
+          yieldQty ? Number(yieldQty) : null,
+          yieldUnit,
+          lines.map((l) => ({ qty: qtyToBuy(l), unit: findPickerItem(items, l)?.issueUnit ?? null }))
+        )
+      : null;
 
   function handlePhotoChange() {
     const file = fileRef.current?.files?.[0];
@@ -285,10 +293,15 @@ export function RecipeBuilder({
           <div>Yield qty</div>
           <div>Yield unit</div>
         </div>
-        <div className="line-builder-row" style={{ gridTemplateColumns: "1fr 1fr", marginBottom: 16 }}>
+        <div className="line-builder-row" style={{ gridTemplateColumns: "1fr 1fr", marginBottom: type === "sub" && estimatedYieldPct != null ? 4 : 16 }}>
           <input type="text" inputMode="decimal" value={yieldQty} onChange={(e) => setYieldQty(e.target.value)} placeholder="e.g. 1" />
           <input type="text" value={yieldUnit} onChange={(e) => setYieldUnit(e.target.value)} placeholder="e.g. kg, ltr, portion" />
         </div>
+        {type === "sub" && estimatedYieldPct != null && (
+          <div style={{ fontSize: 11.5, color: "var(--ink-soft)", marginBottom: 16 }}>
+            Yield %: <b>{estimatedYieldPct.toFixed(1)}%</b> of the raw ingredient weight/volume going in comes out as finished batch.
+          </div>
+        )}
         {type === "sub" && (
           <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 600, margin: "0 0 16px" }}>
             <input type="checkbox" checked={isModifier} onChange={(e) => setIsModifier(e.target.checked)} /> This is a Modifier (order-time add-on, e.g. Extra Cheese)

@@ -5,7 +5,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { getRecipeDetail, type RecipeType } from "@/server/db/queries/recipes";
 import { LedgerRow } from "@/components/recipes/LedgerRow";
 import { DeleteRecipeButton } from "@/components/recipes/DeleteRecipeButton";
-import { displayYield, normalizeToKgLtr } from "@/lib/unitMath";
+import { displayYield, normalizeToKgLtr, computeYieldPct } from "@/lib/unitMath";
 import { fmt, money, pct } from "@/lib/format";
 import { withTimeout } from "@/lib/withTimeout";
 
@@ -21,6 +21,14 @@ export default async function RecipeDetailPage({ params }: PageProps<"/recipes/[
   const uniqueMissing = [...new Map(cur.missing.map((m) => [m.code + m.name, m])).values()];
   const dy = displayYield(recipe.yieldQty, recipe.yieldUnit);
   const perKg = type === "sub" && !unreliableYield ? normalizeToKgLtr(cur.perUnit, recipe.yieldUnit) : null;
+  const yieldPct =
+    type === "sub" && !unreliableYield
+      ? computeYieldPct(
+          recipe.yieldQty,
+          recipe.yieldUnit,
+          cur.lines.map((l) => ({ qty: l.ing.qty, unit: l.ing.productIssueUnit }))
+        )
+      : null;
   const sellingPrice = "sellingPrice" in recipe ? recipe.sellingPrice : null;
   const targetFoodCostPct = "targetFoodCostPct" in recipe ? recipe.targetFoodCostPct : null;
   const actualFoodCostPct = sellingPrice ? (cur.perUnit / sellingPrice) * 100 : null;
@@ -126,6 +134,9 @@ export default async function RecipeDetailPage({ params }: PageProps<"/recipes/[
             <div className="field-row"><span className="k">Cost per {type === "main" ? "portion" : recipe.yieldUnit ?? "unit"}</span><span className="v tabular">{money(cur.perUnit, 3)}</span></div>
             {perKg != null && (
               <div className="field-row"><span className="k"><b>Cost per KG / LTR</b></span><span className="v tabular"><b>{money(perKg, 2)}</b></span></div>
+            )}
+            {yieldPct != null && (
+              <div className="field-row"><span className="k">Yield %</span><span className="v tabular">{fmt(yieldPct, 1)}%</span></div>
             )}
             <div className="field-row"><span className="k">Original build-time cost</span><span className="v tabular">{money(orig.perUnit, 3)}</span></div>
             <div className="field-row">

@@ -92,6 +92,36 @@ export function gramsDisplay(qty: number, unit: string): { qty: number; unit: st
   return { qty, unit };
 }
 
+/**
+ * A sub-recipe's production yield %: how much of the raw ingredient
+ * weight/volume that went in came out as usable finished batch (e.g. 5kg of
+ * chicken in, 4kg of trimmed/cooked yield out = 80%). Only meaningful when
+ * the batch yield unit is weight or volume — a piece-count yield has no
+ * comparable "raw input" total, so that case returns null. Weight and volume
+ * lines are combined into one input total treating 1 L as 1 KG (the same
+ * water-based approximation used everywhere else in this app that mixes the
+ * two without a per-item density) — comparing only same-category lines would
+ * ignore liquid ingredients that also add mass, inflating a sauce's % well
+ * above 100 and making a perfectly normal recipe look broken. Piece-based
+ * ingredient lines (can't convert to mass) are excluded from the total.
+ * `lines[].qty` must already be canonical (KG/L/piece), same basis as
+ * recipe_ingredients.qty.
+ */
+export function computeYieldPct(
+  yieldQty: number | null | undefined,
+  yieldUnit: string | null | undefined,
+  lines: { qty: number; unit: string | null | undefined }[]
+): number | null {
+  if (yieldQty == null || !yieldQty) return null;
+  const cat = categorizeUnit(yieldUnit);
+  if (cat === "count") return null;
+  const dy = displayYield(yieldQty, yieldUnit);
+  if (dy.qty == null) return null;
+  const inputQty = lines.filter((l) => categorizeUnit(l.unit) !== "count").reduce((sum, l) => sum + l.qty, 0);
+  if (!inputQty) return null;
+  return (dy.qty / inputQty) * 100;
+}
+
 export function ledgerDisplayUnit(args: {
   isSub: boolean;
   ingredientUnitLabel: string | null | undefined;
