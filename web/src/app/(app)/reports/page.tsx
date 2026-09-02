@@ -533,21 +533,21 @@ async function PriceChangeTab({ from, to, view }: { from: string; to: string; vi
 
   return (
     <>
-      <div className="callout">Every GRN line where what you were actually invoiced didn&apos;t match what the LPO said, across every supplier and outlet in one place.</div>
+      <div className="callout">Every real price move a posted GRN caused, whether or not it was backed by a Purchase Order — across every supplier and outlet in one place.</div>
       <form className="filterbar" method="get">
         <input type="hidden" name="tab" value="pricechange" />
         <div className="daterange">📅<input type="date" name="from" defaultValue={from} /><span>–</span><input type="date" name="to" defaultValue={to} /></div>
         <button className="btn ghost" type="submit">Apply</button>
       </form>
       <div className="kpi-grid">
-        <Link href={kpiHref("")} className={`kpi${activeView === "all" ? " accent-neutral" : ""}`}><div className="n">{rows.length}</div><div className="l">Total Discrepancies</div><div className="d">All-time</div></Link>
+        <Link href={kpiHref("")} className={`kpi${activeView === "all" ? " accent-neutral" : ""}`}><div className="n">{rows.length}</div><div className="l">Total Price Changes</div><div className="d">All-time</div></Link>
         <div className="kpi"><div className="n" style={{ color: totalImpact >= 0 ? "var(--bad)" : "var(--good)" }}>{money(totalImpact, 0)}</div><div className="l">Net Cost Impact</div><div className="d">{totalImpact >= 0 ? "Cost you" : "Saved you"}</div></div>
-        <Link href={kpiHref("increases")} className={`kpi${activeView === "increases" ? " accent-bad" : ""}`}><div className="n">{increases}</div><div className="l">Price Increases</div><div className="d">of {rows.length} discrepancies</div></Link>
+        <Link href={kpiHref("increases")} className={`kpi${activeView === "increases" ? " accent-bad" : ""}`}><div className="n">{increases}</div><div className="l">Price Increases</div><div className="d">of {rows.length} change(s)</div></Link>
       </div>
       <div className="panel">
         <div className="table-wrap" style={{ maxHeight: 500 }}>
           <table className="data">
-            <thead><tr><th>Date</th><th>GRN #</th><th>Supplier</th><th>Item</th><th className="right">Ordered Rate</th><th className="right">Received Rate</th><th className="right">Variance %</th><th className="right">Cost Impact</th></tr></thead>
+            <thead><tr><th>Date</th><th>GRN #</th><th>Supplier</th><th>Item</th><th className="right">Previous Rate</th><th className="right">New Rate</th><th className="right">Variance %</th><th className="right">Cost Impact</th></tr></thead>
             <tbody>
               {displayRows.length ? (
                 displayRows.map((e, i) => (
@@ -556,14 +556,14 @@ async function PriceChangeTab({ from, to, view }: { from: string; to: string; vi
                     <td className="mono-r" style={{ textAlign: "left" }}><Link href={`/grn/${e.grnId}`}>{e.grnNumber}</Link></td>
                     <td>{e.supplier}</td>
                     <td><Link href={`/products/${e.legacyCode}`}>{e.name}</Link></td>
-                    <td className="mono-r">{fmt(e.orderedRate, 2)}</td>
-                    <td className="mono-r">{fmt(e.receivedRate, 2)}</td>
+                    <td className="mono-r">{fmt(e.previousRate, 2)}</td>
+                    <td className="mono-r">{fmt(e.newRate, 2)}</td>
                     <td className="right"><span className={`tag ${e.variancePct >= 0 ? "bad" : "good"}`}>{pct(e.variancePct)}</span></td>
                     <td className="mono-r">{money(e.varianceValue, 2)}</td>
                   </tr>
                 ))
               ) : (
-                <tr className="empty-row"><td colSpan={8}>{activeView === "increases" ? "No price increases in this range." : "No price discrepancies found — every posted GRN matched its LPO rate exactly."}</td></tr>
+                <tr className="empty-row"><td colSpan={8}>{activeView === "increases" ? "No price increases in this range." : "No price changes from a posted GRN in this range."}</td></tr>
               )}
             </tbody>
           </table>

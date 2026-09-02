@@ -43,8 +43,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ tab: str
     rows = list.map((r) => [r.name, r.categoryName ?? "-", r.qty, canonicalUnitLabel(r.issueUnit), r.stockValue, r.last ?? "Never", r.daysSince]);
   } else if (tab === "pricechange") {
     const list = await listPriceChangeEvents();
-    headers = ["Date", "GRN #", "Supplier", "Item", "Ordered Rate", "Received Rate", "Variance %", "Cost Impact"];
-    rows = list.map((e) => [e.receivedDate, e.grnNumber, e.supplier, e.name, e.orderedRate, e.receivedRate, e.variancePct, e.varianceValue]);
+    headers = ["Date", "GRN #", "Supplier", "Item", "Previous Rate", "New Rate", "Variance %", "Cost Impact"];
+    rows = list.map((e) => [e.receivedDate, e.grnNumber, e.supplier, e.name, e.previousRate, e.newRate, e.variancePct, e.varianceValue]);
   } else if (tab === "costadjustments") {
     const q = sp.get("q") ?? undefined;
     const list = await listCostAdjustmentEvents({ q });

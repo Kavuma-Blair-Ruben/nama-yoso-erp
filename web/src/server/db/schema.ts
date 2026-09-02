@@ -782,6 +782,12 @@ export const priceHistory = pgTable(
     changedBy: uuid("changed_by").references(() => profiles.id),
     changedAt: timestamp("changed_at", { withTimezone: true }).notNull().defaultNow(),
     source: text("source").notNull().default("manual"),
+    // Set only when source = 'grn' — the specific GRN whose receiving rate
+    // triggered this change, so the Item Price Change report can show every
+    // real price move a GRN caused (Direct GRN or LPO-backed) instead of
+    // only the narrower "LPO said X, GRN said Y" discrepancy case, which is
+    // empty for any receipt with no purchase order behind it at all.
+    grnId: uuid("grn_id").references(() => grns.id, { onDelete: "set null" }),
   },
   (t) => [check("price_history_source_check", sql`${t.source} in ('manual','grn','bulk')`)]
 );

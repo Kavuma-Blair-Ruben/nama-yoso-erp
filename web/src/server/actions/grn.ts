@@ -206,7 +206,7 @@ async function applyGrnSideEffects(tx: Db, grnId: string, costCenterId: string, 
           updatedAt: new Date(),
         })
         .where(eq(stockItems.id, item.id));
-      await tx.insert(priceHistory).values({ stockItemId: item.id, oldRate: item.purchaseRate, newRate: line.rate, changedBy: actorId, source: "grn" });
+      await tx.insert(priceHistory).values({ stockItemId: item.id, oldRate: item.purchaseRate, newRate: line.rate, changedBy: actorId, source: "grn", grnId });
     }
 
     if (line.receivedQty > 0) {

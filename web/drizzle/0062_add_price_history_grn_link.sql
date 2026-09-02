@@ -1,0 +1,2 @@
+ALTER TABLE "price_history" ADD COLUMN "grn_id" uuid;--> statement-breakpoint
+ALTER TABLE "price_history" ADD CONSTRAINT "price_history_grn_id_grns_id_fk" FOREIGN KEY ("grn_id") REFERENCES "public"."grns"("id") ON DELETE set null ON UPDATE no action;

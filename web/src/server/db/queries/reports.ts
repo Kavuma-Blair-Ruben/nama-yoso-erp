@@ -5,7 +5,6 @@ import {
   categories,
   grns,
   grnLines,
-  purchaseOrderLines,
   purchaseLinesHistorical,
   invoicesHistorical,
   suppliers,
@@ -86,11 +85,14 @@ export async function listSlowMovingItems(minDays: number) {
   return rows;
 }
 
-// Every GRN line that shipped at a different rate than its LPO said — unlike
-// index.html's array-index matching between GRN and PO lines (fragile),
-// this follows the real purchase_order_line_id FK on grn_lines.
+// Every real price move a GRN caused — driven by price_history itself
+// (source='grn', now carrying a direct grnId — see schema.ts), not by
+// comparing against a purchase_order_line_id. That FK only exists for an
+// LPO-backed receipt, so the previous version of this report was silently
+// empty for the (very common) case of a Direct GRN with no LPO behind it
+// at all, even though the item's rate genuinely changed on receipt.
 export async function listPriceChangeEvents(filters: { from?: string; to?: string } = {}) {
-  const conditions = [eq(grns.status, "POSTED")];
+  const conditions = [eq(grns.status, "POSTED"), eq(priceHistory.source, "grn")];
   if (filters.from) conditions.push(gte(grns.receivedDate, filters.from));
   if (filters.to) conditions.push(lte(grns.receivedDate, filters.to));
   const rows = await db
@@ -102,23 +104,28 @@ export async function listPriceChangeEvents(filters: { from?: string; to?: strin
       stockItemId: stockItems.id,
       legacyCode: stockItems.legacyCode,
       name: stockItems.name,
-      orderedRate: purchaseOrderLines.rate,
-      receivedRate: grnLines.rate,
-      receivedQty: grnLines.receivedQty,
+      previousRate: priceHistory.oldRate,
+      newRate: priceHistory.newRate,
+      // Summed rather than joined straight to grn_lines — a GRN can (rarely)
+      // carry two lines for the same item, and a direct join would fan out
+      // this row once per matching line instead of reflecting the true
+      // total quantity that priced move actually applied to.
+      receivedQty: sql<number>`coalesce((select sum(grn_lines.received_qty) from grn_lines where grn_lines.grn_id = ${priceHistory.grnId} and grn_lines.stock_item_id = ${priceHistory.stockItemId}), 0)::float8`,
     })
-    .from(grnLines)
-    .innerJoin(grns, eq(grnLines.grnId, grns.id))
+    .from(priceHistory)
+    .innerJoin(grns, eq(priceHistory.grnId, grns.id))
     .innerJoin(suppliers, eq(grns.supplierId, suppliers.id))
-    .innerJoin(stockItems, eq(grnLines.stockItemId, stockItems.id))
-    .innerJoin(purchaseOrderLines, eq(grnLines.purchaseOrderLineId, purchaseOrderLines.id))
+    .innerJoin(stockItems, eq(priceHistory.stockItemId, stockItems.id))
     .where(and(...conditions));
 
   return rows
-    .filter((r) => Math.abs(r.orderedRate - r.receivedRate) >= 0.001)
+    .filter((r) => r.previousRate != null && r.newRate != null && Math.abs(r.previousRate - r.newRate) >= 0.001)
     .map((r) => {
-      const variancePct = r.orderedRate ? ((r.receivedRate - r.orderedRate) / r.orderedRate) * 100 : 0;
-      const varianceValue = (r.receivedRate - r.orderedRate) * r.receivedQty;
-      return { ...r, variancePct, varianceValue };
+      const previousRate = r.previousRate as number;
+      const newRate = r.newRate as number;
+      const variancePct = previousRate ? ((newRate - previousRate) / previousRate) * 100 : 0;
+      const varianceValue = (newRate - previousRate) * r.receivedQty;
+      return { ...r, previousRate, newRate, variancePct, varianceValue };
     })
     .sort((a, b) => b.receivedDate.localeCompare(a.receivedDate));
 }

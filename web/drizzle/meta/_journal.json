@@ -435,6 +435,13 @@
       "when": 1788308361196,
       "tag": "0061_add_ingredientswap_limitapprovals_permission_keys",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1788325075133,
+      "tag": "0062_add_price_history_grn_link",
+      "breakpoints": true
     }
   ]
 }

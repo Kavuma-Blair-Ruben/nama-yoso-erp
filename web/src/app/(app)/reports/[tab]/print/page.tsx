@@ -93,14 +93,14 @@ export default async function ReportPrintPage({ params, searchParams }: PageProp
     subtitle = minDays ? `${minDays}+ days since purchase` : "All items with stock";
   } else if (tab === "pricechange") {
     const list = await withTimeout(listPriceChangeEvents(), TIMEOUT_MS, TIMEOUT_MSG);
-    headers = ["Date", "GRN #", "Supplier", "Item", "Ordered Rate", "Received Rate", "Variance %", "Cost Impact"];
+    headers = ["Date", "GRN #", "Supplier", "Item", "Previous Rate", "New Rate", "Variance %", "Cost Impact"];
     rows = list.map((e) => [
       e.receivedDate,
       e.grnNumber,
       e.supplier,
       e.name,
-      fmt(e.orderedRate, 2),
-      fmt(e.receivedRate, 2),
+      fmt(e.previousRate, 2),
+      fmt(e.newRate, 2),
       pct(e.variancePct),
       fmt(e.varianceValue, 2),
     ]);
