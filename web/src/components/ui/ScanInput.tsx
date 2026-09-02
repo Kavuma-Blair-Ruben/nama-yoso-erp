@@ -94,8 +94,13 @@ export function ScanInput({
           style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center" }}
           onClick={() => setCameraOpen(false)}
         >
-          <div onClick={(e) => e.stopPropagation()} style={{ background: "var(--bg-panel)", padding: 16, borderRadius: 10, maxWidth: "90vw" }}>
-            <video ref={videoRef} style={{ width: 320, maxWidth: "100%", height: 240, background: "#000", borderRadius: 6 }} muted playsInline />
+          <div onClick={(e) => e.stopPropagation()} style={{ background: "var(--bg-panel)", padding: 16, borderRadius: 10, width: "min(94vw, 900px)" }}>
+            <video
+              ref={videoRef}
+              style={{ width: "100%", height: "min(80vh, 640px)", objectFit: "cover", background: "#000", borderRadius: 6, display: "block" }}
+              muted
+              playsInline
+            />
             {cameraError ? (
               <div className="login-error" style={{ marginTop: 8 }}>{cameraError}</div>
             ) : (
