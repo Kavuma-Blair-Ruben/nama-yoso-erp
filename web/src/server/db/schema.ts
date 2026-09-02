@@ -1127,13 +1127,23 @@ export const stockCounts = pgTable(
     countDate: date("count_date").notNull(),
     staffName: text("staff_name"),
     status: text("status").notNull().default("DRAFT"),
+    // FULL: posting this count adjusts stock_balances to match what was
+    // counted (the original, only behavior). SPOT_CHECK: a quick review
+    // count — variance is computed and recorded here exactly the same way,
+    // but posting never touches stock_balances at all (see
+    // applyStockCountSideEffects's caller in stockCount.ts), for checking a
+    // subset of items without committing an adjustment to the books.
+    countType: text("count_type").notNull().default("FULL"),
     totalVarianceValue: money("total_variance_value").notNull().default(0),
     postedAt: timestamp("posted_at", { withTimezone: true }),
     postedBy: uuid("posted_by").references(() => profiles.id),
     createdBy: uuid("created_by").references(() => profiles.id),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [check("stock_counts_status_check", sql`${t.status} in ('DRAFT','POSTED')`)]
+  (t) => [
+    check("stock_counts_status_check", sql`${t.status} in ('DRAFT','POSTED')`),
+    check("stock_counts_count_type_check", sql`${t.countType} in ('FULL','SPOT_CHECK')`),
+  ]
 );
 
 // systemQty/countedQty snapshot the live balance and the counted amount at

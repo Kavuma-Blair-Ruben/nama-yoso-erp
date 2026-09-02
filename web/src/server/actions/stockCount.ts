@@ -29,6 +29,7 @@ const stockCountInputSchema = z.object({
   costCenterId: z.string().min(1),
   countDate: z.string().min(1),
   staffName: z.string().optional(),
+  countType: z.enum(["FULL", "SPOT_CHECK"]).default("FULL"),
   lines: z.array(lineSchema).min(1),
 });
 
@@ -62,6 +63,7 @@ async function insertStockCount(tx: Db, input: z.infer<typeof stockCountInputSch
       costCenterId: input.costCenterId,
       countDate: input.countDate,
       staffName: input.staffName,
+      countType: input.countType,
       totalVarianceValue,
       status,
       postedAt: status === "POSTED" ? new Date() : undefined,
@@ -121,13 +123,18 @@ export async function postStockCount(input: z.infer<typeof stockCountInputSchema
 
   const { countId } = await db.transaction(async (tx) => {
     const created = await insertStockCount(tx, parsed.data, "POSTED", session.profile.id);
-    await applyStockCountSideEffects(tx, created.countId, parsed.data.branchId, parsed.data.costCenterId, parsed.data, session.profile.id);
+    if (parsed.data.countType !== "SPOT_CHECK") {
+      await applyStockCountSideEffects(tx, created.countId, parsed.data.branchId, parsed.data.costCenterId, parsed.data, session.profile.id);
+    }
     await tx.insert(auditLog).values({
       actorId: session.profile.id,
       action: "Stock Count Posted",
       entity: "Stock Count",
       entityLabel: created.countNo,
-      detail: `${parsed.data.lines.length} item(s) counted`,
+      detail:
+        parsed.data.countType === "SPOT_CHECK"
+          ? `Spot check — ${parsed.data.lines.length} item(s) counted, stock not adjusted`
+          : `${parsed.data.lines.length} item(s) counted`,
     });
     return created;
   });
@@ -169,12 +176,21 @@ export async function postStockCountDraft(id: string): Promise<StockCountActionR
       costCenterId: stockCount.costCenterId,
       countDate: stockCount.countDate,
       staffName: stockCount.staffName ?? undefined,
+      countType: stockCount.countType as "FULL" | "SPOT_CHECK",
       lines: lines.map((l) => ({ stockItemId: l.stockItemId, systemQty: l.systemQty, countedQty: l.countedQty, storageQty: l.storageQty, ingredientQty: l.ingredientQty, unitLabel: l.unitLabel ?? undefined, rate: l.rateAtCount ?? undefined })),
     };
     const totalVarianceValue = computeTotalVarianceValue(input);
-    await applyStockCountSideEffects(tx, id, stockCount.branchId, stockCount.costCenterId, input, session.profile.id);
+    if (stockCount.countType !== "SPOT_CHECK") {
+      await applyStockCountSideEffects(tx, id, stockCount.branchId, stockCount.costCenterId, input, session.profile.id);
+    }
     await tx.update(stockCounts).set({ status: "POSTED", postedAt: new Date(), postedBy: session.profile.id, totalVarianceValue }).where(eq(stockCounts.id, id));
-    await tx.insert(auditLog).values({ actorId: session.profile.id, action: "Stock Count Posted", entity: "Stock Count", entityLabel: stockCount.countNo, detail: "Stock adjusted" });
+    await tx.insert(auditLog).values({
+      actorId: session.profile.id,
+      action: "Stock Count Posted",
+      entity: "Stock Count",
+      entityLabel: stockCount.countNo,
+      detail: stockCount.countType === "SPOT_CHECK" ? "Spot check — stock not adjusted" : "Stock adjusted",
+    });
     return { id };
   });
   if ("error" in result) return result;

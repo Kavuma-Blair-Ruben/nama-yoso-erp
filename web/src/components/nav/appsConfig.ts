@@ -100,6 +100,7 @@ export const APPS: AppDef[] = [
       { href: "/wastage", label: "Wastage Tracking", ico: "🗑", section: "wastage" },
       { href: "/transfers", label: "Stock Transfers", ico: "⇄", section: "transfers" },
       { href: "/stock-count", label: "Stock Count", ico: "☑", section: "stockcount" },
+      { href: "/stock-count?type=spotcheck", label: "Spot Checks", ico: "🔍", section: "stockcount" },
     ],
   },
   {

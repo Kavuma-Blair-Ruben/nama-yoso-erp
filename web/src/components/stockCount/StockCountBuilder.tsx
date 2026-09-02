@@ -61,6 +61,7 @@ export function StockCountBuilder({
   initialCostCenterId,
   initialCountDate,
   initialLines,
+  countType = "FULL",
 }: {
   items: PickerItem[];
   branches: { id: string; name: string }[];
@@ -73,6 +74,12 @@ export function StockCountBuilder({
   initialCostCenterId?: string;
   initialCountDate?: string;
   initialLines?: Line[];
+  // Fixed for the lifetime of a count — set once at creation (by which "New
+  // Stock Count" vs "New Spot Check" entry point was used) and never
+  // editable afterward, same as a GRN's payment method. A spot check
+  // computes and records variance exactly like a full count, but posting it
+  // never touches stock_balances at all (see postStockCount/postStockCountDraft).
+  countType?: "FULL" | "SPOT_CHECK";
 }) {
   const router = useRouter();
   const itemOptions = useMemo(() => items.map((it) => ({ value: it.id, code: it.legacyCode, label: it.name })), [items]);
@@ -325,6 +332,7 @@ export function StockCountBuilder({
       branchId,
       costCenterId,
       countDate,
+      countType,
       lines: lines.map((l) => ({
         stockItemId: l.stockItemId,
         systemQty: l.systemQty,
@@ -359,9 +367,15 @@ export function StockCountBuilder({
   return (
     <div className="panel" style={{ maxWidth: 1080 }}>
       <div className="panel-head">
-        <h3>{existingCountId ? "Edit Draft Stock Count" : "New Stock Count"}</h3>
+        <h3>{existingCountId ? `Edit Draft ${countType === "SPOT_CHECK" ? "Spot Check" : "Stock Count"}` : countType === "SPOT_CHECK" ? "New Spot Check" : "New Stock Count"}</h3>
       </div>
       <div className="panel-body">
+        {countType === "SPOT_CHECK" && (
+          <div className="callout" style={{ marginBottom: 12 }}>
+            <b>Spot Check</b> — records variance for review the exact same way a full count does, but posting this will{" "}
+            <b>not</b> adjust system stock. Use it to sanity-check a few items without committing an adjustment to the books.
+          </div>
+        )}
         <div className="line-builder-row head" style={{ gridTemplateColumns: "1fr 1fr 1fr" }}>
           <div>Branch</div>
           <div>Cost center</div>
@@ -528,7 +542,7 @@ export function StockCountBuilder({
           ) : (
             <>
               <button className="btn accent" disabled={pending} onClick={() => handleSubmit("posted")}>
-                {pending ? "Posting…" : "Post & Adjust Stock"}
+                {pending ? "Posting…" : countType === "SPOT_CHECK" ? "Post Spot Check (Stock Not Adjusted)" : "Post & Adjust Stock"}
               </button>
               <button className="btn ghost" disabled={pending} onClick={() => handleSubmit("draft")}>
                 Save as Draft

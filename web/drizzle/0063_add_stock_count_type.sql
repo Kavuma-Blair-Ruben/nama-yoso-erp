@@ -1,0 +1,2 @@
+ALTER TABLE "stock_counts" ADD COLUMN "count_type" text DEFAULT 'FULL' NOT NULL;--> statement-breakpoint
+ALTER TABLE "stock_counts" ADD CONSTRAINT "stock_counts_count_type_check" CHECK ("stock_counts"."count_type" in ('FULL','SPOT_CHECK'));

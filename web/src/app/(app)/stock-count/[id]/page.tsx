@@ -28,8 +28,13 @@ export default async function StockCountDetailPage({ params }: PageProps<"/stock
 
       <div style={{ marginBottom: 14 }}>
         <span className={`status-badge ${stockCount.status === "DRAFT" ? "status-draft" : "status-received"}`}>{stockCount.status}</span>
+        {stockCount.countType === "SPOT_CHECK" && <span className="tag neutral" style={{ marginLeft: 6 }}>Spot Check</span>}
       </div>
-      {stockCount.status === "DRAFT" ? (
+      {stockCount.countType === "SPOT_CHECK" ? (
+        <div className="callout">
+          Spot check — variance is recorded for review, but posting this never adjusts system stock.
+        </div>
+      ) : stockCount.status === "DRAFT" ? (
         <div className="callout" style={{ borderColor: "var(--accent)" }}>
           Stock has not been adjusted yet — post this count to apply variances to the ledger.
         </div>

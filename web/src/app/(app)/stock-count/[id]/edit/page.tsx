@@ -40,6 +40,7 @@ export default async function EditStockCountDraftPage({ params }: PageProps<"/st
         initialBranchId={stockCount.branchId}
         initialCostCenterId={stockCount.costCenterId ?? undefined}
         initialCountDate={stockCount.countDate}
+        countType={stockCount.countType as "FULL" | "SPOT_CHECK"}
         initialLines={lines.map((l) => {
           const p = items.find((x) => x.id === l.stockItemId);
           return {

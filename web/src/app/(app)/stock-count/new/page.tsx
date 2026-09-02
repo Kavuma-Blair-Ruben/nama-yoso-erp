@@ -10,8 +10,10 @@ import { listStockCountTemplatesWithItems } from "@/server/db/queries/stockCount
 import { getSystemSettings } from "@/server/db/queries/settings";
 import { withTimeout } from "@/lib/withTimeout";
 
-export default async function NewStockCountPage() {
+export default async function NewStockCountPage({ searchParams }: PageProps<"/stock-count/new">) {
   const session = await requireSection("stockcount", "edit");
+  const sp = await searchParams;
+  const countType = sp.type === "spotcheck" ? "SPOT_CHECK" : "FULL";
   const [items, branches, stockBalances, costCenters, templates, settings] = await withTimeout(Promise.all([
     listIngredientPickerItems(),
     listBranches(allowedBranchCodes(session)),
@@ -23,7 +25,16 @@ export default async function NewStockCountPage() {
 
   return (
     <>
-      <PageHeader title="New Stock Count" subtitle="Count what's physically on the shelf, compare to system stock." backHref="/stock-count" backLabel="Stock Count" />
+      <PageHeader
+        title={countType === "SPOT_CHECK" ? "New Spot Check" : "New Stock Count"}
+        subtitle={
+          countType === "SPOT_CHECK"
+            ? "Count a subset of items for review — does not adjust system stock."
+            : "Count what's physically on the shelf, compare to system stock."
+        }
+        backHref="/stock-count"
+        backLabel="Stock Count"
+      />
       <StockCountBuilder
         items={items}
         branches={branches}
@@ -31,6 +42,7 @@ export default async function NewStockCountPage() {
         stockBalances={stockBalances}
         templates={templates}
         blindCounts={settings.blindCounts}
+        countType={countType}
       />
     </>
   );
