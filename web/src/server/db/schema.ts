@@ -365,6 +365,7 @@ export const roles = pgTable("roles", {
 export const PERMISSION_SECTION_KEYS = [
   "branchsettings",
   "items",
+  "ingredientswap",
   "suppliers",
   "orders",
   "grn",
@@ -377,6 +378,7 @@ export const PERMISSION_SECTION_KEYS = [
   "reports",
   "system",
   "policies",
+  "limitapprovals",
   "permissions",
 ] as const;
 export type PermissionSectionKey = (typeof PERMISSION_SECTION_KEYS)[number];
@@ -385,6 +387,7 @@ export type PermissionLevel = "edit" | "view" | "none";
 export const PERMISSION_SECTION_LABELS: Record<PermissionSectionKey, string> = {
   branchsettings: "Branch Settings",
   items: "Items",
+  ingredientswap: "Ingredient Swap (Replace Everywhere)",
   suppliers: "Suppliers",
   orders: "Orders",
   grn: "GRN / Purchase Invoices",
@@ -397,6 +400,7 @@ export const PERMISSION_SECTION_LABELS: Record<PermissionSectionKey, string> = {
   reports: "Reports and Dashboards",
   system: "System (Audit Trail, Settings)",
   policies: "Policies & Approvals",
+  limitapprovals: "Limit Approvers & Override Requests",
   permissions: "User Permission",
 };
 
@@ -409,7 +413,10 @@ export const rolePermissions = pgTable(
   },
   (t) => [
     primaryKey({ columns: [t.roleId, t.sectionKey] }),
-    check("role_permissions_section_key_check", sql`${t.sectionKey} in ('branchsettings','items','suppliers','orders','grn','ckwarehouse','recipes','subrecipes','wastage','transfers','stockcount','reports','system','policies','permissions')`),
+    check(
+      "role_permissions_section_key_check",
+      sql`${t.sectionKey} in ('branchsettings','items','ingredientswap','suppliers','orders','grn','ckwarehouse','recipes','subrecipes','wastage','transfers','stockcount','reports','system','policies','limitapprovals','permissions')`
+    ),
     check("role_permissions_level_check", sql`${t.level} in ('edit','view','none')`),
   ]
 );

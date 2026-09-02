@@ -21,6 +21,7 @@ export default async function ProductDetailPage({ params }: PageProps<"/products
   if (!data) notFound();
   const { item, variants, history, usedIn, stockByBranch } = data;
   const canEdit = hasAccess(session, "items", "edit");
+  const canSwap = hasAccess(session, "ingredientswap", "edit");
   const onHandUnitCat = categorizeUnit(item.issueUnit);
   const onHandUnit = onHandUnitCat === "weight" ? "KG" : onHandUnitCat === "volume" ? "L" : item.issueUnit ?? "PC";
   const totalOnHand = stockByBranch.reduce((s, b) => s + b.qtyOnHand, 0);
@@ -137,7 +138,7 @@ export default async function ProductDetailPage({ params }: PageProps<"/products
           <div className="panel">
             <div className="panel-head">
               <h3>Used In ({usedIn.length})</h3>
-              {canEdit && (
+              {canSwap && (
                 <Link href={`/products/${item.legacyCode}/swap`} className="btn ghost" style={{ fontSize: 11.5 }}>
                   🔁 Replace Everywhere
                 </Link>

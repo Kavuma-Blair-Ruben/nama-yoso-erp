@@ -145,7 +145,7 @@ async function getLimitOverrideNotifications(userId: string): Promise<Notificati
 const getCachedNotificationSections = unstable_cache(
   async (
     userId: string,
-    access: { items: boolean; orders: boolean; wastage: boolean; transfers: boolean; stockcount: boolean; grn: boolean; policies: boolean }
+    access: { items: boolean; orders: boolean; wastage: boolean; transfers: boolean; stockcount: boolean; grn: boolean; limitapprovals: boolean }
   ): Promise<Notification[][]> =>
     Promise.all([
       access.items ? getItemsNotifications() : Promise.resolve([]),
@@ -154,10 +154,10 @@ const getCachedNotificationSections = unstable_cache(
       access.transfers ? getTransfersNotifications() : Promise.resolve([]),
       access.stockcount ? getStockcountNotifications() : Promise.resolve([]),
       access.grn ? getGrnNotifications() : Promise.resolve([]),
-      // access.policies just gates whether this user can see /policies at
-      // all — getLimitOverrideNotifications does its own separate
-      // is-this-user-a-designated-approver check on top of that.
-      access.policies ? getLimitOverrideNotifications(userId) : Promise.resolve([]),
+      // access.limitapprovals just gates whether this user's role can see
+      // limit-approval review at all — getLimitOverrideNotifications does
+      // its own separate is-this-user-a-designated-approver check on top.
+      access.limitapprovals ? getLimitOverrideNotifications(userId) : Promise.resolve([]),
     ]),
   ["notification-sections-v1"],
   { revalidate: 20 }
@@ -171,7 +171,7 @@ export async function getNotifications(session: Session): Promise<Notification[]
     transfers: hasAccess(session, "transfers", "view"),
     stockcount: hasAccess(session, "stockcount", "view"),
     grn: hasAccess(session, "grn", "view"),
-    policies: hasAccess(session, "policies", "view"),
+    limitapprovals: hasAccess(session, "limitapprovals", "view"),
   };
 
   let sections: Notification[][];

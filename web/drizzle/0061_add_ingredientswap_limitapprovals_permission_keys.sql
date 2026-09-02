@@ -1,0 +1,2 @@
+ALTER TABLE "role_permissions" DROP CONSTRAINT "role_permissions_section_key_check";--> statement-breakpoint
+ALTER TABLE "role_permissions" ADD CONSTRAINT "role_permissions_section_key_check" CHECK ("role_permissions"."section_key" in ('branchsettings','items','ingredientswap','suppliers','orders','grn','ckwarehouse','recipes','subrecipes','wastage','transfers','stockcount','reports','system','policies','limitapprovals','permissions'));

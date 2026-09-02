@@ -428,6 +428,13 @@
       "when": 1788306774549,
       "tag": "0060_add_limit_override_requests",
       "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1788308361196,
+      "tag": "0061_add_ingredientswap_limitapprovals_permission_keys",
+      "breakpoints": true
     }
   ]
 }

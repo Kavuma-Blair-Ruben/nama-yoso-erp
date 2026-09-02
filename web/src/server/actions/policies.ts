@@ -198,7 +198,7 @@ export async function toggleInternalOnlyLocation(location: string, checked: bool
 }
 
 export async function addLimitApprover(userId: string): Promise<{ error?: string }> {
-  const session = await assertPermission("policies", "edit");
+  const session = await assertPermission("limitapprovals", "edit");
   const [user] = await db.select({ name: profiles.name }).from(profiles).where(eq(profiles.id, userId));
   if (!user) return { error: "User not found." };
 
@@ -209,7 +209,7 @@ export async function addLimitApprover(userId: string): Promise<{ error?: string
 }
 
 export async function removeLimitApprover(userId: string): Promise<{ error?: string }> {
-  const session = await assertPermission("policies", "edit");
+  const session = await assertPermission("limitapprovals", "edit");
   const [user] = await db.select({ name: profiles.name }).from(profiles).where(eq(profiles.id, userId));
   await db.delete(purchaseLimitApprovers).where(eq(purchaseLimitApprovers.userId, userId));
   await db.insert(auditLog).values({ actorId: session.profile.id, action: "Removed", entity: "Limit Approver", entityLabel: user?.name ?? userId });
@@ -241,7 +241,7 @@ export async function requestLimitOverride(requestType: "PO" | "GRN", amount: nu
 }
 
 export async function reviewLimitOverride(id: string, decision: "APPROVED" | "DENIED", note?: string): Promise<{ error?: string }> {
-  const session = await assertPermission("policies", "view");
+  const session = await assertPermission("limitapprovals", "view");
   const isApprover = await isDesignatedLimitApprover(session.profile.id);
   if (!isApprover) return { error: "You're not a designated limit approver." };
 

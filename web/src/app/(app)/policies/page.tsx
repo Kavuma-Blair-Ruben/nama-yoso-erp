@@ -27,6 +27,8 @@ import { withTimeout } from "@/lib/withTimeout";
 export default async function PoliciesPage() {
   const session = await requireSection("policies", "view");
   const canEdit = hasAccess(session, "policies", "edit");
+  const canViewApprovals = hasAccess(session, "limitapprovals", "view");
+  const canEditApprovals = hasAccess(session, "limitapprovals", "edit");
   const [limits, branchLimits, roleLimits, settings, roles, branches, approvalSteps, approvers, profiles, pendingOverrides, isApprover] = await withTimeout(
     Promise.all([
       listLocationOrderLimits(),
@@ -56,8 +58,8 @@ export default async function PoliciesPage() {
 
       <ApprovalPolicySettings threshold={settings.poApprovalThreshold} steps={approvalSteps} roles={roles} canEdit={canEdit} />
       <RolePurchaseLimits roleLimits={roleLimits} canEdit={canEdit} />
-      <LimitApprovers approvers={approvers} profiles={profiles} canEdit={canEdit} />
-      <PendingLimitOverrides requests={pendingOverrides} isApprover={isApprover} />
+      {canViewApprovals && <LimitApprovers approvers={approvers} profiles={profiles} canEdit={canEditApprovals} />}
+      {canViewApprovals && <PendingLimitOverrides requests={pendingOverrides} isApprover={isApprover} />}
       <LocationLimits limits={limits} locations={POLICY_LOCATIONS} canEdit={canEdit} />
       <BranchReceivingLimits limits={branchLimits} branches={branches} canEdit={canEdit} />
       <PolicyPercentSettings abovePparOverPct={settings.abovePparOverPct} receiveAbovePricePct={settings.receiveAbovePricePct} canEdit={canEdit} />

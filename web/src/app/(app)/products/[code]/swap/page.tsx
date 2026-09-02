@@ -7,7 +7,7 @@ import { IngredientSwapBuilder } from "@/components/products/IngredientSwapBuild
 import { withTimeout } from "@/lib/withTimeout";
 
 export default async function IngredientSwapPage({ params }: PageProps<"/products/[code]/swap">) {
-  await requireSection("items", "edit");
+  await requireSection("ingredientswap", "edit");
   const { code } = await params;
   const [data, items] = await withTimeout(
     Promise.all([getProductByCode(code), listIngredientPickerItems()]),

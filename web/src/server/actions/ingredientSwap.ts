@@ -133,7 +133,7 @@ async function computeSwapImpact(fromStockItemId: string, toStockItemId: string)
 // alternative. No DB writes; see buildAfterGraph's comment for why a
 // preview doesn't need any.
 export async function previewIngredientSwap(fromStockItemId: string, toStockItemId: string): Promise<SwapPreviewResult> {
-  await assertPermission("items", "view");
+  await assertPermission("ingredientswap", "view");
   const result = await computeSwapImpact(fromStockItemId, toStockItemId);
   if (result.error) return { error: result.error };
   return { preview: result.impact };
@@ -152,7 +152,7 @@ export type SwapCommitResult = { error?: string; eventId?: string };
 // logged numbers reflect the exact state being committed, not a possibly
 // stale client-side preview.
 export async function commitIngredientSwap(fromStockItemId: string, toStockItemId: string, reason?: string): Promise<SwapCommitResult> {
-  const session = await assertPermission("items", "edit");
+  const session = await assertPermission("ingredientswap", "edit");
   const result = await computeSwapImpact(fromStockItemId, toStockItemId);
   if (result.error || !result.impact) return { error: result.error ?? "Could not compute the swap impact." };
   const { impact } = result;
