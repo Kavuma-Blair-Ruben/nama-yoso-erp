@@ -11,8 +11,13 @@ export function pct(n: number | null | undefined, d = 1): string {
   return n === null || n === undefined || Number.isNaN(n) ? "—" : (n >= 0 ? "+" : "") + fmt(n, d) + "%";
 }
 
+// UTC would drift a day behind for part of every night here — Dubai is
+// UTC+4, so any time between midnight and 4am local, new Date().toISOString()
+// still reports yesterday's date. Every branch is in the UAE (no DST), so
+// pinning to Asia/Dubai instead of the server's own UTC clock keeps "today"
+// correct for every default date across GRN/wastage/production/reports/etc.
 export function todayStr(): string {
-  return new Date().toISOString().slice(0, 10);
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Dubai" }).format(new Date());
 }
 
 // e.g. 754 -> "12h 34m", 8 -> "8m", 0 -> "0m" — for turnaround-time display
