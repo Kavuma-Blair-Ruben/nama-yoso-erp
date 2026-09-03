@@ -415,7 +415,7 @@ table.data tbody tr:hover{background:var(--bg-panel-alt);}
    documents, barcode/label sheets): hide the app chrome and any element
    marked .no-print, and let the printable document fill the page. */
 @media print{
-  .sidebar,.no-print{display:none !important;}
+  .sidebar,.topbar,.assistant-fab,.assistant-panel,.no-print{display:none !important;}
   .app-shell,.main,.content{display:block !important;margin:0 !important;padding:0 !important;}
   body{background:#fff !important;overflow-x:visible !important;}
   .print-doc{box-shadow:none !important;border:none !important;max-width:none !important;margin:0 !important;}
