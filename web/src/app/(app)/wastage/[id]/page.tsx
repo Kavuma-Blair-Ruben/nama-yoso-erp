@@ -25,6 +25,7 @@ export default async function WastageDetailPage({ params }: PageProps<"/wastage/
         backLabel="Wastage Tracking"
         action={
           <div style={{ display: "flex", gap: 8 }}>
+            <Link href={`/wastage/${event.id}/print`} className="btn ghost">Print</Link>
             {canEdit && <Link href={`/wastage/${event.id}/clone`} className="btn ghost">Repeat</Link>}
             {canEdit && event.status === "DRAFT" && <Link href={`/wastage/${event.id}/edit`} className="btn accent">Edit Draft</Link>}
           </div>

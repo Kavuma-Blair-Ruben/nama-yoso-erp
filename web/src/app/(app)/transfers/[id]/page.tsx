@@ -28,6 +28,7 @@ export default async function TransferDetailPage({ params }: PageProps<"/transfe
         backLabel="Stock Transfers"
         action={
           <div style={{ display: "flex", gap: 8 }}>
+            <Link href={`/transfers/${transfer.id}/print`} className="btn ghost">Print</Link>
             {canEdit && <Link href={`/transfers/${transfer.id}/clone`} className="btn ghost">Repeat</Link>}
             {canEdit && transfer.status === "DRAFT" && <Link href={`/transfers/${transfer.id}/edit`} className="btn accent">Edit Draft</Link>}
           </div>

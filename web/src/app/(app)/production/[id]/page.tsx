@@ -50,6 +50,7 @@ export default async function ProductionDetailPage({ params }: PageProps<"/produ
         backLabel="Production"
         action={
           <div style={{ display: "flex", gap: 8 }}>
+            <Link href={`/production/${batch.id}/print`} className="btn ghost">Print</Link>
             <PrintLabelCopyButton batchId={batch.id} />
             {canEdit && <Link href={`/production/${batch.id}/clone`} className="btn ghost">Repeat</Link>}
             {canEdit && batch.status === "OPEN" && <Link href={`/production/${batch.id}/edit`} className="btn accent">Edit Ticket</Link>}
