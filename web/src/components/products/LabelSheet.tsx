@@ -36,6 +36,7 @@ const LABEL_SIZES = {
   sheet: null, // multi-up grid on plain A4/Letter paper — existing behavior
   "50x30": { width: "50mm", height: "30mm" },
   "40x30": { width: "40mm", height: "30mm" },
+  "62x29": { width: "62mm", height: "29mm" }, // Brother DK-11209-size cut off a 62mm continuous roll (e.g. DK-62mm)
   "4x6": { width: "4in", height: "6in" },
 } as const;
 type PrintMode = keyof typeof LABEL_SIZES;
@@ -89,6 +90,7 @@ export function LabelSheet({ product, branches }: { product: Product; branches: 
           <option value="sheet">Office printer (multi-up sheet)</option>
           <option value="50x30">Label/sticker printer — 50×30mm</option>
           <option value="40x30">Label/sticker printer — 40×30mm</option>
+          <option value="62x29">Label/sticker printer — 62×29mm (DK 62mm roll)</option>
           <option value="4x6">Label/sticker printer — 4×6in</option>
         </select>
         <button className="btn accent" onClick={() => window.print()}>Print Labels</button>

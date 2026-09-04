@@ -58,6 +58,7 @@ const LABEL_SIZES = {
   sheet: null,
   "50x30": { width: "50mm", height: "30mm" },
   "50x40": { width: "50mm", height: "40mm" },
+  "62x40": { width: "62mm", height: "40mm" }, // 62mm continuous roll (e.g. DK-62mm) — taller cut to fit batch/lot/expiry/qty lines
   "4x6": { width: "4in", height: "6in" },
 } as const;
 type PrintMode = keyof typeof LABEL_SIZES;
@@ -91,6 +92,7 @@ export function LotLabelSheet({ lines, grnId }: { lines: Line[]; grnId: string }
           <option value="sheet">Office printer (multi-up sheet)</option>
           <option value="50x30">Label/sticker printer — 50×30mm</option>
           <option value="50x40">Label/sticker printer — 50×40mm</option>
+          <option value="62x40">Label/sticker printer — 62×40mm (DK 62mm roll)</option>
           <option value="4x6">Label/sticker printer — 4×6in</option>
         </select>
         <button className="btn accent" onClick={() => window.print()}>Print Labels</button>
