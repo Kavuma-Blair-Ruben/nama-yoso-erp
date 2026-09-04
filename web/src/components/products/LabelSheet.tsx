@@ -62,7 +62,10 @@ export function LabelSheet({ product, branches }: { product: Product; branches: 
   function handleSendToPrinter() {
     setMessage(null);
     startTransition(async () => {
-      const result = await sendProductLabelToRoutedPrinter(branchId, product.id, copies);
+      // "sheet" isn't a real roll size — a routed device that turns out to be
+      // a PrintNode label printer still needs one, so fall back to the same
+      // 62×29mm default the server action itself uses.
+      const result = await sendProductLabelToRoutedPrinter(branchId, product.id, copies, printMode === "sheet" ? undefined : printMode);
       if (result.error) {
         setIsError(true);
         setMessage(result.error);

@@ -13,8 +13,9 @@ import { recordStockMovement } from "@/server/db/stockLedger";
 import { getDefaultCostCenterId } from "@/server/db/costCenterDefaults";
 import { convertQtyToCanonical, computeRatePerKgL } from "@/lib/unitMath";
 import { checkSupplierReceivingLimit, checkAbovePriceBreach, checkBranchReceivingLimit } from "@/server/policyChecks";
-import { sendToRoutedPrinter } from "@/lib/printRouting";
+import { sendLabelToRoutedPrinter } from "@/lib/printRouting";
 import { buildGrnLabelEscPos } from "@/lib/escpos";
+import { buildLotLabelPdf } from "@/server/pdf/lotLabelPdf";
 import { claimUsableLimitOverride } from "@/server/actions/policies";
 
 // Thrown inside a db.transaction() callback to trigger a real rollback when
@@ -548,7 +549,17 @@ export async function markGrnStickersPrinted(grnId: string, lineIds: string[]): 
 // e.g. a sticker got damaged).
 async function printGrnLabels(grnId: string, branchId: string): Promise<{ sent: number; total: number; lastError: string | null }> {
   const lines = await db
-    .select({ name: stockItems.name, legacyCode: stockItems.legacyCode, batchNo: grnLines.batchNo, lotNo: grnLines.lotNo, mfgDate: grnLines.mfgDate, expiryDate: grnLines.expiryDate })
+    .select({
+      name: stockItems.name,
+      legacyCode: stockItems.legacyCode,
+      batchNo: grnLines.batchNo,
+      lotNo: grnLines.lotNo,
+      mfgDate: grnLines.mfgDate,
+      expiryDate: grnLines.expiryDate,
+      receivedQty: grnLines.receivedQty,
+      unitLabel: grnLines.unitLabel,
+      condition: grnLines.condition,
+    })
     .from(grnLines)
     .innerJoin(stockItems, eq(grnLines.stockItemId, stockItems.id))
     .where(eq(grnLines.grnId, grnId));
@@ -556,10 +567,13 @@ async function printGrnLabels(grnId: string, branchId: string): Promise<{ sent: 
   let sent = 0;
   let lastError: string | null = null;
   for (const line of lines) {
-    const result = await sendToRoutedPrinter(
-      branchId,
-      "grn_label",
-      buildGrnLabelEscPos({ itemName: line.name, itemCode: line.legacyCode, batchNo: line.batchNo, lotNo: line.lotNo, mfgDate: line.mfgDate, expiryDate: line.expiryDate })
+    const escposData = { itemName: line.name, itemCode: line.legacyCode, batchNo: line.batchNo, lotNo: line.lotNo, mfgDate: line.mfgDate, expiryDate: line.expiryDate };
+    // Same lazy-build-only-if-needed reasoning as sendProductLabelToRoutedPrinter.
+    const result = await sendLabelToRoutedPrinter(branchId, "grn_label", buildGrnLabelEscPos(escposData), () =>
+      buildLotLabelPdf(
+        { itemName: line.name, itemCode: line.legacyCode, batchNo: line.batchNo, lotNo: line.lotNo, expiryDate: line.expiryDate, receivedQty: line.receivedQty, unitLabel: line.unitLabel, condition: line.condition },
+        "62x40"
+      )
     );
     if (result.ok) sent++;
     else lastError = result.status;

@@ -9,8 +9,10 @@ import { stockItems, categories, subcategories, suppliers, productSupplierPackag
 import { assertPermission } from "@/server/auth/permissions";
 import { nextProductCode } from "@/server/db/sequences";
 import { computeRatePerKgL } from "@/lib/unitMath";
-import { sendToRoutedPrinter } from "@/lib/printRouting";
+import { sendLabelToRoutedPrinter } from "@/lib/printRouting";
 import { buildProductLabelEscPos } from "@/lib/escpos";
+import { buildProductLabelPdf } from "@/server/pdf/productLabelPdf";
+import type { LabelSizeKey } from "@/lib/pdf/labelSize";
 
 export async function findOrCreateCategory(name: string): Promise<string> {
   const trimmed = name.trim();
@@ -351,18 +353,23 @@ export async function updateItemSetup(_prev: ItemSetupState, formData: FormData)
 // Manual, one item at a time — a product isn't scoped to a single branch
 // (stock_items.branches can span several or be empty = all), so the branch
 // to route through is picked explicitly at print time rather than inferred.
-export async function sendProductLabelToRoutedPrinter(branchId: string, stockItemId: string, copies: number): Promise<{ error?: string; ok?: boolean; message?: string }> {
+export async function sendProductLabelToRoutedPrinter(branchId: string, stockItemId: string, copies: number, labelSize: LabelSizeKey = "62x29"): Promise<{ error?: string; ok?: boolean; message?: string }> {
   await assertPermission("items", "view");
   const [item] = await db.select({ name: stockItems.name, legacyCode: stockItems.legacyCode, purchaseRate: stockItems.purchaseRate, purchaseUnit: stockItems.purchaseUnit }).from(stockItems).where(eq(stockItems.id, stockItemId));
   if (!item) return { error: "Item not found." };
 
   const n = Math.max(1, Math.min(50, Math.round(copies) || 1));
-  const ticket = buildProductLabelEscPos({ itemName: item.name, itemCode: item.legacyCode, rate: item.purchaseRate, rateUnit: item.purchaseUnit });
+  const labelData = { itemName: item.name, itemCode: item.legacyCode, rate: item.purchaseRate, rateUnit: item.purchaseUnit };
+  const ticket = buildProductLabelEscPos(labelData);
 
   let sent = 0;
   let lastError: string | null = null;
   for (let i = 0; i < n; i++) {
-    const result = await sendToRoutedPrinter(branchId, "product_label", ticket);
+    // A real PDF is only actually built when the routed device turns out to
+    // be a PrintNode label printer — sendLabelToRoutedPrinter looks up the
+    // device first and calls this lazily, so a receipt-printer route never
+    // pays for barcode/QR rendering it won't use.
+    const result = await sendLabelToRoutedPrinter(branchId, "product_label", ticket, () => buildProductLabelPdf(labelData, labelSize));
     if (result.ok) sent++;
     else lastError = result.status;
   }

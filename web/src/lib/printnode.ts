@@ -42,7 +42,17 @@ export async function listPrintNodePrinters(): Promise<{ printers?: PrintNodePri
   return { printers };
 }
 
-export async function sendPrintNodeJob(printerId: number, content: Buffer, title: string): Promise<{ ok?: boolean; jobId?: number; error?: string }> {
+export async function sendPrintNodeJob(
+  printerId: number,
+  content: Buffer,
+  title: string,
+  // "raw_base64" (default) sends the bytes straight through, unmodified —
+  // correct for ESC/POS receipt tickets, meaningless to a driver-based label
+  // printer like the Brother QL-800. "pdf_base64" instead hands PrintNode a
+  // real PDF, which it prints through the receiving computer's own OS driver
+  // — the only path that actually renders on hardware like the QL-800.
+  contentType: "raw_base64" | "pdf_base64" = "raw_base64"
+): Promise<{ ok?: boolean; jobId?: number; error?: string }> {
   if (!isPrintNodeConfigured()) return { error: "PrintNode isn't configured — add PRINTNODE_API_KEY to .env.local." };
 
   const res = await fetch(`${BASE_URL}/printjobs`, {
@@ -51,7 +61,7 @@ export async function sendPrintNodeJob(printerId: number, content: Buffer, title
     body: JSON.stringify({
       printerId,
       title,
-      contentType: "raw_base64", // raw ESC/POS bytes, not a PDF
+      contentType,
       content: content.toString("base64"),
       source: "NAMA YOSO ERP",
     }),
