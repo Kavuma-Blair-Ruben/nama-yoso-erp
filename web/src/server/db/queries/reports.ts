@@ -480,8 +480,10 @@ export async function getStockPageRows() {
     // Most recent POSTED count per item, across every count ever taken —
     // "Last Count Qty" is a point-in-time snapshot from whenever that item
     // was last physically counted, not tied to any one count session.
+    // rateAtCount rides along so "opening stock value" below can price each
+    // item at what it was actually worth on count day, not today's rate.
     db
-      .select({ stockItemId: stockCountLines.stockItemId, countedQty: stockCountLines.countedQty, countDate: stockCounts.countDate })
+      .select({ stockItemId: stockCountLines.stockItemId, countedQty: stockCountLines.countedQty, rateAtCount: stockCountLines.rateAtCount, countDate: stockCounts.countDate })
       .from(stockCountLines)
       .innerJoin(stockCounts, eq(stockCountLines.stockCountId, stockCounts.id))
       .where(and(eq(stockCounts.status, "POSTED"), isNotNull(stockCountLines.countedQty)))
@@ -490,9 +492,11 @@ export async function getStockPageRows() {
   const qtyByItemId = new Map<string, number>();
   for (const b of balances) qtyByItemId.set(b.stockItemId, (qtyByItemId.get(b.stockItemId) ?? 0) + b.qtyOnHand);
   const linkedIds = new Set(linkedRows.map((r) => r.stockItemId));
-  const lastCountByItemId = new Map<string, number>();
+  const lastCountByItemId = new Map<string, { qty: number; rate: number | null; date: string }>();
   for (const l of countLines) {
-    if (!lastCountByItemId.has(l.stockItemId) && l.countedQty != null) lastCountByItemId.set(l.stockItemId, l.countedQty);
+    if (!lastCountByItemId.has(l.stockItemId) && l.countedQty != null) {
+      lastCountByItemId.set(l.stockItemId, { qty: l.countedQty, rate: l.rateAtCount, date: l.countDate });
+    }
   }
 
   return items.map((it) => {
@@ -506,7 +510,20 @@ export async function getStockPageRows() {
     // Supy-style 3-state status, distinct from `flag` above (which drives
     // the KPI cards/filters) — this is purely the per-row display label.
     const status: "OUT_OF_STOCK" | "LOW_STOCK" | "IN_STOCK" = onHand <= 0 ? "OUT_OF_STOCK" : it.minLevel != null && onHand < it.minLevel ? "LOW_STOCK" : "IN_STOCK";
-    return { ...it, onHand, value: onHand * (it.ratePerKgL ?? 0), flag, abovePar, linkedToRecipe, status, lastCountQty: lastCountByItemId.get(it.id) ?? null };
+    const lastCount = lastCountByItemId.get(it.id);
+    const lastCountValue = lastCount ? lastCount.qty * (lastCount.rate ?? 0) : null;
+    return {
+      ...it,
+      onHand,
+      value: onHand * (it.ratePerKgL ?? 0),
+      flag,
+      abovePar,
+      linkedToRecipe,
+      status,
+      lastCountQty: lastCount?.qty ?? null,
+      lastCountDate: lastCount?.date ?? null,
+      lastCountValue,
+    };
   });
 }
 

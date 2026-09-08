@@ -221,6 +221,15 @@ async function StockTab({ q, view }: { q?: string; view?: StockView }) {
   const flaggedCount = rows.filter((r) => r.flag).length;
   const activeView: StockView = view ?? "all";
 
+  // Opening Stock Value — priced at what each item was actually worth on the
+  // day it was last physically counted (rateAtCount), not today's rate, so
+  // this reads as a real snapshot from the count rather than drifting with
+  // subsequent GRN price changes. Only items with at least one posted count
+  // contribute; everything else has no count to open from yet.
+  const countedRows = rows.filter((r) => r.lastCountQty != null);
+  const openingStockValue = countedRows.reduce((s, r) => s + (r.lastCountValue ?? 0), 0);
+  const lastCountDate = countedRows.reduce<string | null>((latest, r) => (r.lastCountDate && (!latest || r.lastCountDate > latest) ? r.lastCountDate : latest), null);
+
   let filtered = rows;
   if (activeView === "flagged") filtered = filtered.filter((r) => r.flag);
   else if (activeView === "negative") filtered = filtered.filter((r) => r.onHand < 0);
@@ -248,6 +257,16 @@ async function StockTab({ q, view }: { q?: string; view?: StockView }) {
           <div className="l">Stock on Hand</div>
           <div className="d">{rows.length} item(s) — click to view all</div>
         </Link>
+        <div className="kpi">
+          <div className="kpi-icon">🗓</div>
+          <div className="n">{money(openingStockValue, 0)}</div>
+          <div className="l">Opening Stock Value</div>
+          <div className="d">
+            {countedRows.length
+              ? `${countedRows.length} item(s), priced as of last count${lastCountDate ? ` (${lastCountDate})` : ""}`
+              : "No posted stock count yet"}
+          </div>
+        </div>
         <Link href={kpiHref("notlinked")} className={`kpi${activeView === "notlinked" ? " accent-bad" : ""}`}>
           <div className="kpi-icon">🔗</div>
           <div className="n" style={{ color: notLinkedCount ? "var(--bad)" : "inherit" }}>{notLinkedCount}</div>
